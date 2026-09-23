@@ -1,1 +1,0 @@
-# fgonzalez_a2_2026_s2

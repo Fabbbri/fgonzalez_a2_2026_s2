@@ -1,1 +1,3 @@
 .local/
+/ray tracing/build/
+*.ppm
