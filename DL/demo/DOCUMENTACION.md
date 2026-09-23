@@ -278,3 +278,233 @@ for (int epoch = 0; epoch < 1000; epoch++) {
     // 4. Actualizar pesos
 }
 ```
+
+## Problemas más complejos -> Modelos más completos
+
+El modelo presentado actualmente es meramente un ejemplo para comprender el funcionamiento de un modelo de Deep Learning. Ciertamente es un modelo demasiado simple pues tiene únicamente 5 neuronas:
+
+- 2 neuronas de Input
+- 2 neuronas de Hidden Layer
+- 1 neurona de Output
+
+Sin embargo, la matemática y conceptos aplicados en este modelo simple es equivalente a la aplicada en modelos más grandes. 
+
+Para avanzar un poco la complejidad, puede considerarse el famoso problema de reconocer dígitos del 0-9. Para un ser humano esto es una tarea sencilla, pero para una máquina no tanto.
+
+Se utilizará la base de datos `MNIST` (https://www.kaggle.com/datasets/hojjatk/mnist-dataset), la cuál contiene imágenes de 28x28 píxeles.
+
+Por tanto, resolver este problema requiere de un modelo mucho más complejo. Primero, se necesitan 10 salidas, una por dígito. Luego, son 28x28 entradas, o sea, 784 entradas. Además, puede plantearse utilizar dos capas ocultas en vez de una (debido a la complejidad): una de 128 y otra de 64. En resumen:
+
+- 28x28 = 784 neuronas de Input
+- 128 neuronas de Hidden Layer 1
+- 64 neuronas de Hidden Layer 2
+- 10 neuronas de Output
+
+Esto se traduce en un cambio de dimensiones y agregar una capa extra. Los cambios serían:
+
+```
+x   = 2 × 1 -> 784 x 1
+
+W1  = 2 × 2 -> 128 x 784
+b1  = 2 × 1 -> 128 x 1
+
+W2  = 1 × 2 -> 64 x 128
+b2  = 1 × 1 -> 64 x 1
+
+W3  = N/A -> 10 x 64
+b3  = N/A -> 10 x 1
+```
+
+Esencialmente, ya no son solamente 4 multiplicaciones sino:
+
+```math
+128\times784=100\,352
+```
+
+multiplicaciones por muestra. Esto sin tomar en cuenta las demás capas. Este modelo será el modelo final a realizar en este proyecto. 
+
+## Paralelización en el modelo simple
+
+Este modelo simple de ejemplo, si bien pequeño sigue siendo bastante útil para entender los principios de la paralelización.
+
+Actualmente el flujo del programa es:
+1. `Forward-pass` (calcula neuronas de Hidden Layer y Salida)
+2. `MSE`
+3. `Backpropagation`
+4. `Actualizar pesos`
+5. `Repetir`
+
+De esto hay varios aspectos que pueden paralelizarse.
+
+### Paralelizar una neurona de forward-pass
+
+Actualmente se realiza:
+
+```math
+z_1 = W_1 * x + b_1
+```
+
+Matemáticamente esto corresponde a:
+
+```math
+z_{1,0} = W_{1,00} * x_0 + W_{0,1} * x_1 + b_{1,0}
+```
+```math
+z_{1,1} = W_{1,10} * x_0 + W_{1,1} * x_1 + b_{1,1}
+```
+
+pues es una multiplicación de matriz con vector.
+
+Note que las dos neuronas producidas $z_{1,0}$ y $z_{1,1}$ no dependen entre sí, sino que ambas dependen de resultados ya producidos previamente. Esto implica que es posible repartirlas entre hilos. A su vez, si la cantidad de neuronas de la capa oculta aumenta, también podría aumentar el paralelismo pues `ninguna neurona del mismo nivel depende entre sí`.
+
+Realmente la operación de `Eigen` con matriz realiza dos operaciones, de forma similar a:
+
+```C
+Eigen::Vector2d z1;
+int n = 2;
+
+for (int i = 0; i < n; i++) {
+
+    z1(i) = b1(i);
+
+    for (int j = 0; j < n; j++) {
+        z1(i) += W1(i, j) * x(j);
+    }
+}
+```
+
+dónde $n$ es el número de neuronas que hay en el nivel (en este caso, la capa oculta tiene 2 neuronas). Entonces, es posible en vez de utilizar el `for` conceptual que hace Eigen, separar la operación en $n$ hilos para este caso (luego $n$ podría ser tan grande que separarlo en tantos hilos quizá no sea beneficioso). 
+
+Algo similar puede aplicarse para la neurona de salida. En resumen, $\textit{La unidad de trabajo a paralelizar es una neurona}$.
+
+### Paralelizar la función de activación ($\sigma$)
+
+Actualmente se tiene: 
+
+```math
+a_1 = \sigma(z_1)
+```
+
+Lo cuál, matemáticamente corresponde a:
+
+```math
+a_{1,0} = \sigma(z_{1,0})
+```
+```math
+a_{1,1} = \sigma(z_{1,1})
+```
+
+Note que, nuevamente, $a_{1,0}$ y $a_{1,1}$ no dependen entre sí. Por lo tanto, esto también puede ser paralelizado. Ocurre lo mismo que el `for` conceptual de forward-pass. Note que, conforme crezca la cantidad de neuronas de la capa oculta, mayor es la cantidad de $\sigma(z)$ no dependientes entre sí que deben calcularse, por lo que se logra paralelizar bastante.
+
+En resumen, $\textit{La unidad de trabajo a paralelizar es la activación de una neurona}$.
+
+### Paralelización del backpropagation
+
+El cálculo de los gradientes es otro aspecto bastante paralelizable. Veáse por ejemplo, para la capa oculta:
+
+```C
+// Derivada del error respecto al peso W1
+        Vector2d dL_da1 =
+            W2.transpose() * dL_dz2;
+
+        Vector2d sigmoid_derivative =
+            a1.array() * (1.0 - a1.array());
+
+        Vector2d dL_dz1 =
+            dL_da1.array() * sigmoid_derivative.array();
+```
+
+Note que, al estar involucrada una matriz y un escalar, $\frac{\partial L}{\partial a_1}$ puede representarse computacionalmente como:
+
+```C
+dL_da1[0] = W2[0] * dL_dz2
+dL_da1[1] = W2[1] * dL_dz2
+```
+
+Lo mismo para $a_1$, el cuál se representa como `array`, puede verse como:
+
+```C
+sigmoid_derivative(0) = a1(0) * (1.0 - a1(0))
+sigmoid_derivative(1) = a1(1) * (1.0 - a1(1))
+```
+
+Lo mismo aplica para $z_1$, el cuál es el producto `element-wise` de los resultados previos. Como ambos resultados tienen indexación $(0,1)$, puede paralelizarse su producto.
+
+Luego, el resultado obtenido de la derivada del error respecto a $z_1$ se utiliza para obtener la generada respecto a la matriz de pesos $W_1$. Esto también es paralelizable.
+
+```C
+Matrix2d dW1 = dL_dz1 * x.transpose();
+```
+
+Recuerde que esto es una operación:
+```
+2x1 x 1x2 = 2x2
+```
+
+Por lo tanto:
+
+```C
+dW1(0,0) = dL_dz1(0) * x(0);
+dW1(0,1) = dL_dz1(0) * x(1);
+
+dW1(1,0) = dL_dz1(1) * x(0);
+dW1(1,1) = dL_dz1(1) * x(1);
+```
+
+Note que no dependen entre sí, entonces, intuitivamente, podría pensarse en que cada hilo calcule cada elemento de la matriz producida. Otra opción sería tener un hilo por fila, de forma que cada hilo se encarga de dos operaciones.
+
+La segunda opción es más escalable por tener $\textbf{granularidad más gruesa}$. En este caso, 4 operaciones es muy poco, sin embargo, si se escala al modelo de dígitos de 0-9 por ejemplo, se tendría:
+
+```math
+W_1 = 128 \times 784
+```
+
+Por lo que la paralelización se vuelve poderosa en este caso al repartir bastante carga de trabajo por fila.
+
+### Paralelización de la actualización de parámetros
+
+Es posible paralelizar las actualizaciones de los pesos y sesgos. El paralelismo de $W_1$ por ejemplo, puede verse como un for conceptual:
+
+```C
+for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+        W1(i, j) -= learning_rate * dW1(i, j);
+    }
+}
+```
+
+### Resumen del paralelismo propuesto
+
+En general, las operaciones de mayor paralelización para el modelo simple son:
+
+```
+FORWARD
+──────────────────────────────
+W1*x+b1          → paralelizable
+sigmoid(z1)      → paralelizable
+W2*a1            → poco trabajo, pues se limita a (0)
+
+
+BACKPROPAGATION
+──────────────────────────────
+dL/da1           → paralelizable
+sigmoid'         → paralelizable
+dL/dz1           → paralelizable
+dW1              → paralelizable
+db1              → paralelizable
+
+
+ACTUALIZACIÓN
+──────────────────────────────
+W1               → paralelizable
+b1               → paralelizable
+W2               → paralelizable
+b2               → trivial
+```
+
+En general, lo prometedor a paralelizar en hilos son las operaciones que incluyan matrices completas. Aquellas que solo incluyan una fila de ellas o no incluyan matrices también pueden paralelizarse pero no tienen tanta carga de trabajo. Por ejemplo, `db1 = dL_dz1` o `z2 = (W2 * a1)(0) + b2;`. Este tipo de operaciones, si bien es independiente por neurona, sus dimensiones crecen según $n$ neuronas en ese nivel.
+
+## Reporte de Resultados para el modelo $\textit{dummie}$
+
+
+
