@@ -30,8 +30,8 @@ int main(int argc, char** argv) {
         rt::Scene scene = rt::default_scene();
         scene.settings.samples = options.samples;
         scene.settings.max_bounces = options.max_bounces;
-        // Vista oblicua del conjunto: deja ver el piso y las esferas pequeñas.
-        const rt::Camera camera(options.width, options.height, {7, 4, 5}, {0, -0.2, -6});
+        // Cámara baja y frontal, próxima al suelo y dirigida hacia las esferas.
+        const rt::Camera camera(options.width, options.height, {0, 0.45, 2.0}, {0, 0.25, -7.5});
         const rt::TileGrid tiles(options.width, options.height, options.tile_width, options.tile_height);
         std::unique_ptr<rt::Display> display;
         if (!options.headless) {

@@ -71,7 +71,7 @@ de hilos y la asignación de tiles se decidirán al implementar y medir ese mode
 | Variable | Efecto |
 | --- | --- |
 | Ancho × alto | Cantidad de rayos y memoria del buffer |
-| Número de esferas | Pruebas geométricas por rayo; Tres principales, hasta 130 pequeñas y una esfera para el piso |
+| Número de esferas | Pruebas geométricas por rayo; Tres principales, hasta 88 pequeñas y una esfera para el piso |
 | Tamaño de tile | Cantidad de tareas y granularidad |
 | Distribución de objetos | Cantidad de impactos que requieren iluminación |
 | Muestras y máximo de rebotes | Calidad, ruido y cantidad de rayos secundarios |

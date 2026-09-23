@@ -18,7 +18,7 @@ Camera::Camera(int width, int height, Vec3 origin, Vec3 target)
     right_ = normalized(cross(forward_, reference_up));
     up_ = cross(right_, forward_);
     constexpr double pi = 3.14159265358979323846;
-    half_height_ = std::tan(50.0 * pi / 360.0); // FOV vertical de 50 grados.
+    half_height_ = std::tan(36.0 * pi / 360.0); // FOV vertical moderado de 36 grados.
     half_width_ = half_height_ * width / height;
 }
 Ray Camera::primary_ray(int x, int y, double offset_x, double offset_y) const {

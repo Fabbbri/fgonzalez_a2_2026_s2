@@ -124,7 +124,7 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 | `docs/diseno.md` | Diagramas y variables para próximas etapas |
 
 La escena se modifica en `default_scene()` de `src/scene.cpp`. Las dimensiones
-predeterminadas están en `Options`, en `src/options.hpp`. La cámara se coloca en `(7, 4, 5)` y apunta a `(0, -0.2, -6)`,
+predeterminadas están en `Options`, en `src/options.hpp`. La cámara se coloca en `(5, 4, 6)` y apunta a `(0, -0.2, -7)`,
 con campo vertical de 50°. Estos dos vectores se configuran en `main.cpp`.
 Cada muestra genera un rayo a una posición dentro del píxel, corrigiendo la
 relación ancho/alto y normalizando su dirección.
@@ -171,8 +171,9 @@ La escena usa ahora mates, metales y vidrio, con sombras por oclusión del cielo
 y reflejos producidos por los rebotes. No incorpora desenfoque de cámara.
 
 En `default_scene()`, las primeras llamadas a `add_sphere` definen las tres
-esferas principales. `rows = 10` y `columns = 13` generan 130 candidatos pequeños;
-se omiten los que se solapan con otras esferas. La semilla `2026` fija las
+esferas principales. `rows = 8` y `columns = 11` generan 88 candidatos pequeños;
+se omiten los que se solapan con otras esferas o restan visibilidad a las
+tres principales. La semilla `2026` fija las
 posiciones, radios y colores entre ejecuciones. Cambiarla produce otra distribución.
 Esa aleatoriedad de construcción ocurre antes de medir. Los rebotes usan otro
 generador, local a cada píxel, y su costo sí forma parte del renderizado.
