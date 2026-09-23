@@ -1,174 +1,167 @@
-# Diseño de la base secuencial
+# Diseño del ray tracing por tiles
 
-Cambios respecto a la propuesta de demostración 1: se concretan cámara, escena,
-iluminación, buffer RGB, tiles recortados y presentación SDL2. Se mantiene
-la separación entre partición espacial y política de ejecución.
+La base actual renderiza en un solo hilo de CPU. La imagen se divide en tiles,
+pero `render_sequential` termina uno antes de comenzar el siguiente y SDL2
+presenta el resultado al finalizar. Fine-grained y coarse-grained son diseños
+para etapas posteriores: ambos usarán la **misma escena, cámara, imagen y
+partición en tiles**. Lo que cambiará será la política de ejecución.
+
+## Unidad común de trabajo
+
+Para una imagen de ancho `W` y alto `H`, y tiles de `Tw × Th` píxeles:
+
+`M = ceil(W / Tw) × ceil(H / Th)`
+
+`TileGrid` produce los `M` rectángulos con límites superiores exclusivos
+`[x0, x1) × [y0, y1)`. Recorta los de la última fila y columna si la resolución
+no es divisible por el tamaño del tile. Con 640 × 480 y tiles de 32 × 32 hay
+20 × 15 = **300 tiles**. Cada píxel pertenece exactamente a uno.
+
+La **tarea** que se reparte es un tile; el trabajo dentro de ella es calcular
+sus píxeles. `render_pixel` completa todas las muestras y rebotes de un píxel;
+`render_tile` recorre los píxeles del rectángulo. Una tarea puede guardar el
+índice del siguiente píxel para continuar después. La escena y la cámara se
+comparten solo para lectura. Cada tile escribe una región exclusiva del buffer,
+por lo que no hace falta bloquear cada píxel si la imagen no se redimensiona ni
+se presenta mientras los trabajadores escriben. La semilla depende de las
+coordenadas del píxel: cambiar el orden de tiles no cambia sus muestras.
 
 ```mermaid
 flowchart TD
-    A[Argumentos, escena y cámara] --> B[Buffer negro y TileGrid]
-    B --> C[Siguiente tile]
-    C --> D[render_tile: filas y columnas]
-    D --> E[render_pixel: muestras del píxel]
-    E --> F[Buscar impacto más cercano]
-    F --> R{Hay impacto?}
-    R -- No --> S[Acumular luz del cielo]
-    R -- Sí --> T{Quedan rebotes?}
-    T -- No --> U[Terminar trayectoria sin aporte]
-    T -- Sí --> G[Material: dispersión, reflexión o refracción]
-    G --> O[Nuevo rayo y atenuación]
-    O --> F
-    S --> Q{Quedan muestras?}
-    U --> Q
-    Q -- Sí --> E
-    Q -- No --> H[Promediar, corregir gamma y guardar RGB]
-    H --> I{Tile completo?}
-    I -- No --> D
-    I -- Sí --> K{Quedan tiles?}
-    K -- Sí --> C
-    K -- No --> J[Presentar imagen completa si hay ventana]
-    J --> L[Reportar tiempos y guardar PPM opcional]
-    L --> M[Esperar cierre si hay ventana]
-    D -. Evento de cierre .-> N[Cancelar sin guardar imagen parcial]
+    A[Imagen W por H] --> B[TileGrid: M rectángulos]
+    B --> C[Política de ejecución]
+    C --> D[Tile i: píxeles de su región]
+    D --> E[render_pixel: muestras y rebotes completos]
+    E --> F[Buffer RGB: región exclusiva del tile i]
+    F --> G[Esperar todos los tiles]
+    G --> H[Presentar o guardar imagen completa]
 ```
 
-Los siguientes esquemas son diseños futuros, no código implementado.
-Compartirán escena, cámara, partición y cálculo de píxel. El callback de eventos
-actual no implementa quantums ni bloqueos simulados.
+La parte que se sustituirá está en el recorrido de `sequential.cpp`. El cálculo
+de `render_pixel` y la geometría son comunes a los modelos. En la base actual,
+`render_tile` termina el rectángulo completo; durante el cálculo la ventana
+permanece negra y receptiva. En los modelos con hilos, la presentación y los
+eventos SDL permanecerán en el hilo principal. Los trabajadores avisarán cuando
+termine un tile; al cerrar la ventana, una señal de cancelación se comprobará
+entre píxeles, se esperará la salida de los trabajadores y no se guardará una
+imagen parcial.
+
+## Fine-grained: turnos cortos entre tareas de tiles
+
+Se crea **una tarea lógica por tile**, con su rectángulo y un índice `p` del
+siguiente píxel pendiente. Un planificador cooperativo toma las tareas activas
+en orden circular. En cada turno calcula como máximo **K píxeles completos**
+del tile elegido; si aún quedan píxeles, guarda `p` y pasa obligatoriamente al
+siguiente tile, aunque no haya ocurrido ningún bloqueo. Al terminar un tile,
+lo retira de la ronda. K es una cantidad de píxeles, no una duración en tiempo.
+
+Para reanudar, el ancho real del tile es `x1 - x0`. A partir de `p` se obtiene
+`x = x0 + p % ancho` y `y = y0 + p / ancho`. Así también funcionan los tiles
+recortados de los bordes. El turno acaba **entre** píxeles: no se interrumpe una
+muestra ni un rebote, y no hay que guardar el estado interno de un rayo.
+Actualmente `render_tile` siempre llega al final; hará falta una variante que
+acepte `p` y el límite K. Por ejemplo, con `K = 64`, la ronda procesa los
+píxeles 0–63 del tile 0, luego 0–63 del tile 1, y vuelve al tile 0 para sus
+píxeles 64–127.
 
 ```mermaid
-flowchart LR
-    A[Mismos tiles] --> B[Tareas con próximo píxel pendiente]
-    B --> C[Round-robin elige tarea]
-    C --> D[Procesar hasta K píxeles]
-    D --> E[Guardar progreso]
-    E --> F{Terminó?}
-    F -- No --> C
-    F -- Sí --> G[Retirar tarea]
-    G --> H{Quedan tareas?}
-    H -- Sí --> C
-    H -- No --> I[Presentar imagen completa y finalizar]
+flowchart TD
+    A[TileGrid: M tiles] --> B[Crear M tareas: tile y p igual a 0]
+    B --> C{Quedan tareas activas}
+    C -- Sí --> D[Elegir siguiente tarea en round-robin]
+    D --> E[Calcular hasta K píxeles completos]
+    E --> F{Tile terminado}
+    F -- No --> G[Guardar p y volver al final de la ronda]
+    G --> C
+    F -- Sí --> H[Retirar tarea terminada]
+    H --> C
+    C -- No --> I[Imagen completa: presentar o guardar]
 ```
 
+Este intercalado puede implementarse con **un solo hilo del sistema**. En ese
+caso simula los cambios frecuentes de tarea, pero no calcula dos tiles a la
+vez ni ofrece speedup por varios núcleos. Si se añadieran trabajadores, habría
+que documentar esa decisión como otra configuración del modelo.
+
+## Coarse-grained: hilos que avanzan hasta un bloqueo
+
+La propuesta LaTeX asigna **un hilo del sistema por tile**. Cada hilo avanza
+continuamente por los píxeles de su tile. Solo el evento de bloqueo costoso
+simulado provoca una cesión **a nivel de la lógica del modelo**: el hilo conserva
+el siguiente índice `p`, espera y luego continúa su mismo tile. No hay un turno
+obligatorio cada K píxeles ni una cola round-robin de tareas.
+
+Un temporizador puede marcar cuándo toca el evento y una espera suspender
+al hilo. La marca se comprobará después de terminar el píxel actual para
+conservar el resultado. El temporizador **dispara un bloqueo**, no representa
+un quantum
+fine-grained. Los hilos reales también pueden ser desplanificados por el sistema
+operativo en cualquier momento; el programa no puede garantizar cambios de
+contexto exclusivamente durante los bloqueos simulados.
+
 ```mermaid
-flowchart LR
-    A[Mismos tiles] --> B[Asignar trabajo a hilos del SO]
-    B --> C[Renderizado continuo]
-    C --> D{Bloqueo simulado?}
-    D -- Sí --> E[Conservar progreso y bloquear]
-    E --> F[Reanudar]
+flowchart TD
+    A[TileGrid: los mismos M tiles] --> B[Crear un hilo Ti para cada tile Bi]
+    B --> C[Ti calcula píxeles completos de Bi continuamente]
+    C --> D{Evento de bloqueo simulado}
+    D -- Sí --> E[Conservar p y esperar]
+    E --> F[Reanudar Ti en Bi]
     F --> C
-    D -- No --> G{Tile completo?}
+    D -- No --> G{Bi terminado}
     G -- No --> C
-    G -- Sí --> H[Notificar tile completo]
+    G -- Sí --> H[Ti finaliza]
+    H --> I[Esperar fin de todos los hilos]
+    I --> J[Imagen completa: presentar o guardar]
 ```
 
-En coarse-grained el temporizador futuro provoca el bloqueo, no un quantum
-round-robin. Los hilos del SO siguen sujetos a planificación preventiva:
-esta aproximación no controla los cambios de contexto del hardware. La cantidad
-de hilos y la asignación de tiles se decidirán al implementar y medir ese modelo.
+Con la configuración inicial serían **300 hilos para 300 tiles**. Eso sigue
+literalmente la propuesta, aunque crear tantos hilos puede costar más que el
+trabajo de tiles pequeños y aumentar la contención. Una alternativa futura sería
+usar `P` trabajadores que tomen varios tiles; conservaría la partición espacial,
+pero sería un cambio explícito respecto al modelo de un hilo por tile del LaTeX.
+Todavía no se ha elegido ni implementado esa alternativa.
 
-| Variable | Efecto |
-| --- | --- |
-| Ancho × alto | Cantidad de rayos y memoria del buffer |
-| Número de esferas | Pruebas geométricas por rayo; Tres principales, hasta 88 pequeñas y una esfera para el piso |
-| Tamaño de tile | Cantidad de tareas y granularidad |
-| Distribución de objetos | Cantidad de impactos que requieren iluminación |
-| Muestras y máximo de rebotes | Calidad, ruido y cantidad de rayos secundarios |
-| K, hilos, bloqueos, afinidad | Parámetros futuros de ejecución |
+| Aspecto | Fine-grained | Coarse-grained |
+| --- | --- | --- |
+| Unidad asignada | Tarea lógica por tile | Hilo del sistema por tile en la propuesta |
+| Avance | Hasta K píxeles completos por turno | Píxeles continuos hasta bloqueo o fin del tile |
+| Motivo de cesión modelado | Fin obligatorio del turno | Evento de bloqueo simulado |
+| Estado para continuar | Tile e índice `p` | Mismo tile e índice `p` |
+| Paralelismo real inicial | Ninguno con un solo planificador | Posible en varios núcleos, sujeto al SO |
 
-Con búsqueda lineal de impactos, el trabajo geométrico está acotado por
-O(ancho × alto × muestras × (rebotes + 1) × esferas). Reducir tiles no cambia
-el número de rayos; aumenta la administración de tareas. El buffer ocupa
-tres bytes por píxel. Para comparar políticas se conservarán escena, resolución,
-partición y compilación, usando el mismo criterio de medición sin ventana.
+## Variables que afectan el paralelismo
 
-La demostración 2 completa aún requiere ejecuciones triviales medidas de
-fine-grained, coarse-grained, SMT y CMP y la revisión correspondiente de diagramas.
-Esos modelos quedan fuera de la implementación solicitada en esta etapa.
+Conviene distinguir **más trabajo disponible** de **más ejecución simultánea**.
+Aumentar muestras o rebotes encarece cada píxel, pero no crea tiles nuevos.
+Reducir el tamaño del tile crea más tareas independientes, pero tampoco crea
+núcleos de CPU. Las variables principales son:
 
-## Separación del código
+| Variable | Efecto al repartir tiles | Compromiso o condición de comparación |
+| --- | --- | --- |
+| Resolución `W × H` | Más píxeles y, con `Tw` y `Th` fijos, más tiles `M` | Aumenta trabajo total y memoria; la imagen debe ser idéntica entre modelos |
+| Tamaño `Tw × Th` | Determina `M` y cuántos píxeles tiene cada tarea | Tiles pequeños facilitan repartir carga desigual, pero elevan costo de planificación; tiles grandes reducen tareas y pueden dejar núcleos ociosos |
+| Trabajadores `P` y núcleos físicos `C` | Fijan cuántos tiles pueden calcularse a la vez en un modelo realmente paralelo | En trabajo de CPU, `P` mayor que `C` no implica más cómputo simultáneo; en fine-grained con un planificador `P = 1` |
+| Quantum `K` | Determina cada cuánto alterna fine-grained entre tiles | K pequeño aumenta intercalado y sobrecarga; K grande se aproxima a terminar un tile por turno. No aumenta por sí solo el paralelismo físico |
+| Frecuencia y duración del bloqueo | Determinan cuánto tiempo puede avanzar cada hilo coarse-grained | Más bloqueos pueden dejar hilos inactivos y añadir tiempo de espera; no cambian los píxeles de la imagen |
+| Muestras `S` y rebotes máximos `R` | Aumentan trabajo por píxel y pueden hacer rentable distribuir tiles | No crean tareas nuevas; mantenerlos fijos al comparar tiempos y calidad |
+| Esferas `N` y su distribución | Más objetos elevan pruebas de intersección; unas zonas pueden costar más que otras | La carga por tile puede ser desigual; conservar escena y semilla para comparar políticas |
 
-El recorrido del diagrama se implementa en `sequential.cpp`, el cálculo en
-`raytracer.cpp` y la presentación en `display.cpp`. `main.cpp` conecta estos
-módulos mediante callbacks. Geometría, escena, cámara, imagen, tiles y argumentos
-tienen sus propias interfaces y archivos de implementación. Así, cambiar la
-política de ejecución no requiere modificar las fórmulas ni incorporar SDL al núcleo.
+Una cota aproximada del trabajo de intersecciones, por la búsqueda lineal actual,
+es `O(W × H × S × (R + 1) × N)`. Es una **cota**, no el tiempo exacto: algunos
+rayos escapan antes y otros rebotan varias veces. Con los datos iniciales hay
+hasta 75 esferas decorativas, tres principales y una esfera grande que hace de
+suelo. El buffer RGB ocupa `3 × W × H` bytes, sin contar estructuras auxiliares.
 
-La presentación actual ocurre una vez que termina toda la imagen. La ventana
-permanece negra y receptiva durante el cálculo. Secuencial describe la ejecución
-sin paralelismo, no la forma de mostrar los píxeles.
+Para aprovechar varios núcleos se necesitan suficientes tiles listos y
+trabajadores que puedan ejecutarlos: de forma ideal, los tiles activos a la
+vez no superan `min(M, P, C)`. En la práctica influyen la carga desigual, el
+costo de crear o planificar tareas, la memoria y los bloqueos. Por eso `M`, `P`
+y `K` no deben confundirse: **M es la partición**, **P es la capacidad de
+trabajo simultáneo** y **K es la duración lógica del turno fine-grained**.
 
-La iluminación actual es path tracing: los rayos rebotan según el material y
-reciben luz del cielo al escapar. La semilla por píxel es independiente de los
-tiles. Para comparar políticas hay que fijar también muestras, rebotes y semilla.
-Fine-grained seguirá contando K píxeles completos; ahora cada píxel implica
-varias muestras y una cantidad variable de rebotes. Las mediciones previas de
-la versión de un rayo por píxel no son directamente comparables.
+Al comparar políticas se fijarán escena, cámara, resolución, tiles, muestras,
+rebotes, semilla y compilación. El tiempo de renderizado paralelo será tiempo
+de pared desde el comienzo del trabajo hasta que terminen todos los tiles; no
+se sumarán tiempos de hilos. La ventana y la escritura PPM quedarán fuera de
+ese intervalo, como en la medición sin ventana de la base actual.
 
-## Correspondencia con la propuesta LaTeX
-
-Revisión del estado actual: 22 de septiembre de 2026. La referencia es
-`../../.local/Raytracing.tex`, propuesta de la demostración 1. Ese archivo original
-no se ha modificado; esta documentación registra la evolución del diseño.
-
-**La unidad de partición sigue siendo el tile**, no la esfera, la muestra ni
-el rebote. Para una resolución W×H y tiles de Tw×Th:
-
-`M = ceil(W / Tw) * ceil(H / Th)`
-
-Con 640×480 y tiles 32×32 hay 300 tiles. `TileGrid` define la misma partición que
-reutilizarán los modelos. `render_sequential` termina un tile antes del siguiente;
-`render_tile` calcula sus píxeles y `render_pixel` termina todas las muestras de
-cada píxel. Los reflejos y la refracción consultan la geometría de la escena,
-no leen el color de otros píxeles: los tiles siguen siendo independientes.
-
-| Punto de la propuesta | Estado actual y siguiente paso |
-| --- | --- |
-| Misma escena, imagen y M tiles | Implementado para la base; se conservará en las comparaciones |
-| Fine-grained: tarea por tile, round-robin y progreso | Diseño preliminar; falta implementarlo |
-| Coarse-grained: hilo por tile y bloqueo simulado | Diseño del LaTeX; faltan hilos, temporizador, bloqueo y reanudación |
-| Cálculo común entre políticas | `render_pixel`, cámara, geometría, materiales y buffer reutilizables |
-| Mediciones comparables | Tiempo secuencial disponible; faltan los modelos y sus mediciones |
-
-**Precisión nueva sobre K:** el LaTeX alterna “K rayos o píxeles” y “K rayos”.
-Ahora que cada píxel tiene varias muestras y rebotes, ya no son equivalentes.
-La decisión para la próxima implementación es **K píxeles completos por turno**.
-Hay que reflejar esa precisión en el texto y las etiquetas del LaTeX antes de
-presentar los diagramas actualizados. Un turno puede costar más tiempo que otro:
-K es una unidad lógica de trabajo, no K ciclos de CPU ni una duración fija.
-
-Para reanudar una tarea se guardará el tile y el índice del siguiente píxel.
-Las muestras de un píxel se calculan completas antes de ceder. Esto conserva
-la semilla por coordenadas y el orden de suma, independientemente de la política.
-La función actual `render_tile` todavía no permite pausar y reanudar por K.
-
-El LaTeX propone un hilo por tile en coarse-grained; con la configuración inicial
-eso serían 300 hilos. M (tiles) y P (trabajadores) son conceptos diferentes. Si
-posteriormente se opta por P trabajadores que reciben varios tiles, se deberá
-registrar como un cambio explícito de diseño respecto a esa propuesta. Todavía
-no se ha implementado ni elegido esa alternativa.
-
-Cambios desde la propuesta inicial: el cálculo del píxel pasó de iluminación
-simple a múltiples muestras y rebotes; se añadieron metales, vidrio y gamma.
-La presentación ocurre al finalizar toda la imagen. Ninguno de estos cambios
-elimina la partición por tiles. Para comparar ejecuciones se fijarán escena,
-cámara, resolución, tiles, muestras, límite de rebotes y semillas. Se medirá sin
-ventana ni escritura dentro del intervalo de renderizado, usando el mismo alcance
-del reloj. En paralelo, el tiempo total será tiempo de pared del modelo, no la
-suma de los tiempos de todos los trabajadores.
-
-## Estado de la demostración 2
-
-Según `../../.local/ProyectoA2.txt`, apartado 4.1, punto 4.b:
-
-| Requisito | Estado |
-| --- | --- |
-| Ejecución del sistema base sin hilos adicionales | Implementado y probado |
-| Variables relevantes para la paralelización | Identificadas en este documento |
-| Diagramas preliminares y cambios significativos | Actualizados aquí para base, fine-grained y coarse-grained; falta trasladar los cambios al LaTeX y completar el diseño de SMT/CMP |
-| Ejecución trivial de cada esquema multihilo con mediciones | Pendiente: fine-grained, coarse-grained, SMT y CMP |
-
-La demostración 2 todavía no está completa. Las pruebas SDL con controlador
-`dummy` solo verifican la ventana: **no son las ejecuciones dummy de modelos
-multihilo** que exige el enunciado. La mejora visual tampoco sustituye esas pruebas.

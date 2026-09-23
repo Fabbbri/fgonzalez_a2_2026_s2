@@ -1,9 +1,14 @@
-# Ray tracer secuencial — Arquitectura de Computadores II
+# Ray Tracing
 
-Renderizador secuencial en C++17 con múltiples rebotes de luz (path tracing):
-cámara fija, esferas mates, metálicas y de vidrio sobre un piso, iluminadas por el cielo. El ray tracing se calcula en CPU en el hilo principal. SDL2
-presenta el buffer RGB completo al terminar y atiende eventos durante el cálculo. La imagen permanece hasta cerrar la
-ventana o pulsar Esc. No se implementan modelos multihilo en esta etapa.
+Para conocer el diseño del proyecto y ver los diagramas de ejecución por tiles,
+consulta [docs/diseno.md](docs/diseno.md).
+
+Proyecto de Arquitectura de Computadores II en C++17. La escena contiene esferas
+mates, metálicas y de vidrio sobre un suelo, iluminadas por el cielo mediante
+múltiples muestras y rebotes (path tracing). La cámara ofrece una vista baja y
+frontal. El cálculo se hace en CPU, sin hilos de renderizado adicionales; SDL2
+muestra el buffer RGB completo al terminar y atiende eventos durante el cálculo.
+La imagen permanece visible hasta cerrar la ventana o pulsar Esc. 
 
 ## Dependencias y compilación
 
@@ -119,13 +124,12 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 | `src/options.hpp`, `src/options.cpp` | Configuración y validación de argumentos |
 | `src/display.hpp`, `src/display.cpp` | Recursos SDL2, presentación y eventos |
 | `src/main.cpp` | Conectar módulos, mostrar resultados y controlar la salida |
-| `tests/test_core.cpp` | Geometría, iluminación, cobertura y cancelación |
-| `tests/test_display.cpp` | Presentación y eventos con SDL dummy |
 | `docs/diseno.md` | Diagramas y variables para próximas etapas |
 
 La escena se modifica en `default_scene()` de `src/scene.cpp`. Las dimensiones
-predeterminadas están en `Options`, en `src/options.hpp`. La cámara se coloca en `(5, 4, 6)` y apunta a `(0, -0.2, -7)`,
-con campo vertical de 50°. Estos dos vectores se configuran en `main.cpp`.
+predeterminadas están en `Options`, en `src/options.hpp`. La cámara está en
+`(0, 0.45, 2.0)` y apunta a `(0, 0.25, -7.5)`; ambos vectores se ajustan en
+`src/main.cpp`. El campo de visión vertical es de 36° y está en `src/camera.cpp`.
 Cada muestra genera un rayo a una posición dentro del píxel, corrigiendo la
 relación ancho/alto y normalizando su dirección.
 
@@ -157,26 +161,27 @@ SDL recibe la imagen calculada solo después de completar todos los tiles.
 
 ## Cambiar o agregar esferas
 
-Edita `src/scene.cpp`, dentro de `default_scene()`. Cada esfera tiene este formato:
+Edita `src/scene.cpp`, dentro de `default_scene()`. Las primeras llamadas a
+`add_sphere(x, z, radio, color, material)` definen las tres esferas principales.
+Sus radios actuales son 1.0 (izquierda), 1.15 (cristal central) y 1.5 (metal
+derecha). Cambia el tercer argumento para modificar su tamaño; la altura se
+calcula automáticamente para que descansen sobre el suelo.
 
-```cpp
-{{x, y, z}, radio, {rojo, verde, azul}}
-```
+Las demás esferas se generan en posiciones pseudoaleatorias, sin filas ni
+cuadrícula: hasta 75 decorativas, en su mayoría pequeñas, con algunas medianas
+y grandes. Se prueban como máximo 100 posiciones por esfera y se descartan las
+que no respetan la separación mínima. Dos esferas de cristal requieren un
+margen mayor entre sus superficies. Los colores decorativos se generan en HSV
+para repartir tonos vivos por la paleta; hay materiales mates, metálicos y de
+cristal. La semilla fija `2026` permite repetir la misma escena para comparar
+mediciones. Cambiarla produce otra distribución.
 
-Los colores están entre 0 y 1. La escena combina tres esferas principales con
-muchas pequeñas sobre un suelo gris. La vista es oblicua. La composición está
-inspirada en **A Final Render** de
-[Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html).
-La escena usa ahora mates, metales y vidrio, con sombras por oclusión del cielo
-y reflejos producidos por los rebotes. No incorpora desenfoque de cámara.
-
-En `default_scene()`, las primeras llamadas a `add_sphere` definen las tres
-esferas principales. `rows = 8` y `columns = 11` generan 88 candidatos pequeños;
-se omiten los que se solapan con otras esferas o restan visibilidad a las
-tres principales. La semilla `2026` fija las
-posiciones, radios y colores entre ejecuciones. Cambiarla produce otra distribución.
-Esa aleatoriedad de construcción ocurre antes de medir. Los rebotes usan otro
-generador, local a cada píxel, y su costo sí forma parte del renderizado.
+La composición está inspirada en **A Final Render** de
+[Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html),
+pero usa nuestra propia distribución y una cámara baja y frontal. Los rebotes
+producen reflejos y sombras suaves por oclusión de la luz del cielo. El vidrio
+no absorbe luz ni usa su color RGB como tinte; no se simulan cáusticas ni
+desenfoque de cámara.
 
 El suelo es una esfera de radio 1000, casi plana en la región de los objetos.
 `add_sphere` calcula la altura para que cada esfera toque ese suelo. Para añadir
@@ -216,42 +221,15 @@ Se utiliza `std::chrono::steady_clock`, un reloj monotónico:
 Estas comprobaciones funcionales no sustituyen las mediciones del enunciado en
 hardware físico, sus repeticiones y su análisis estadístico.
 
-## Verificación
-
-```sh
-make test
-make test-display
-
-# Igualdad entre particiones
-./build/sdl/raytracer --headless --width 641 --height 479 --tile-size 32 --output a.ppm
-./build/sdl/raytracer --headless --width 641 --height 479 --tile-width 71 --tile-height 23 --output b.ppm
-cmp a.ppm b.ppm
-
-# Igualdad entre modos; cerrar la ventana al terminar
-./build/sdl/raytracer --width 641 --height 479 --output c.ppm
-cmp a.ppm c.ppm
-```
-
-Las pruebas verifican impactos, tangencia, origen interior, objetos detrás,
-impacto más cercano, reflexión, refracción, sombra por oclusión, gamma,
-cancelación y cobertura de cada píxel
-exactamente una vez. También comparan tiles en orden inverso con el cálculo
-directo. Los resultados y limitaciones del entorno están en
-[`docs/validacion.md`](docs/validacion.md).
 
 ## Referencias y asistencia
 
-Se leyeron el enunciado y la propuesta en `../.local`, conservados sin modificaciones.
 Se consultaron las secciones de geometría, antialiasing, materiales difusos,
 metales, dieléctricos, gamma y escena final de
 [Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html)
 y los parámetros de presentación con
 [SDL_UpdateTexture](https://wiki.libsdl.org/SDL2/SDL_UpdateTexture).
 
-Código, comentarios, documentación y pruebas se prepararon con asistencia de
-Codex. Para el anexo exigido por el enunciado, el equipo debe registrar además
-su revisión humana y sus validaciones. Esta entrega cubre la base secuencial:
-las ejecuciones triviales medidas de los modelos multihilo siguen pendientes.
 
 ## Dependencias entre módulos
 
@@ -277,8 +255,6 @@ La unidad de trabajo sigue siendo el tile: con 640×480 y tiles 32×32 hay 300
 regiones. Los rayos secundarios consultan la geometría, sin depender del buffer
 de otros píxeles. Por ello la ampliación visual conserva la independencia de tiles.
 
-La correspondencia con el LaTeX, la precisión de K como píxeles completos y los
-pendientes de la demostración 2 están en [el documento de diseño](docs/diseno.md#correspondencia-con-la-propuesta-latex).
-Los diagramas actuales están en Markdown; el LaTeX original de la demostración 1
-no fue modificado. Los modelos multihilo y sus ejecuciones triviales medidas aún
-no están implementados.
+Los diagramas y las decisiones para fine-grained y coarse-grained están en
+[el documento de diseño](docs/diseno.md). Allí se explica cómo se reparten los
+tiles, qué significa K píxeles completos y qué falta implementar.
