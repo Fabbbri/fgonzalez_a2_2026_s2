@@ -1,4 +1,4 @@
-#include "simulation.hpp"
+#include "nbody/simulation.hpp"
 #include <cmath>
 #include <random>
 #include <stdexcept>

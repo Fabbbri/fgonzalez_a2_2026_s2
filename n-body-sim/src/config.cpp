@@ -1,4 +1,4 @@
-#include "config.hpp"
+#include "nbody/config.hpp"
 #include <charconv>
 #include <cmath>
 #include <limits>

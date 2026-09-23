@@ -1,4 +1,4 @@
-#include "output.hpp"
+#include "nbody/output.hpp"
 #include <cmath>
 #include <iomanip>
 #include <ostream>

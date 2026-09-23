@@ -1,4 +1,4 @@
-#include "native_view.hpp"
+#include "nbody/native_view.hpp"
 #include <SDL.h>
 #include <iostream>
 #include <stdexcept>

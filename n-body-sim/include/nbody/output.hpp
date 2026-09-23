@@ -1,5 +1,5 @@
 #pragma once
-#include "diagnostics.hpp"
+#include "nbody/diagnostics.hpp"
 #include <iosfwd>
 
 namespace nbody {

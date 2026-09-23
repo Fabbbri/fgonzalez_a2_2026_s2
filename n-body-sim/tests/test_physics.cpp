@@ -1,6 +1,6 @@
-#include "diagnostics.hpp"
-#include "output.hpp"
-#include "simulation.hpp"
+#include "nbody/diagnostics.hpp"
+#include "nbody/output.hpp"
+#include "nbody/simulation.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>

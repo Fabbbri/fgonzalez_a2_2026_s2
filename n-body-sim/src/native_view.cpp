@@ -1,5 +1,5 @@
-#include "native_view.hpp"
-#include "bitmap_text.hpp"
+#include "nbody/native_view.hpp"
+#include "nbody/bitmap_text.hpp"
 #include <SDL.h>
 #include <algorithm>
 #include <chrono>

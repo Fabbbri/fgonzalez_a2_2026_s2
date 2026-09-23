@@ -1,8 +1,10 @@
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic
 TARGET := build/nbody
-SOURCES := main.cpp config.cpp simulation.cpp diagnostics.cpp output.cpp native_view.cpp
-HEADERS := config.hpp simulation.hpp diagnostics.hpp output.hpp native_view.hpp bitmap_text.hpp
+SOURCES := src/main.cpp src/config.cpp src/simulation.cpp src/diagnostics.cpp src/output.cpp src/native_view.cpp
+HEADERS := include/nbody/config.hpp include/nbody/simulation.hpp include/nbody/diagnostics.hpp \
+	include/nbody/output.hpp include/nbody/native_view.hpp include/nbody/bitmap_text.hpp
+PROJECT_CFLAGS := -Iinclude
 SDL_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL_LIBS := $(shell pkg-config --libs sdl2 2>/dev/null)
 
@@ -26,18 +28,18 @@ check-sdl:
 
 $(TARGET): $(SOURCES) $(HEADERS) | check-sdl
 	mkdir -p build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(SDL_CFLAGS) $(SOURCES) $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $(TARGET)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(SDL_CFLAGS) $(SOURCES) $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $(TARGET)
 
 run: $(TARGET)
 	./$(TARGET)
 
-build/test_physics: tests/test_physics.cpp simulation.cpp diagnostics.cpp output.cpp $(HEADERS)
+build/test_physics: tests/test_physics.cpp src/simulation.cpp src/diagnostics.cpp src/output.cpp $(HEADERS)
 	mkdir -p build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -I. tests/test_physics.cpp simulation.cpp diagnostics.cpp output.cpp $(LDFLAGS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) tests/test_physics.cpp src/simulation.cpp src/diagnostics.cpp src/output.cpp $(LDFLAGS) $(LDLIBS) -o $@
 
-build/test_native: tests/test_native.cpp native_view.cpp simulation.cpp $(HEADERS) | check-sdl
+build/test_native: tests/test_native.cpp src/native_view.cpp src/simulation.cpp $(HEADERS) | check-sdl
 	mkdir -p build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(SDL_CFLAGS) -I. tests/test_native.cpp native_view.cpp simulation.cpp $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(SDL_CFLAGS) tests/test_native.cpp src/native_view.cpp src/simulation.cpp $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $@
 
 test: $(TARGET) build/test_physics build/test_native
 	./build/test_physics

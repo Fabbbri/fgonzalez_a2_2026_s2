@@ -1,6 +1,6 @@
 #pragma once
-#include "config.hpp"
-#include "simulation.hpp"
+#include "nbody/config.hpp"
+#include "nbody/simulation.hpp"
 
 namespace nbody {
 struct RunResult {

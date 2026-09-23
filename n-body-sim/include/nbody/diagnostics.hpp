@@ -1,5 +1,5 @@
 #pragma once
-#include "simulation.hpp"
+#include "nbody/simulation.hpp"
 
 namespace nbody {
 struct Diagnostics {

@@ -1,4 +1,4 @@
-#include "diagnostics.hpp"
+#include "nbody/diagnostics.hpp"
 #include <cmath>
 #include <stdexcept>
 

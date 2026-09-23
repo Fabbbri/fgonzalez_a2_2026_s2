@@ -1,8 +1,8 @@
-#include "config.hpp"
-#include "diagnostics.hpp"
-#include "native_view.hpp"
-#include "output.hpp"
-#include "simulation.hpp"
+#include "nbody/config.hpp"
+#include "nbody/diagnostics.hpp"
+#include "nbody/native_view.hpp"
+#include "nbody/output.hpp"
+#include "nbody/simulation.hpp"
 #include <chrono>
 #include <exception>
 #include <iomanip>
