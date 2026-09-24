@@ -570,6 +570,7 @@ T1                       █████████████████
                                       ↓
 T0
 ```
+
 ```
 std::thread
      ↓
@@ -618,9 +619,72 @@ cambio de contexto ante bloqueo
        siguiente epoch
 ```
 
-Ahora bien, esto puede hacerse asignando los hilos al mismo recurso (CPU). Esto puede hacerse usando `pthread_setaffinity_np()` en Linux, que permite definir la afinidad del CPU
+Ahora bien, esto puede hacerse asignando los hilos al mismo recurso (CPU). Esto puede hacerse usando `pthread_setaffinity_np()` en Linux, que permite definir la afinidad del CPU. Asi, para bloqueado, se define la afinidad de forma que los dos hilos corran sobre el mismo CPU logico, lo cual hace que no pueden correr a la vez.
 
+### Propuesta SMT: Simultaneous Multithreading
 
+Consiste en un mismo núcleo físico que ejecuta instrucciones de más de un hilo lógico simultáneamente, compartiendo recursos internos del núcleo.
+
+Para esto es necesario revisar la computadora:
+
+```
+jafi21@jafi21-HP-Laptop-15:~$ lscpu -e=CPU,CORE,SOCKET,NODE
+CPU CORE SOCKET NODE
+  0    0      0    0
+  1    0      0    0
+  2    1      0    0
+  3    1      0    0
+  4    2      0    0
+  5    2      0    0
+  6    3      0    0
+  7    3      0    0
+  8    4      0    0
+  9    4      0    0
+ 10    5      0    0
+ 11    5      0    0
+ 12    6      0    0
+ 13    6      0    0
+ 14    7      0    0
+ 15    7      0    0
+```
+
+Note que se tiene:
+
+```
+Núcleo físico 0 → CPU 0, 1
+Núcleo físico 1 → CPU 2, 3
+Núcleo físico 2 → CPU 4, 5
+Núcleo físico 3 → CPU 6, 7
+Núcleo físico 4 → CPU 8, 9
+Núcleo físico 5 → CPU 10, 11
+Núcleo físico 6 → CPU 12, 13
+Núcleo físico 7 → CPU 14, 15
+```
+
+Esto es importante pues despues se buscara que los hilos esten en el mismo CPU fisico.
+
+Tambien es importante revisar el estado de SMT de la computadora:
+
+```
+jafi21@jafi21-HP-Laptop-15:~$ lscpu | grep -E 'CPU\(s\)|Core|Thread|Socket'
+CPU(s):                                   16
+Lista de la(s) CPU(s) en línea:           0-15
+«Socket(s)»:                              1
+CPU(s) factor de escala MHz:              35%
+CPU(s) del nodo NUMA 0:                   0-15
+```
+
+Por lo tanto, para este caso, se aplicara (para la version dummie):
+
+```
+Núcleo físico 0
+├── CPU 0 ──→ Hilo 0 → neurona 0
+└── CPU 1 ──→ Hilo 1 → neurona 1
+```
+
+### Propuesta CMP (Chip Multiprocessing):
+
+Se realiza una implementacion directa usando paralelismo real sobre multiples nucleos reales mediante procesos o hilos del sistema operativo.
 
 
 ## Reporte de Resultados para el modelo $\textit{dummie}$

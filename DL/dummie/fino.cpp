@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cmath>
 #include <Eigen/Dense>
+#include <chrono>
 
 using std::cout;
 
@@ -8,21 +9,43 @@ using Eigen::Vector2d;
 using Eigen::Matrix2d;
 using Eigen::RowVector2d;
 
-double sigmoid(double x) {
-    return 1.0 / (1.0 + std::exp(-x));
+struct ThreadState {
+    int i;       // neurona
+    int j;       // siguiente entrada a procesar
+    bool done;
+};
+
+void execute_quantum(
+    ThreadState& state,
+    const Matrix2d& W1,
+    const Vector2d& x,
+    Vector2d& z1,
+    std::chrono::microseconds quantum
+) {
+    auto start = std::chrono::steady_clock::now();
+
+    while (!state.done) {
+
+        // Una operación de W1 * x
+        z1(state.i) += W1(state.i, state.j) * x(state.j);
+
+        state.j++;
+
+        if (state.j == 2) {
+            state.done = true;
+        }
+
+        auto now = std::chrono::steady_clock::now();
+
+        if (now - start >= quantum) {
+            break;
+        }
+    }
 }
 
-Vector2d forwardPassVector2d(Matrix2d W, Vector2d x, Vector2d b){
-    // Definir z = función de activación de la capa oculta
-    Vector2d z = W * x + b;
 
-    // Aplicarle una transformación a la función de Activación
-    // Se usa sigmoid, también podría ser válido RELU
-    Vector2d a;
-    a(0) = sigmoid(z(0));
-    a(1) = sigmoid(z(1));
-
-    return a;
+double sigmoid(double x) {
+    return 1.0 / (1.0 + std::exp(-x));
 }
 
 int main() {
@@ -36,8 +59,11 @@ int main() {
     int epochs = 1000;
     // Valor objetivo
     double y = 1.0;
+    const auto quantum = std::chrono::microseconds(1);
+    int quantums = 0;
+    int context_switches = 0;
+    auto start = std::chrono::steady_clock::now();
 
-    cout << "\nValor Objetivo: y = 1\n";
 
     // =========================================
     // DATOS DE ENTRADA
@@ -76,7 +102,40 @@ int main() {
         // -----------------------------------------
 
         // Propagar Entrada -> Hidden Layer
-        Vector2d a1 = forwardPassVector2d(W1, x, b1);
+        Vector2d z1;
+        Vector2d a1;
+        z1 = b1;
+
+        ThreadState t0{0, 0, false};
+        ThreadState t1{1, 0, false};
+
+        int current_thread = 0;
+
+        while (!t0.done || !t1.done) {
+
+            ThreadState* current =
+                (current_thread == 0) ? &t0 : &t1;
+
+            if (!current->done) {
+
+                execute_quantum(
+                    *current, W1, x, z1, quantum
+                );
+
+                quantums++;
+
+                // El hilo sigue teniendo trabajo pendiente:
+                // significa que el quantum lo interrumpió.
+                if (!current->done) {
+                    context_switches++;
+                }
+            }
+
+            current_thread = 1 - current_thread;
+        }
+
+        a1(0) = sigmoid(z1(0));
+        a1(1) = sigmoid(z1(1));
 
         // Propagar Hidden Layer -> Salida
         double z2 = (W2 * a1)(0) + b2;
@@ -141,17 +200,35 @@ int main() {
         b1 -= learning_rate * db1;
 
         if (epoch % 100 == 0) {
-            cout
-                << "Epoch: " << epoch
-                << " | MSE: " << mse
-                << " | Prediction: " << y_pred
-                << '\n';
+            cout << "\n=== Fine-Grained ===\n";
+            cout << "Quantum: " << quantum.count() << " us\n";
+            cout << "Quantums ejecutados: " << quantums << '\n';
+            cout << "Cambios de contexto: " << context_switches << '\n';
+            cout << "Epoch: " << epoch
+                 << " | MSE: " << mse
+                 << " | Prediction: " << y_pred
+                 << '\n';
         }
     }
 
     // =========================================
     // RESULTADOS FINALES
     // =========================================
+
+    auto end = std::chrono::steady_clock::now();
+
+    auto elapsed =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            end - start
+        );
+
+    cout << "\n=== Hilo Fino (Intercalado) ===\n";
+
+    cout << "\nTiempo total: "
+         << elapsed.count()
+         << " us\n";
+
+    cout << "\nValor Objetivo: y = 1\n";
 
     cout << "\nPesos y sesgos finales:\n";
     cout << "W1:\n" << W1 << "\n\n";
