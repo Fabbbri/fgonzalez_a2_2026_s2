@@ -1,0 +1,13 @@
+[
+  {
+    "way_id": 31735043,
+    "tags": {
+      "alt_name": "Carretera Panamericana",
+      "highway": "trunk",
+      "maxspeed": "40",
+      "name": "Carretera Interamericana Sur",
+      "ref": "2"
+    },
+    "distance_m": 10.47828785755295
+  }
+]

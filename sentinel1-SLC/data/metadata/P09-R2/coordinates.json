@@ -1,0 +1,14 @@
+{
+  "source_crs": "EPSG:5367",
+  "target_crs": "EPSG:4326",
+  "easting": 505068,
+  "northing": 1076899,
+  "latitude": 9.739180718309585,
+  "longitude": -83.95380695136733,
+  "operation": "Inverse of Costa Rica TM 2005 + CR05 to WGS 84 (2) (with axis order normalized for visualization)",
+  "accuracy_m": 1.0,
+  "pipeline": "proj=pipeline step inv proj=tmerc lat_0=0 lon_0=-84 k=0.9999 x_0=500000 y_0=0 ellps=WGS84 step proj=push v_3 step proj=cart ellps=WGS84 step proj=helmert x=-0.16959 y=0.35312 z=0.51846 rx=-0.03385 ry=0.16325 rz=-0.03446 s=0.03693 convention=coordinate_frame step inv proj=cart ellps=WGS84 step proj=pop v_3 step proj=unitconvert xy_in=rad xy_out=deg",
+  "proj_version": "9.8.1",
+  "pyproj_version": "3.8.0",
+  "roi_half_side_m": 1000
+}
