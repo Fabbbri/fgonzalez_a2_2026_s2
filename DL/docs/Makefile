@@ -2,13 +2,12 @@
 # CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN MACOS
 # ==========================================
 
-TARGET = mlp
-
 CXX = clang++
-CXXFLAGS = -Wall -Wextra -std=c++17
+CXXFLAGS = -O2 -Wall -Wextra -std=c++17 -pthread
 EIGEN = -I/opt/homebrew/include/eigen3
 
-SRCS = dummie.cpp
+SRCS = $(wildcard *.cpp)
+TARGETS = $(SRCS:.cpp=)
 
 # ==========================================
 # REGLAS
@@ -16,9 +15,9 @@ SRCS = dummie.cpp
 
 all: $(TARGET)
 
-# Enlazado
-$(TARGET): main.cpp
-	$(CXX) $(CXXFLAGS) $(EIGEN) $(SRCS) -o $(TARGET)
+# Enlazado de ejecutable dinamico @ a partir de su archivo fuente <
+%: %.cpp
+	$(CXX) $(CXXFLAGS) $(EIGEN) $< -o $@
 
 clean:
 	rm -f $(TARGET)

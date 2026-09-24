@@ -1,8 +1,45 @@
 # Deep Learning + ThreadLevel Parallelism
 
+## Índice del markdown
+
+1. [Estructura del proyecto](#estructura-del-proyecto)
+2. [Instalación](#instalación)
+3. [¿Qué busca Deep Learning?](#qué-busca-deep-learning)
+4. Forward pass - p1
+5. Forward pass - p2
+6. Backpropagation
+7. Descenso de Gradiente
+8. Repetir entrenamiento
+9. Problemas más complejos -> Modelos más completos
+10. Paralelización en el modelo simple
+11. Propuesta de paralelización dummie para el modelo simple
+12. Reporte de Resultados para el modelo $\textit{dummie}$
+13. Deep Learning para modelo complejo MNIST
+
+## Estructura del proyecto
+
+```
+DL/
+├── dummie/
+│   └── ...
+├── src/
+│   └── ...
+├── data/
+│   └── mnist/
+│       ├── train-images-idx3-ubyte
+│       ├── train-labels-idx1-ubyte
+│       ├── t10k-images-idx3-ubyte
+│       └── t10k-labels-idx1-ubyte
+├── docs/
+└── ...
+```
+
+En `dummie/` encontrará el modelo simple secuencial y su paralelización multihilo simple. La idea es mostrar una de las etapas esenciales donde se realizará el multihilo para el modelo a gran escala (que sigue en desarrollo en `src/`).
+
 ## Instalación
 
 ```bash
+# MacOS
 clang++ --version
 
 brew install eigen
@@ -10,6 +47,33 @@ brew info eigen
 
 # Linux
 sudo apt install libeigen3-dev
+
+# Instalar MNIST
+# Estando en la cabeza del proyecto
+
+mkdir datasets
+cd datasets
+mkdir mnist
+cd ..
+cd ..
+
+curl -fL "https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz" \
+  -o data/mnist/train-images-idx3-ubyte.gz
+
+curl -fL "https://storage.googleapis.com/cvdf-datasets/mnist/train-labels-idx1-ubyte.gz" \
+  -o data/mnist/train-labels-idx1-ubyte.gz
+
+curl -fL "https://storage.googleapis.com/cvdf-datasets/mnist/t10k-images-idx3-ubyte.gz" \
+  -o data/mnist/t10k-images-idx3-ubyte.gz
+
+curl -fL "https://storage.googleapis.com/cvdf-datasets/mnist/t10k-labels-idx1-ubyte.gz" \
+  -o data/mnist/t10k-labels-idx1-ubyte.gz
+
+# Para descomprimir las img
+gunzip data/mnist/*.gz
+
+# Para comprimir las img
+gzip data/mnist/*
 ```
 
 ## ¿Qué busca Deep Learning?
@@ -68,7 +132,7 @@ Así, se tiene listo el nodo de salida:
 a_2 = \hat{y}
 ```
 
-## Backpropagation
+## 6. Backpropagation
 
 Teniendo la salida del modelo, hay que verificar que tan alejado es de la predicción establecida. Se puede utilizar el `Mean Squared Error (MSE)`, que simplemente calcula el cuadrado de la diferencia.
 
@@ -238,7 +302,7 @@ Note que, si se deriva respecto a $b_1$, $W_1x$ queda como constante. Por lo tan
 \frac{\partial L}{\partial b_1} = \frac{\partial L}{\partial z_1} = (W_2^T(\hat{y}(1-\hat{y}))) \odot (a_1(1-a_1))
 ```
 
-## Descenso de Gradiente
+## 7. Descenso de Gradiente
 
 Ahora que se tienen las derivadas se conoce computacionalmente cuánto ha variado la salida obtenida del resultado deseado y cuánto ha influenciado cada parámetro en esa diferencia.
 
@@ -267,7 +331,7 @@ Note que es llamado descenso porque hay un $-$ (o sea, nos estamos moviendo nega
 
 Un $\eta = 0.1$ es aceptable
 
-## Repetir entrenamiento
+## 8. Repetir entrenamiento
 
 Todo este proceso previo consiste en 1 sola etapa de entrenamiento de un modleo. Los modelos profesionales/modernos de `Deep Learning` generan miles de iteraciones de entrenamiento para que el propio modelo `aprenda` a optimizar sus pesos y sesgos.
 
@@ -282,7 +346,7 @@ for (int epoch = 0; epoch < 1000; epoch++) {
 }
 ```
 
-## Problemas más complejos -> Modelos más completos
+## 9. Problemas más complejos -> Modelos más completos
 
 El modelo presentado actualmente es meramente un ejemplo para comprender el funcionamiento de un modelo de Deep Learning. Ciertamente es un modelo demasiado simple pues tiene únicamente 5 neuronas:
 
@@ -326,7 +390,7 @@ Esencialmente, ya no son solamente 4 multiplicaciones sino:
 
 multiplicaciones por muestra. Esto sin tomar en cuenta las demás capas. Este modelo será el modelo final a realizar en este proyecto. 
 
-## Paralelización en el modelo simple
+## 10. Paralelización en el modelo simple
 
 Este modelo simple de ejemplo, si bien pequeño sigue siendo bastante útil para entender los principios de la paralelización.
 
@@ -478,7 +542,7 @@ for (int i = 0; i < 2; i++) {
 
 ### Resumen del paralelismo propuesto
 
-En general, las operaciones de mayor paralelización para el modelo simple son:
+En general, las operaciones de mayor paralelización para el modelo son:
 
 ```
 FORWARD
@@ -505,11 +569,15 @@ W2               → paralelizable
 b2               → trivial
 ```
 
+Cuando se pase al modelo MLP realista, se agrega otra etapa de forward así como de backward y actualización, por lo que hay más espacio para paralelizar.
+
 En general, lo prometedor a paralelizar en hilos son las operaciones que incluyan matrices completas. Aquellas que solo incluyan una fila de ellas o no incluyan matrices también pueden paralelizarse pero no tienen tanta carga de trabajo. Por ejemplo, `db1 = dL_dz1` o `z2 = (W2 * a1)(0) + b2;`. Este tipo de operaciones, si bien es independiente por neurona, sus dimensiones crecen según $n$ neuronas en ese nivel.
 
-## Propuesta de paralelización para el modelo simple
+## 11. Propuesta de paralelización dummie para el modelo simple
 
-### Propuesta Intercalado: (Fine-Grained)
+Inicialmente , para los modelos $\textit{dummies}$ se implementara unicamente paralelismo en el primer forward pass del modelo simple. Esto aplica para los 4 tipos de multihilo.
+
+### Propuesta Intercalado (Fine-Grained) dummie:
 
 El multihilo intercalado es el paralelismo a nivel de hilo dónde se implementa un modelo de planificación por ciclos o quantums (unidad de tiempo). Se llama justamente intercalado porque los hilos se intercalan entre sí, haciendo obligatoriamente un cambio de hilo en cada quantum o ciclo en forma de $\textit{round-robin}$, independientemente de si el hilo actual ha sufrido un stall.
 
@@ -529,7 +597,7 @@ T1        ████          ████          ████
 Esto puede hacerse utilizando un cronómetro como parámetro que represente el quantum:
 
 ```C
-const auto quantum = std::chrono::microseconds(100);
+const auto quantum = std::chrono::microseconds(1);
 ```
 
 Entonces, en cada quantum, el hilo avanza con el trabajo que debe realizar. Cuando termina su quantum, debe registrar su progreso para que cuando vuelva su turno, empiece desde donde quedó. Hay entonces dos condiciones para abandonar el scheduler
@@ -555,7 +623,7 @@ works while quantum  works while quantum
                  ↓
 ```
 
-### Propuesta Bloqueado: (Coarse-Grained)
+### Propuesta Bloqueado (Coarse-Grained) dummie:
 
 Es importante entender que el bloqueado no necesariamente mejora el rendimiento. Este paralelismo depende mucho de cuánto trabajo independiente exista y cuánto tiempo pasen los hilos bloqueados. En algunos casos, el programa seguirá lo que pareciera su flujo secuencial. Se propone la siguiente secuencia:
 
@@ -576,7 +644,7 @@ std::thread
      ↓
 hilos tradicionales
      ↓
-un hilo ejecutándose
+un único hilo ejecutándose
      ↓
 continúa hasta terminar/bloquearse
      ↓
@@ -604,13 +672,7 @@ cambio de contexto ante bloqueo
             ▼
         BACKWARD
             │
-     ┌──────┴──────┐
-     ▼             ▼
-    dW1           db1
-   T0/T1         T0/T1
-     └──────┬──────┘
-            │
-       sincronización
+        Gradientes
             │
             ▼
        actualización
@@ -621,7 +683,7 @@ cambio de contexto ante bloqueo
 
 Ahora bien, esto puede hacerse asignando los hilos al mismo recurso (CPU). Esto puede hacerse usando `pthread_setaffinity_np()` en Linux, que permite definir la afinidad del CPU. Asi, para bloqueado, se define la afinidad de forma que los dos hilos corran sobre el mismo CPU logico, lo cual hace que no pueden correr a la vez.
 
-### Propuesta SMT: Simultaneous Multithreading
+### Propuesta SMT dummie (Simultaneous Multithreading):
 
 Consiste en un mismo núcleo físico que ejecuta instrucciones de más de un hilo lógico simultáneamente, compartiendo recursos internos del núcleo.
 
@@ -674,7 +736,7 @@ CPU(s) factor de escala MHz:              35%
 CPU(s) del nodo NUMA 0:                   0-15
 ```
 
-Por lo tanto, para este caso, se aplicara (para la version dummie):
+Por lo tanto, para este caso, como en la version dummie solo se está usando paralelismo en el primer $\textit{forward-pass}$, entonces se utilizan dos hilos pero, a diferencia de en el coarse grained que, para hacer que solo un hilo corra a la vez, se definió la afinidad a un mismo CPU físico y lógico, aquí se asigna la afinidad a un mismo Núcleo físico pero CPU lógicos diferentes, generando que compartan recursos del mismo CPU:
 
 ```
 Núcleo físico 0
@@ -682,12 +744,106 @@ Núcleo físico 0
 └── CPU 1 ──→ Hilo 1 → neurona 1
 ```
 
-### Propuesta CMP (Chip Multiprocessing):
+### Propuesta CMP dummie (Chip Multiprocessing):
 
-Se realiza una implementacion directa usando paralelismo real sobre multiples nucleos reales mediante procesos o hilos del sistema operativo.
-
-
-## Reporte de Resultados para el modelo $\textit{dummie}$
+Se realiza una implementacion directa usando paralelismo real sobre multiples nucleos reales mediante procesos o hilos del sistema operativo. La implementación es muy similar a la de SMT, con la diferencia de que son núcleos físicos diferentes por hilo.
 
 
+## 12. Reporte de Resultados para el modelo $\textit{dummie}$
+
+Cabe aclarar que estos resultados no son un reflejo fiel de lo que ocurrirá con el modelo de Deep Learning que aprenderá de imágenes `MNIST`. Note que en el modelo simple, es poco lo que se está paralelizando (pues el modelo simple es muy simple), por lo que el costo de crear y destruir los hilos es mucho mayor que la recompensa que estos generan, causando un overhead en vez de un SpeedUp.
+
+Al avanzar al modelo realista, habrán miles de esas operaciones en una sola iteración del entrenamiento, generando que el overhead causado por crear los hilos se vuelva despreciable ante el speedup obtenido. Dicho eso, estas son las mediciones obtenidas con los dummies (secuencial y multihilo):
+
+
+
+
+## 13. Deep Learning para modelo complejo MNIST
+
+Todo lo definido hasta el momento, en cuánto a matemática y paralelismo se refiere, sigue siendo aplicable, sin embargo, el modelo es más grande.
+
+### Entradas y salidas
+
+Inicialmente, la muestra de entrada de MNIST se establece como:
+
+```C
+Eigen::VectorXd X;  // 784 × 1
+int label;          // 0–9
+```
+
+Al juntar un data set o batch de entradas:
+
+```C
+std::vector<Eigen::VectorXd> X_train;
+std::vector<int> y_train;
+```
+
+dónde:
+```C
+X_train[i]   // imagen i, 784 valores
+y_train[i]   // etiqueta de imagen i
+```
+
+Lo siguiente a escalar es la salida. Pasamos de una única salida a 10 neuronas de salida, la cuál representa un dígito cada una. Esto nos deja con un vector `one-hot`, el cuál será un vector donde, idealmente, solamente uno de sus valores (neuronas) se activa y el resto no, identificando claramente el número. Es decir, `y` tiene la posibilidad de ser:
+
+```
+dígito 0 → [1,0,0,0,0,0,0,0,0,0]
+dígito 1 → [0,1,0,0,0,0,0,0,0,0]
+...
+dígito 9 → [0,0,0,0,0,0,0,0,0,1]
+```
+
+Así, se define el vector de salida como:
+
+```C
+Eigen::VectorXd Y(10);
+Y.setZero();
+Y(label) = 1.0;
+```
+
+En cuanto a las imágenes de entrada, el mismo programa es el que recibe las rutas, por ejemplo:
+
+```
+data/mnist/train-images-idx3-ubyte
+data/mnist/train-labels-idx1-ubyte
+```
+
+De allí, se lee el archivo binario de la imágen 28x28, se le pasa al vector y se normaliza [0,1].
+
+### Lector de formato IDX para C++
+
+Para las imágenes, el archivo tiene el siguiente encabezado:
+
+```
+4 bytes → magic number = 2051
+4 bytes → cantidad de imágenes = 60000
+4 bytes → filas = 28
+4 bytes → columnas = 28
+```
+
+Después del encabezado vienen los píxeles:
+
+```
+imagen 0 → 784 bytes
+imagen 1 → 784 bytes
+imagen 2 → 784 bytes
+...
+```
+
+Por lo tanto, para obtener la imagen `i` se utiliza un offset:
+
+```C
+offset = 16 + i × 784
+double pixel = byte / 255.0; // así los valores quedan normalizados entre 0 y 1
+```
+
+Y para las etiquetas, se tiene la siguiente estructura de encabezado:
+
+```
+4 bytes → magic number
+4 bytes → cantidad de etiquetas
+1 byte → etiqueta 0
+1 byte → etiqueta 1
+...
+```
 

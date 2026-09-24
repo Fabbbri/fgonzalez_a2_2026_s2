@@ -1,16 +1,15 @@
 # ==========================================
-# CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN LINUX
+# CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN MACOS
 # ==========================================
 
-CXX = g++
+CXX = clang++
 CXXFLAGS = -O2 -Wall -Wextra -std=c++17 -pthread
-EIGEN = -I/usr/include/eigen3
+EIGEN = -I/opt/homebrew/include/eigen3
 
 SRCS = $(wildcard *.cpp)
-
 TARGETS = $(SRCS:.cpp=)
 
-# ==========================================a
+# ==========================================
 # REGLAS
 # ==========================================
 
