@@ -1,7 +1,7 @@
 #pragma once
 
 namespace interferogram {
-/**
+/*
  * Representa una muestra compleja SLC mediante dos componentes de doble precisión.
  * Mantener ambas componentes permite calcular el producto con el conjugado.
  */

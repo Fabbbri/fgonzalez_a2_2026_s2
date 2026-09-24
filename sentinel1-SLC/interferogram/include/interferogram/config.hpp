@@ -23,6 +23,6 @@ struct Config {
  * Devuelve la configuración o lanza std::invalid_argument por argumentos inválidos.
  */
 Config parseConfig(int argc, char* argv[]);
-/** Escribe las opciones de ejecución en el flujo out. */
+/* Escribe las opciones de ejecución en el flujo out. */
 void printHelp(std::ostream& out);
 } // namespace interferogram
