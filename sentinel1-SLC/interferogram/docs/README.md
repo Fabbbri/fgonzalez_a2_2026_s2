@@ -346,35 +346,38 @@ Los parámetros `x` y `y`, en cambio, únicamente determinan la posición inicia
 
 La principal región que se utilizará para implementar y comparar los diferentes modelos de ejecución es el ciclo de `computeInterferogramSequential()`, ya que sus iteraciones independientes permiten distribuir el procesamiento entre distintas unidades de ejecución.
 
-
 ## Diagramas de los modelos de ejecución
 
-Los siguientes modelos todavía corresponden al diseño preliminar de la etapa paralela.
+Los siguientes diagramas presentan el diseño preliminar de los modelos de ejecución que se utilizarán para paralelizar el cálculo del interferograma. En todos los casos, el trabajo consiste en distribuir las $N$ muestras de las matrices complejas $A$ y $B$ para calcular de forma independiente $A[i] \times \operatorname{conjugate}(B[i])$.
 
 ### Fine-Grained Multithreading
 
-En este modelo, el procesamiento se organiza en unidades pequeñas que se atienden mediante una planificación *round-robin*. Cada tarea tiene asignado un conjunto de muestras y procesa hasta $K$ de ellas cada vez que recibe un turno.
+En este modelo, el procesamiento se divide en tareas que avanzan en pequeños intervalos de trabajo. Las tareas se atienden mediante una planificación *round-robin*, de manera que cada una procesa hasta $K$ muestras durante su turno y conserva su progreso para continuar en la siguiente ronda. Este esquema produce cambios frecuentes entre las tareas hasta completar las $N$ muestras.
 
-![Diagrama de Fine-Grained Multithreading](interferogram/images/fine_grained.png)
-
+![Diagrama de Fine-Grained Multithreading](../images/fine_grained.png)
 
 ### Coarse-Grained Multithreading
 
-En este modelo, las $N$ muestras se agrupan en $M$ bloques de mayor tamaño y cada bloque se asigna a un hilo diferente. A diferencia de Fine-Grained, cada hilo procesa todas las muestras de su bloque antes de finalizar.
+En este modelo, las $N$ muestras se dividen en $M$ bloques de mayor tamaño y cada bloque se asigna a un hilo diferente. A diferencia de Fine-Grained, cada hilo procesa de forma continua todas las muestras correspondientes a su bloque, reduciendo la frecuencia de cambios entre unidades de trabajo.
 
-![Diagrama de Coarse-Grained Multithreading](interferogram/images/coarse_grained.png)
-
+<p align="center">
+  <img src="../images/coarse_grained.png"
+       alt="Diagrama de Coarse-Grained Multithreading"
+       width="450">
+</p>
 
 ### SMT — Simultaneous Multithreading
 
-En este modelo se aprovecharán los hilos lógicos disponibles en cada núcleo físico del procesador. Si el hardware permite ejecutar dos hilos lógicos por núcleo y se dispone de $C$ núcleos físicos, se podrán utilizar hasta $2C$ hilos para distribuir el procesamiento de las muestras.
+En este modelo se aprovechan varios hilos lógicos disponibles dentro de cada núcleo físico. Si se utilizan $C$ núcleos físicos y cada uno dispone de $H$ hilos lógicos, se pueden considerar hasta $L = C \times H$ hilos lógicos para distribuir las $N$ muestras. Los hilos pertenecientes a un mismo núcleo físico ejecutan sus respectivos bloques mientras comparten los recursos de ejecución de ese núcleo.
 
-![Diagrama de Simultaneous Multithreading](interferogram/images/simultaneous.png)
-
+![Diagrama de Simultaneous Multithreading](../images/simultaneous.png)
 
 ### CMP — Chip Multiprocessing
 
-En este modelo, las $N$ muestras se dividirán en $C$ bloques, donde $C$ corresponde a la cantidad de núcleos físicos utilizados. Cada bloque se asignará a un hilo que se ejecutará en un núcleo físico diferente.
+En este modelo, las $N$ muestras se dividen en $C$ bloques, donde $C$ representa la cantidad de núcleos físicos utilizados. Cada bloque se asigna a un hilo que ejecuta el cálculo sobre un núcleo físico diferente, permitiendo que varios bloques sean procesados simultáneamente mediante núcleos físicos independientes.
 
-![Diagrama de Chip Multiprocessing](interferogram/images/cmp.png)
-
+<p align="center">
+  <img src="../images/cmp.png"
+       alt="Diagrama de Chip Multiprocessing"
+       width="450">
+</p>

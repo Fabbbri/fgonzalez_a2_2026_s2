@@ -4,7 +4,7 @@
       "name": "Linux",
       "compilerPath": "/usr/bin/g++",
       "includePath": [
-        "${workspaceFolder}/interferogram/include",
+        "${workspaceFolder}/sentinel1-SLC/interferogram/include",
         "/usr/include/gdal"
       ],
       "cppStandard": "c++17",
