@@ -6,6 +6,8 @@ presenta el resultado al finalizar. Fine-grained, coarse-grained, SMT y CMP son
 diseños para etapas posteriores: todos usarán la **misma escena, cámara, imagen y
 partición en tiles**. Lo que cambiará será la política de ejecución.
 
+![Resultado del ray tracing por tiles](images/render.png)
+
 ## Unidad común de trabajo
 
 Para una imagen de ancho `W` y alto `H`, y tiles de `Tw × Th` píxeles:
