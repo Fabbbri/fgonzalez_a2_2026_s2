@@ -6,7 +6,7 @@ El avance 2 solicita tener el algoritmo secuencial para todos los problemas y al
 
 1. [Sentinel1-SLC](sentinel1-SLC/interferogram/docs/README.md)
 
-2. [Ray Tracing](ray tracing/docs/diseno.md)
+2. [Ray Tracing](ray%20tracing/docs/diseno.md)
 
 3. [N Body Sim - Diagramas](n-body-sim/docs/diagrams/)
 
