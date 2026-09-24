@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#!/bin/bash
-
 # 1. Comprobar si se pasó al menos un parámetro
 if [ -z "$1" ]; then
     echo "Error: Debes proporcionar el nombre de un ejecutable."

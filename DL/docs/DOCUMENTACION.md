@@ -13,7 +13,7 @@
 9. Problemas más complejos -> Modelos más completos
 10. Paralelización en el modelo simple
 11. Propuesta de paralelización dummie para el modelo simple
-12. Reporte de Resultados para el modelo $\textit{dummie}$
+12. [Reporte de resultados para el modelo $\textit{dummie}$](#reporte-de-resultados-para-el-modelo)
 13. Deep Learning para modelo complejo MNIST
 
 ## Estructura del proyecto
@@ -749,14 +749,64 @@ Núcleo físico 0
 Se realiza una implementacion directa usando paralelismo real sobre multiples nucleos reales mediante procesos o hilos del sistema operativo. La implementación es muy similar a la de SMT, con la diferencia de que son núcleos físicos diferentes por hilo.
 
 
-## 12. Reporte de Resultados para el modelo $\textit{dummie}$
+## Reporte de resultados para el modelo $\textit{dummie}$
 
-Cabe aclarar que estos resultados no son un reflejo fiel de lo que ocurrirá con el modelo de Deep Learning que aprenderá de imágenes `MNIST`. Note que en el modelo simple, es poco lo que se está paralelizando (pues el modelo simple es muy simple), por lo que el costo de crear y destruir los hilos es mucho mayor que la recompensa que estos generan, causando un overhead en vez de un SpeedUp.
+Para generar los resultados dummie por su cuenta realizar:
+
+```bash
+cd dummie
+make
+#si es la primera vez
+chmod +x medir.sh
+chmod +x medir_todos.sh
+
+# Ejecutar metricas
+./medir_todos.sh
+```
+
+Cabe aclarar que estos resultados no son un reflejo fiel del rendimiento con el modelo de Deep Learning que aprenderá de imágenes `MNIST`. 
+
+Note que en el modelo simple, es poco lo que se está paralelizando (pues el modelo simple es muy simple), por lo que el costo de crear y destruir los hilos es mucho mayor que la recompensa que estos generan, causando un overhead en vez de un SpeedUp.
 
 Al avanzar al modelo realista, habrán miles de esas operaciones en una sola iteración del entrenamiento, generando que el overhead causado por crear los hilos se vuelva despreciable ante el speedup obtenido. Dicho eso, estas son las mediciones obtenidas con los dummies (secuencial y multihilo):
 
+![Metricas dummies](metricas_dummies.png)
 
+En el modelo dummy, las métricas permiten cuantificar el costo del paralelismo frente a la versión secuencial:
 
+- Tiempo total: mide cuánto tarda cada implementación en completar el mismo trabajo.
+- Speedup: compara ese tiempo con la versión secuencial. Un valor de 1 significa el mismo tiempo; valores menores que 1 indican que la versión paralela tardó más que la secuencial.
+- Eficiencia paralela: relaciona el speedup con los 2 hilos utilizados en los 4 modelos, indicando qué tan bien se aprovechan los recursos paralelos.
+
+En las pruebas actuales, por ejemplo, la versión secuencial tarda aproximadamente $185 µs$, mientras que Fine-Grained tarda $442 µs$. Por tanto, su speedup es menor que $1$. Esto es perfectamente posible en el dummy: el trabajo es demasiado pequeño y el costo de crear, sincronizar y coordinar hilos puede superar el beneficio del paralelismo.
+
+### Aspectos que se dejan por fuera en estos resultados dummie.
+
+1. SMT desactivado en Hardware:
+
+Esta opcion no se incluye porque no es la idea de este reporte de resultados. Desactivarlo solamente inducira un peor rendimiento. Por tanto, como el objetivo de esta version dummie es mostrar el algoritmo secuencial y donde/como se paraleliza esencialmente para los 4 algoritmos, entonces se decide no incluirlo por ser poco relevante para este aspecto. Esto se incluira en las metricas finales del MLP grande.
+
+2. Escalabilidad:
+
+La escalabilidad requiere repetir el experimento variando el número de hilos o procesos, por ejemplo:
+
+1 → 2 → 4 → 8 hilos
+
+Las versiones dummy fueron diseñadas principalmente para demostrar esencialmente donde y como se quiere hacer el paralelismo. Por tanto, se implementaron los cuatro modelos de paralelismo, no para representar una carga computacional suficientemente grande como para estudiar su comportamiento al aumentar los recursos, sino para mostrar el algoritmo.
+
+Por eso, en esta etapa podemos reportar:
+
+$$ T,\quad Speedup,\quad Eficiencia $$
+
+y dejar la escalabilidad para el `MLP` grande, pues el MLP para MNIST realizará una cantidad mucho mayor de operaciones:
+
+$$ 784\times128 + 128\times64 + 64\times10 $$
+
+por cada pasada, además de las operaciones de activación, error y backpropagation que tambien se pueden paralelizar.
+
+Esto aumenta considerablemente el trabajo útil por hilo respecto al costo de crear/sincronizar los hilos. Por tanto, el paralelismo puede tener un efecto más visible en los tiempos y permitir analizar también cómo cambia el rendimiento al aumentar el número de hilos.
+
+Ahora bien, no debe asumirse asumir de antemano que necesariamente habrá speedup para todos los modelos. Eso será precisamente algo que comprobaremos experimentalmente con el `MLP` grande.
 
 ## 13. Deep Learning para modelo complejo MNIST
 
