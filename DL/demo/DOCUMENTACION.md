@@ -7,6 +7,9 @@ clang++ --version
 
 brew install eigen
 brew info eigen
+
+# Linux
+sudo apt install libeigen3-dev
 ```
 
 ## ¿Qué busca Deep Learning?
