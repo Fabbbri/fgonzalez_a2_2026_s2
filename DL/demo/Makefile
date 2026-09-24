@@ -8,7 +8,7 @@ CXX = clang++
 CXXFLAGS = -Wall -Wextra -std=c++17
 EIGEN = -I/opt/homebrew/include/eigen3
 
-SRCS = main.cpp
+SRCS = dummie.cpp
 
 # ==========================================
 # REGLAS

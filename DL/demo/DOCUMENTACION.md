@@ -504,6 +504,122 @@ b2               → trivial
 
 En general, lo prometedor a paralelizar en hilos son las operaciones que incluyan matrices completas. Aquellas que solo incluyan una fila de ellas o no incluyan matrices también pueden paralelizarse pero no tienen tanta carga de trabajo. Por ejemplo, `db1 = dL_dz1` o `z2 = (W2 * a1)(0) + b2;`. Este tipo de operaciones, si bien es independiente por neurona, sus dimensiones crecen según $n$ neuronas en ese nivel.
 
+## Propuesta de paralelización para el modelo simple
+
+### Propuesta Intercalado: (Fine-Grained)
+
+El multihilo intercalado es el paralelismo a nivel de hilo dónde se implementa un modelo de planificación por ciclos o quantums (unidad de tiempo). Se llama justamente intercalado porque los hilos se intercalan entre sí, haciendo obligatoriamente un cambio de hilo en cada quantum o ciclo en forma de $\textit{round-robin}$, independientemente de si el hilo actual ha sufrido un stall.
+
+Por lo tanto, para implementar esta propuesta es necesario definir que es un quantum en nuestro contexto. El quantum es una unidad mínima de trabajo con la que se puede contar.
+
+Inicialmente, se va a tomar un `quantum = 1ms`. Cada que pase un quantum, se cambia de hilo. Así:
+
+```
+                 tiempo →
+─────────────────────────────────────────
+
+T0    ████          ████          ████
+T1        ████          ████          ████
+        Q    Q          Q    Q          Q
+```
+
+Esto puede hacerse utilizando un cronómetro como parámetro que represente el quantum:
+
+```C
+const auto quantum = std::chrono::microseconds(100);
+```
+
+Entonces, en cada quantum, el hilo avanza con el trabajo que debe realizar. Cuando termina su quantum, debe registrar su progreso para que cuando vuelva su turno, empiece desde donde quedó. Hay entonces dos condiciones para abandonar el scheduler
+
+1. Se terminó el trabajo
+2. Se terminó el quantum 
+
+La idea del planificador simulado es que el `scheduler` tome control (`while`) mientras haya trabajo. 
+
+```
+             Scheduler
+                 │
+       ┌─────────┴─────────┐
+       ↓                   ↓
+      T0                   T1
+       │                   │
+works while quantum  works while quantum
+       │                   │
+       └─────────┬─────────┘
+                 ↓
+             Scheduler
+                 │
+                 ↓
+```
+
+### Propuesta Bloqueado: (Coarse-Grained)
+
+Es importante entender que el bloqueado no necesariamente mejora el rendimiento. Este paralelismo depende mucho de cuánto trabajo independiente exista y cuánto tiempo pasen los hilos bloqueados. En algunos casos, el programa seguirá lo que pareciera su flujo secuencial. Se propone la siguiente secuencia:
+
+```
+T0    ███████████████████
+                       ↓
+                    BLOQUEO
+                       ↓
+T1                       █████████████████
+                                      ↓
+                                   BLOQUEO
+                                      ↓
+T0
+```
+```
+std::thread
+     ↓
+hilos tradicionales
+     ↓
+un hilo ejecutándose
+     ↓
+continúa hasta terminar/bloquearse
+     ↓
+cambio de contexto ante bloqueo
+```
+
+```
+        FORWARD
+           │
+           ▼
+     ┌─────────────┐
+     │   W1 · x    │
+     │             │
+     │ T0     T1   │
+     └──────┬──────┘
+            │
+       sincronización
+            │
+            ▼
+         sigmoid
+            │
+            ▼
+          W2 · a1
+            │
+            ▼
+        BACKWARD
+            │
+     ┌──────┴──────┐
+     ▼             ▼
+    dW1           db1
+   T0/T1         T0/T1
+     └──────┬──────┘
+            │
+       sincronización
+            │
+            ▼
+       actualización
+            │
+            ▼
+       siguiente epoch
+```
+
+Ahora bien, esto puede hacerse asignando los hilos al mismo recurso (CPU). Esto puede hacerse usando `pthread_setaffinity_np()` en Linux, que permite definir la afinidad del CPU
+
+
+
+
 ## Reporte de Resultados para el modelo $\textit{dummie}$
 
 
