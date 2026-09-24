@@ -2,8 +2,8 @@
 
 La base actual renderiza en un solo hilo de CPU. La imagen se divide en tiles,
 pero `render_sequential` termina uno antes de comenzar el siguiente y SDL2
-presenta el resultado al finalizar. Fine-grained y coarse-grained son diseños
-para etapas posteriores: ambos usarán la **misma escena, cámara, imagen y
+presenta el resultado al finalizar. Fine-grained, coarse-grained, SMT y CMP son
+diseños para etapas posteriores: todos usarán la **misma escena, cámara, imagen y
 partición en tiles**. Lo que cambiará será la política de ejecución.
 
 ## Unidad común de trabajo
@@ -129,6 +129,103 @@ Todavía no se ha elegido ni implementado esa alternativa.
 | Estado para continuar | Tile e índice `p` | Mismo tile e índice `p` |
 | Paralelismo real inicial | Ninguno con un solo planificador | Posible en varios núcleos, sujeto al SO |
 
+## SMT: trabajadores sobre hilos lógicos compartidos
+
+La propuesta SMT reutiliza los `M` tiles de `TileGrid` y el cálculo completo de
+`render_tile`. Se crearán `P` trabajadores del sistema y un contador de siguiente
+tile, compartido y atómico. Cada trabajador tomará un índice distinto, procesará
+ese tile hasta terminarlo y repetirá hasta agotar los `M` índices. Así se pueden
+repartir tiles de costo desigual sin crear un hilo por tile. La escena y la
+cámara serán de solo lectura; cada trabajador escribirá únicamente los píxeles
+de su tile. El contador de tiles completados y las notificaciones se
+sincronizarán; ningún trabajador llamará a SDL.
+
+Con SMT habilitado, un núcleo físico puede exponer varios hilos lógicos que
+comparten sus recursos de ejecución. Si la máquina tiene `C` núcleos físicos y
+`L` hilos lógicos por núcleo, se probará `P` hasta `min(M, C × L)`; `L` se
+obtendrá del equipo de pruebas y no se supondrá que siempre vale dos. El
+diagrama muestra una **asignación conceptual**: el sistema operativo puede
+mover trabajadores entre hilos lógicos, a menos que se configure afinidad.
+
+```mermaid
+flowchart TD
+    A[TileGrid: M tiles] --> B[Contador atómico: siguiente tile]
+    B --> W0[Trabajador 0: tomar tile y render_tile]
+    B --> W1[Trabajador 1: tomar tile y render_tile]
+    B --> WP[Otros trabajadores hasta P]
+    subgraph CPU[CPU con SMT habilitado: ejemplo de asignación]
+        subgraph N0[Núcleo físico 0: recursos compartidos]
+            L00[Hilo lógico 0]
+            L01[Hilo lógico 1]
+        end
+        subgraph N1[Núcleo físico 1: recursos compartidos]
+            L10[Hilo lógico 0]
+            L11[Hilo lógico 1]
+        end
+    end
+    W0 -. planificado en .-> L00
+    W1 -. planificado en .-> L01
+    WP -. distribuidos por el SO .-> L10
+    WP -. distribuidos por el SO .-> L11
+    W0 --> F[Esperar a todos los trabajadores]
+    W1 --> F
+    WP --> F
+    F --> G[Imagen completa: presentar o guardar]
+```
+
+Esto **aproxima SMT desde software** al mantener suficientes tiles listos y
+trabajadores para ocupar los hilos lógicos; el programa no controla la emisión
+simultánea de instrucciones dentro del núcleo. Para aislar el efecto del SMT de
+hardware, el enunciado exige medir en el mismo equipo físico con SMT habilitado
+y deshabilitado desde BIOS/UEFI. Se repetirán configuraciones comparables de
+`P`, incluidas `P = C` y una sobresuscrita respecto a los núcleos físicos
+(`P > C`), manteniendo fija la carga y registrando los hilos lógicos disponibles
+en cada estado. Con SMT deshabilitado, los trabajadores adicionales compiten por
+los `C` núcleos mediante planificación del sistema operativo.
+
+## CMP: tiles distribuidos entre núcleos físicos
+
+La propuesta CMP usará el mismo contador atómico y un grupo de `P` trabajadores,
+con `P ≤ min(M, C)`. Cada trabajador reclamará un tile completo, ejecutará
+`render_tile` y tomará otro hasta vaciar el trabajo. El sistema operativo podrá
+ejecutar trabajadores en distintos núcleos físicos al mismo tiempo; una afinidad
+explícita solo sería necesaria si la medición exige fijar esa correspondencia.
+Con los valores iniciales (`M = 300`), los `P` trabajadores se repartirían los
+300 tiles, sin crear 300 hilos.
+
+```mermaid
+flowchart TD
+    A[TileGrid: M tiles] --> B[Contador atómico: siguiente tile]
+    B --> W0[Trabajador 0: tile i, luego otro]
+    B --> W1[Trabajador 1: tile j, luego otro]
+    B --> WP[Trabajadores restantes hasta P]
+    subgraph CPU[Chip multinúcleo]
+        N0[Núcleo físico 0]
+        N1[Núcleo físico 1]
+        NP[Otros núcleos físicos hasta C]
+    end
+    W0 -. planificado en .-> N0
+    W1 -. planificado en .-> N1
+    WP -. distribuidos por el SO .-> NP
+    W0 --> F[Esperar a todos los trabajadores]
+    W1 --> F
+    WP --> F
+    F --> G[Imagen completa: presentar o guardar]
+```
+
+El reparto reemplazará el `for` de `render_sequential` con una política nueva;
+`render_pixel`, la semilla por coordenadas y los límites de cada tile seguirán
+iguales. La finalización de todos los trabajadores precederá a la presentación
+o escritura del buffer. El hilo principal atenderá SDL y comunicará la
+cancelación entre píxeles sin invocar callbacks de SDL desde trabajadores.
+
+| Aspecto | SMT propuesto | CMP propuesto |
+| --- | --- | --- |
+| Trabajadores | `P` puede superar `C` para ocupar hilos lógicos | `P ≤ C` para distribuir trabajo entre núcleos físicos |
+| Recurso compartido | Hilos lógicos de un mismo núcleo comparten recursos de ejecución | Núcleos físicos ejecutan tiles en paralelo; pueden compartir caché y memoria |
+| Reparto de tiles | Siguiente índice atómico; un tile completo por toma | Siguiente índice atómico; un tile completo por toma |
+| Comprobación clave | Comparar SMT habilitado y deshabilitado en BIOS/UEFI | Escalar `P` hasta `C` núcleos físicos |
+
 ## Variables que afectan el paralelismo
 
 Conviene distinguir **más trabajo disponible** de **más ejecución simultánea**.
@@ -140,7 +237,8 @@ núcleos de CPU. Las variables principales son:
 | --- | --- | --- |
 | Resolución `W × H` | Más píxeles y, con `Tw` y `Th` fijos, más tiles `M` | Aumenta trabajo total y memoria; la imagen debe ser idéntica entre modelos |
 | Tamaño `Tw × Th` | Determina `M` y cuántos píxeles tiene cada tarea | Tiles pequeños facilitan repartir carga desigual, pero elevan costo de planificación; tiles grandes reducen tareas y pueden dejar núcleos ociosos |
-| Trabajadores `P` y núcleos físicos `C` | Fijan cuántos tiles pueden calcularse a la vez en un modelo realmente paralelo | En trabajo de CPU, `P` mayor que `C` no implica más cómputo simultáneo; en fine-grained con un planificador `P = 1` |
+| Trabajadores `P` y núcleos físicos `C` | Determinan cuántos tiles se asignan y cuántos núcleos físicos pueden trabajar en paralelo | `P > C` no añade núcleos físicos; en fine-grained con un planificador `P = 1` |
+| Hilos lógicos por núcleo `L` y estado de SMT | Con SMT habilitado, `C × L` contextos lógicos pueden ejecutar trabajadores | Compartir un núcleo no equivale a añadir núcleos físicos; registrar el estado de BIOS/UEFI y comparar con igual carga |
 | Quantum `K` | Determina cada cuánto alterna fine-grained entre tiles | K pequeño aumenta intercalado y sobrecarga; K grande se aproxima a terminar un tile por turno. No aumenta por sí solo el paralelismo físico |
 | Frecuencia y duración del bloqueo | Determinan cuánto tiempo puede avanzar cada hilo coarse-grained | Más bloqueos pueden dejar hilos inactivos y añadir tiempo de espera; no cambian los píxeles de la imagen |
 | Muestras `S` y rebotes máximos `R` | Aumentan trabajo por píxel y pueden hacer rentable distribuir tiles | No crean tareas nuevas; mantenerlos fijos al comparar tiempos y calidad |
@@ -153,11 +251,14 @@ hasta 75 esferas decorativas, tres principales y una esfera grande que hace de
 suelo. El buffer RGB ocupa `3 × W × H` bytes, sin contar estructuras auxiliares.
 
 Para aprovechar varios núcleos se necesitan suficientes tiles listos y
-trabajadores que puedan ejecutarlos: de forma ideal, los tiles activos a la
-vez no superan `min(M, P, C)`. En la práctica influyen la carga desigual, el
+trabajadores que puedan ejecutarlos: en CMP, los tiles en ejecución sobre
+núcleos físicos distintos no superan `min(M, P, C)`. Con SMT habilitado puede
+haber hasta `min(M, P, C × L)` trabajadores ejecutándose en hilos lógicos, pero
+comparten recursos dentro de cada núcleo y eso no equivale al rendimiento de
+`C × L` núcleos físicos. En la práctica influyen la carga desigual, el
 costo de crear o planificar tareas, la memoria y los bloqueos. Por eso `M`, `P`
-y `K` no deben confundirse: **M es la partición**, **P es la capacidad de
-trabajo simultáneo** y **K es la duración lógica del turno fine-grained**.
+y `K` no deben confundirse: **M es la partición**, **P es el número de
+trabajadores** y **K es la duración lógica del turno fine-grained**.
 
 Al comparar políticas se fijarán escena, cámara, resolución, tiles, muestras,
 rebotes, semilla y compilación. El tiempo de renderizado paralelo será tiempo
