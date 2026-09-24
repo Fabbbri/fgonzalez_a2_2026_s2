@@ -1,14 +1,5 @@
 # Simulación N-body de dos galaxias en 2D
 
-Implementación secuencial en C++17 de la interacción gravitacional entre dos
-galaxias. El programa se utiliza como sistema base para estudiar y comparar
-modelos de ejecución multihilo en el curso CE 4302 — Arquitectura de
-Computadores II.
-
-La versión actual inicializa dos galaxias reproducibles, calcula la interacción
-gravitacional entre todos los cuerpos, integra su movimiento en dos dimensiones
-y permite observar la evolución mediante una ventana nativa construida con
-SDL2. El cálculo se ejecuta en un solo hilo.
 
 ## Estado actual
 
@@ -163,7 +154,14 @@ Responsabilidades principales:
 - [`src/output.cpp`](src/output.cpp): presentación textual de los
   diagnósticos.
 
-## Variables importantes para la paralelización
+## Variables que aumentan el paralelismo disponible
+
+La cantidad de cuerpos es el único parámetro actual que aumenta el paralelismo
+disponible por paso: cada cuerpo añade un cálculo de aceleración independiente,
+que lee las posiciones de todos y escribe su propio resultado. Los pasos
+adicionales dependen del estado anterior; `dt`, la semilla y la visualización
+cambian la evolución física o las condiciones de ejecución, pero no agregan
+tareas independientes por paso. 
 
 ### Cantidad de cuerpos
 
@@ -173,7 +171,7 @@ Responsabilidades principales:
 N = 2 × bodies_per_galaxy
 ```
 
-Es la variable que más aumenta el paralelismo disponible. El
+El
 [núcleo de cálculo gravitacional](src/simulation.cpp#L56-L80) es la región que
 concentra la mayor parte del trabajo de la simulación: cada cuerpo `i` calcula
 su aceleración recorriendo los otros $N-1$ cuerpos. Por tanto:
@@ -190,62 +188,7 @@ La separación entre el vector de entrada `bodies` y el vector de salida
 que leen los demás. Esa interfaz está declarada en
 [`include/nbody/simulation.hpp`](include/nbody/simulation.hpp#L26-L30).
 
-### Número de pasos
 
-`--steps` determina cuántas veces se ejecuta el núcleo de cálculo
-gravitacional. Aumentarlo incrementa el trabajo total aproximadamente como:
-
-```text
-trabajo total ≈ steps × N²
-```
-
-Sin embargo, los pasos temporales tienen una dependencia: el paso $t+1$
-necesita las posiciones y velocidades producidas en $t$. El
-[bucle temporal secuencial](src/main.cpp#L25-L34) no puede repartirse
-directamente entre hilos sin cambiar el algoritmo numérico.
-
-Esta variable es útil para aumentar la duración del experimento y amortizar
-costos fijos, pero no aumenta el paralelismo disponible dentro de un paso.
-
-### Tamaño temporal `dt`
-
-`--dt` controla la resolución y estabilidad de la integración. Si se mantiene
-constante el tiempo físico total, reducir `dt` requiere más pasos y aumenta
-el trabajo. No crea nuevas tareas independientes porque conserva la
-dependencia temporal entre estados.
-
-La actualización de los cuerpos sí contiene paralelismo dentro de cada paso:
-una vez calculadas todas las aceleraciones, cada velocidad y posición puede
-actualizarse de forma independiente. Esta región se encuentra en
-[`advance_one_step`](src/simulation.cpp#L96-L113).
-
-### Número de trabajadores y partición
-
-El número de hilos o procesos será una variable de los modelos posteriores.
-La estrategia prevista consiste en dividir el rango exterior de cuerpos
-`i = [0, N)` entre trabajadores. Cada trabajador producirá aceleraciones para
-un subconjunto distinto y todos leerán el mismo estado de posiciones.
-
-Entre el cálculo de aceleraciones y la actualización será necesaria una
-barrera: ningún cuerpo debe avanzar al estado $t+1$ mientras otro todavía
-calcula fuerzas usando parcialmente ese nuevo estado.
-
-El número de trabajadores permitirá estudiar speedup, eficiencia y
-escalabilidad. Si hay demasiados trabajadores para el valor de $N$, el
-costo de planificación y sincronización puede superar el trabajo asignado a
-cada uno.
-
-### Semilla y modo de ejecución
-
-`--seed` no aumenta el paralelismo, pero es esencial para una comparación
-válida: todos los modelos deben recibir exactamente las mismas condiciones
-iniciales. La generación reproducible de ambas galaxias está en
-[`create_galaxies`](src/simulation.cpp#L42-L52).
-
-La visualización tampoco forma parte del cálculo evaluado. El
-[modo sin ventana](src/main.cpp#L25-L34) evita inicializar SDL2 y mide un
-intervalo continuo. La ventana nativa mantiene separado el cálculo del dibujo
-en [`run_native`](src/native_view.cpp#L155-L223).
 
 ## Diagramas de los modelos de ejecución
 
