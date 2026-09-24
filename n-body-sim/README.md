@@ -26,7 +26,8 @@ La base secuencial incluye:
 - pruebas físicas, de interfaz de línea de comandos y de visualización.
 
 Los modelos Fine-Grained, Coarse-Grained, SMT y CMP todavía no están
-implementados. Sus diagramas se incorporarán como parte del diseño previo.
+implementados. Sus diagramas preliminares ya documentan cómo se dividirá y
+sincronizará el cálculo gravitacional en cada modelo.
 
 ## Modelo físico
 
@@ -112,6 +113,10 @@ Ejemplo con 400 cuerpos totales:
 ```bash
 ./build/nbody --bodies-per-galaxy 200 --steps 15000 --dt 0.002
 ```
+
+Ejecución del ejemplo anterior:
+
+![400 cuerpos totales](docs/diagrams/Ejemplo.png)
 
 La ayuda integrada muestra las opciones disponibles:
 
@@ -244,53 +249,49 @@ en [`run_native`](src/native_view.cpp#L155-L223).
 
 ## Diagramas de los modelos de ejecución
 
-Los siguientes espacios están preparados para los diagramas de diseño. Las
-imágenes deben guardarse en `docs/diagrams/` con los nombres indicados.
+Los diagramas representan el diseño preliminar de los cuatro modelos. En ellos,
+$N$ es la cantidad total de partículas, $B_i$ es un bloque de partículas, $M$
+es la cantidad de hilos de grano grueso, $C$ es la cantidad de núcleos físicos
+y $K$ es la cantidad de interacciones que una tarea Fine-Grained procesa durante
+cada turno.
 
 ### Fine-Grained Multithreading
 
-Modelo planificado mediante tareas con estado explícito y selección
-*round-robin* en cada cuanto mínimo, aunque la tarea actual no esté bloqueada.
+Se crea una tarea $P_i$ por cada partícula. El planificador las recorre en orden
+*round-robin* y cada tarea calcula únicamente las siguientes $K$ interacciones
+de su partícula durante su turno. Si todavía quedan interacciones pendientes,
+la tarea conserva su progreso y espera la siguiente ronda. Cuando las $N$
+tareas terminan, una barrera permite actualizar velocidades y posiciones antes
+de comenzar el siguiente paso temporal.
 
 ![Diagrama de Fine-Grained Multithreading](docs/diagrams/fine-grained.png)
 
 ### Coarse-Grained Multithreading
 
-Modelo planificado con bloques de trabajo grandes y cambios de ejecución ante
-eventos de bloqueo costosos definidos explícitamente.
+Las $N$ partículas se dividen en $M$ bloques grandes y cada bloque $B_i$ se
+asigna a un hilo. Cada hilo calcula todas las interacciones de las partículas de
+su bloque antes de alcanzar la barrera. La barrera es el punto de sincronización
+costoso del diagrama: solo después de que todos los hilos terminan se actualizan
+velocidades y posiciones y comienza el siguiente paso temporal.
 
 ![Diagrama de Coarse-Grained Multithreading](docs/diagrams/coarse-grained.png)
 
 ### SMT — Simultaneous Multithreading
 
-Aproximación planificada mediante sobresuscripción de hilos respecto a los
-núcleos físicos. La evaluación final deberá contrastar el hardware con SMT
-habilitado y deshabilitado.
+Con $C$ núcleos físicos, las partículas se dividen en $2C$ bloques para ejecutar
+dos hilos lógicos por núcleo. Los dos hilos lógicos de cada núcleo comparten sus
+recursos de ejecución, tal como indica el diagrama. Todos los hilos se reúnen en
+una barrera después de calcular las fuerzas. La evaluación deberá comparar el
+mismo trabajo con SMT habilitado y deshabilitado en el hardware.
 
 ![Diagrama de Simultaneous Multithreading](docs/diagrams/smt.png)
 
 ### CMP — Chip Multiprocessing
 
-Modelo planificado mediante paralelismo real sobre varios núcleos, dividiendo
-los índices de cuerpos entre trabajadores y sincronizando las fases de cálculo
-y actualización.
+Las partículas se dividen en $C$ bloques y cada bloque se asigna a un hilo que
+se ejecuta en un núcleo físico diferente. Así, los núcleos calculan fuerzas en
+paralelo real sin compartir un mismo núcleo. Una barrera espera a que los $C$
+bloques estén listos antes de actualizar velocidades y posiciones y avanzar al
+siguiente paso temporal.
 
 ![Diagrama de Chip Multiprocessing](docs/diagrams/cmp.png)
-
-## Verificación
-
-Las pruebas se ejecutan con:
-
-```bash
-make test
-```
-
-Las verificaciones actuales comprueban:
-
-- cálculo de energía, momento y centro de masa;
-- integración mediante Euler simpléctico;
-- estabilidad de un caso orbital sencillo;
-- suavizado cuando dos cuerpos ocupan la misma posición;
-- reproducibilidad de la interfaz de línea de comandos;
-- equivalencia física entre la ejecución visual y la ejecución sin ventana;
-- controles básicos de la ventana nativa.
