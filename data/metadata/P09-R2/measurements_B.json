@@ -1,0 +1,58 @@
+{
+  "result": [
+    {
+      "Id": "s1a-iw1-slc-vv-20250122t112256-20250122t112321-057556-0716fb-004.tiff",
+      "Name": "s1a-iw1-slc-vv-20250122t112256-20250122t112321-057556-0716fb-004.tiff",
+      "Nodes": {
+        "uri": "https://download.dataspace.copernicus.eu/odata/v1/Products(dc704ae2-9212-4d54-b0a0-155406e94b73)/Nodes(S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE)/Nodes(measurement)/Nodes(s1a-iw1-slc-vv-20250122t112256-20250122t112321-057556-0716fb-004.tiff)/Nodes"
+      },
+      "ContentLength": 1096695092,
+      "ChildrenNumber": 0
+    },
+    {
+      "Id": "s1a-iw2-slc-vh-20250122t112254-20250122t112319-057556-0716fb-002.tiff",
+      "Name": "s1a-iw2-slc-vh-20250122t112254-20250122t112319-057556-0716fb-002.tiff",
+      "Nodes": {
+        "uri": "https://download.dataspace.copernicus.eu/odata/v1/Products(dc704ae2-9212-4d54-b0a0-155406e94b73)/Nodes(S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE)/Nodes(measurement)/Nodes(s1a-iw2-slc-vh-20250122t112254-20250122t112319-057556-0716fb-002.tiff)/Nodes"
+      },
+      "ContentLength": 1320256856,
+      "ChildrenNumber": 0
+    },
+    {
+      "Id": "s1a-iw2-slc-vv-20250122t112254-20250122t112319-057556-0716fb-005.tiff",
+      "Name": "s1a-iw2-slc-vv-20250122t112254-20250122t112319-057556-0716fb-005.tiff",
+      "Nodes": {
+        "uri": "https://download.dataspace.copernicus.eu/odata/v1/Products(dc704ae2-9212-4d54-b0a0-155406e94b73)/Nodes(S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE)/Nodes(measurement)/Nodes(s1a-iw2-slc-vv-20250122t112254-20250122t112319-057556-0716fb-005.tiff)/Nodes"
+      },
+      "ContentLength": 1320256856,
+      "ChildrenNumber": 0
+    },
+    {
+      "Id": "s1a-iw3-slc-vh-20250122t112255-20250122t112320-057556-0716fb-003.tiff",
+      "Name": "s1a-iw3-slc-vh-20250122t112255-20250122t112320-057556-0716fb-003.tiff",
+      "Nodes": {
+        "uri": "https://download.dataspace.copernicus.eu/odata/v1/Products(dc704ae2-9212-4d54-b0a0-155406e94b73)/Nodes(S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE)/Nodes(measurement)/Nodes(s1a-iw3-slc-vh-20250122t112255-20250122t112320-057556-0716fb-003.tiff)/Nodes"
+      },
+      "ContentLength": 1282722356,
+      "ChildrenNumber": 0
+    },
+    {
+      "Id": "s1a-iw3-slc-vv-20250122t112255-20250122t112320-057556-0716fb-006.tiff",
+      "Name": "s1a-iw3-slc-vv-20250122t112255-20250122t112320-057556-0716fb-006.tiff",
+      "Nodes": {
+        "uri": "https://download.dataspace.copernicus.eu/odata/v1/Products(dc704ae2-9212-4d54-b0a0-155406e94b73)/Nodes(S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE)/Nodes(measurement)/Nodes(s1a-iw3-slc-vv-20250122t112255-20250122t112320-057556-0716fb-006.tiff)/Nodes"
+      },
+      "ContentLength": 1282722356,
+      "ChildrenNumber": 0
+    },
+    {
+      "Id": "s1a-iw1-slc-vh-20250122t112256-20250122t112321-057556-0716fb-001.tiff",
+      "Name": "s1a-iw1-slc-vh-20250122t112256-20250122t112321-057556-0716fb-001.tiff",
+      "Nodes": {
+        "uri": "https://download.dataspace.copernicus.eu/odata/v1/Products(dc704ae2-9212-4d54-b0a0-155406e94b73)/Nodes(S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE)/Nodes(measurement)/Nodes(s1a-iw1-slc-vh-20250122t112256-20250122t112321-057556-0716fb-001.tiff)/Nodes"
+      },
+      "ContentLength": 1096695092,
+      "ChildrenNumber": 0
+    }
+  ]
+}
