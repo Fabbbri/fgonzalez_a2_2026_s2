@@ -1,5 +1,5 @@
 # ==========================================
-# CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN
+# CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN MACOS
 # ==========================================
 
 TARGET = mlp
