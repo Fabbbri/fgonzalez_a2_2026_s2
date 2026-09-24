@@ -3,6 +3,7 @@
 #include <thread>
 #include <pthread.h>
 #include <sched.h>
+#include <chrono>
 
 #include <Eigen/Dense>
 
@@ -79,6 +80,7 @@ int main()
     const int epochs = 1000;
 
     const double y = 1.0;
+    auto start = std::chrono::steady_clock::now();
 
 
     // --------------------------------------------------------
@@ -258,7 +260,18 @@ int main()
     // RESULTADOS FINALES
     // ========================================================
 
+    auto end = std::chrono::steady_clock::now();
+
+    auto elapsed =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            end - start
+        );
+
     cout << "\n=== Coarse-Grained ===\n";
+
+    cout << "\nTiempo total: "
+        << elapsed.count()
+        << " us\n";
 
     cout << "Modelo: 2 -> 2 -> 1\n";
     cout << "Hilos: 2\n";
