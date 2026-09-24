@@ -1,0 +1,128 @@
+[
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE",
+    "measurement_path": "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/measurement/s1a-iw2-slc-vv-179297-20250110T112315-462858.tiff",
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-10T11:23:14.949569",
+      "stopTime": "2025-01-10T11:23:18.030847",
+      "absoluteOrbitNumber": "57381",
+      "missionDataTakeId": "462858",
+      "imageNumber": "005"
+    },
+    "burst_count": 1,
+    "burst_fields": {
+      "azimuthTime": "2025-01-10T11:23:14.949569",
+      "azimuthAnxTime": "2.810058396436800e+03",
+      "sensingTime": "2025-01-10T11:23:15.957412",
+      "byteOffset": "1026798315",
+      "burstId": "179297"
+    },
+    "manifest": {
+      "orbitNumber": [
+        "57381",
+        "57381"
+      ],
+      "relativeOrbitNumber": [
+        "84",
+        "84"
+      ],
+      "pass": [
+        "DESCENDING"
+      ],
+      "startTime": [
+        "2025-01-10T11:23:14.949569"
+      ],
+      "stopTime": [
+        "2025-01-10T11:23:18.030847"
+      ]
+    },
+    "size": [
+      24445,
+      1500
+    ],
+    "bands": [
+      {
+        "type": "CInt16",
+        "checksum": 17057
+      }
+    ],
+    "gdal_stderr": "",
+    "size_bytes": 148608130,
+    "files": [
+      "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/annotation/calibration/calibration-s1a-iw2-slc-vv-179297-20250110T112315-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/annotation/calibration/noise-s1a-iw2-slc-vv-179297-20250110T112315-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/annotation/rfi/rfi-s1a-iw2-slc-vv-179297-20250110T112315-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/annotation/s1a-iw2-slc-vv-179297-20250110T112315-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/manifest.safe",
+      "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE/measurement/s1a-iw2-slc-vv-179297-20250110T112315-462858.tiff"
+    ]
+  },
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE",
+    "measurement_path": "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/measurement/s1a-iw2-slc-vv-179298-20250110T112318-462858.tiff",
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-10T11:23:17.708126",
+      "stopTime": "2025-01-10T11:23:20.789404",
+      "absoluteOrbitNumber": "57381",
+      "missionDataTakeId": "462858",
+      "imageNumber": "005"
+    },
+    "burst_count": 1,
+    "burst_fields": {
+      "azimuthTime": "2025-01-10T11:23:17.708126",
+      "azimuthAnxTime": "2.812816952991400e+03",
+      "sensingTime": "2025-01-10T11:23:18.715689",
+      "byteOffset": "1173468315",
+      "burstId": "179298"
+    },
+    "manifest": {
+      "orbitNumber": [
+        "57381",
+        "57381"
+      ],
+      "relativeOrbitNumber": [
+        "84",
+        "84"
+      ],
+      "pass": [
+        "DESCENDING"
+      ],
+      "startTime": [
+        "2025-01-10T11:23:17.708126"
+      ],
+      "stopTime": [
+        "2025-01-10T11:23:20.789404"
+      ]
+    },
+    "size": [
+      24445,
+      1500
+    ],
+    "bands": [
+      {
+        "type": "CInt16",
+        "checksum": 20504
+      }
+    ],
+    "gdal_stderr": "",
+    "size_bytes": 148608189,
+    "files": [
+      "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/annotation/calibration/calibration-s1a-iw2-slc-vv-179298-20250110T112318-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/annotation/calibration/noise-s1a-iw2-slc-vv-179298-20250110T112318-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/annotation/rfi/rfi-s1a-iw2-slc-vv-179298-20250110T112318-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/annotation/s1a-iw2-slc-vv-179298-20250110T112318-462858.xml",
+      "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/manifest.safe",
+      "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/measurement/s1a-iw2-slc-vv-179298-20250110T112318-462858.tiff"
+    ]
+  }
+]

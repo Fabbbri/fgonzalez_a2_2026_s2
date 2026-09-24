@@ -1,0 +1,308 @@
+[
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250110T112315_179297_IW2_VV_462858.SAFE",
+    "size_bytes": 148608130,
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-10T11:23:14.949569",
+      "stopTime": "2025-01-10T11:23:18.030847",
+      "absoluteOrbitNumber": "57381",
+      "missionDataTakeId": "462858",
+      "imageNumber": "005"
+    },
+    "manifest": {
+      "familyName": [
+        "SENTINEL-1",
+        "Synthetic Aperture Radar"
+      ],
+      "number": [
+        "A"
+      ],
+      "mode": [
+        "IW"
+      ],
+      "productType": [
+        "SLC"
+      ],
+      "transmitterReceiverPolarisation": [
+        "VV",
+        "VH"
+      ],
+      "orbitNumber": [
+        "57381",
+        "57381"
+      ],
+      "relativeOrbitNumber": [
+        "84",
+        "84"
+      ],
+      "pass": [
+        "DESCENDING"
+      ],
+      "startTime": [
+        "2025-01-10T11:23:14.949569"
+      ],
+      "stopTime": [
+        "2025-01-10T11:23:18.030847"
+      ]
+    }
+  },
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE",
+    "size_bytes": 148608189,
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-10T11:23:17.708126",
+      "stopTime": "2025-01-10T11:23:20.789404",
+      "absoluteOrbitNumber": "57381",
+      "missionDataTakeId": "462858",
+      "imageNumber": "005"
+    },
+    "manifest": {
+      "familyName": [
+        "SENTINEL-1",
+        "Synthetic Aperture Radar"
+      ],
+      "number": [
+        "A"
+      ],
+      "mode": [
+        "IW"
+      ],
+      "productType": [
+        "SLC"
+      ],
+      "transmitterReceiverPolarisation": [
+        "VV",
+        "VH"
+      ],
+      "orbitNumber": [
+        "57381",
+        "57381"
+      ],
+      "relativeOrbitNumber": [
+        "84",
+        "84"
+      ],
+      "pass": [
+        "DESCENDING"
+      ],
+      "startTime": [
+        "2025-01-10T11:23:17.708126"
+      ],
+      "stopTime": [
+        "2025-01-10T11:23:20.789404"
+      ]
+    },
+    "measurement_path": "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/measurement/s1a-iw2-slc-vv-179298-20250110T112318-462858.tiff",
+    "dimensions": [
+      24445,
+      1500
+    ],
+    "bands": [
+      {
+        "band": 1,
+        "type": "CInt16",
+        "checksum": 20504
+      }
+    ],
+    "gdal_stderr": "",
+    "burst_count": 1,
+    "burst": {
+      "azimuthTime": "2025-01-10T11:23:17.708126",
+      "sensingTime": "2025-01-10T11:23:18.715689",
+      "burstId": "179298"
+    },
+    "xml_dimensions": {
+      "numberOfSamples": "24445",
+      "numberOfLines": "1500"
+    }
+  },
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250122T112314_179297_IW2_VV_464635.SAFE",
+    "size_bytes": 148608126,
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-22T11:23:13.929594",
+      "stopTime": "2025-01-22T11:23:17.010872",
+      "absoluteOrbitNumber": "57556",
+      "missionDataTakeId": "464635",
+      "imageNumber": "005"
+    },
+    "manifest": {
+      "familyName": [
+        "SENTINEL-1",
+        "Synthetic Aperture Radar"
+      ],
+      "number": [
+        "A"
+      ],
+      "mode": [
+        "IW"
+      ],
+      "productType": [
+        "SLC"
+      ],
+      "transmitterReceiverPolarisation": [
+        "VV",
+        "VH"
+      ],
+      "orbitNumber": [
+        "57556",
+        "57556"
+      ],
+      "relativeOrbitNumber": [
+        "84",
+        "84"
+      ],
+      "pass": [
+        "DESCENDING"
+      ],
+      "startTime": [
+        "2025-01-22T11:23:13.929594"
+      ],
+      "stopTime": [
+        "2025-01-22T11:23:17.010872"
+      ]
+    }
+  },
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250122T112317_179298_IW2_VV_464635.SAFE",
+    "size_bytes": 148608182,
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-22T11:23:16.688151",
+      "stopTime": "2025-01-22T11:23:19.769429",
+      "absoluteOrbitNumber": "57556",
+      "missionDataTakeId": "464635",
+      "imageNumber": "005"
+    },
+    "manifest": {
+      "familyName": [
+        "SENTINEL-1",
+        "Synthetic Aperture Radar"
+      ],
+      "number": [
+        "A"
+      ],
+      "mode": [
+        "IW"
+      ],
+      "productType": [
+        "SLC"
+      ],
+      "transmitterReceiverPolarisation": [
+        "VV",
+        "VH"
+      ],
+      "orbitNumber": [
+        "57556",
+        "57556"
+      ],
+      "relativeOrbitNumber": [
+        "84",
+        "84"
+      ],
+      "pass": [
+        "DESCENDING"
+      ],
+      "startTime": [
+        "2025-01-22T11:23:16.688151"
+      ],
+      "stopTime": [
+        "2025-01-22T11:23:19.769429"
+      ]
+    },
+    "measurement_path": "data/raw/P09-R2/S1A_SLC_20250122T112317_179298_IW2_VV_464635.SAFE/measurement/s1a-iw2-slc-vv-179298-20250122T112317-464635.tiff",
+    "dimensions": [
+      24445,
+      1500
+    ],
+    "bands": [
+      {
+        "band": 1,
+        "type": "CInt16",
+        "checksum": 32874
+      }
+    ],
+    "gdal_stderr": "",
+    "burst_count": 1,
+    "burst": {
+      "azimuthTime": "2025-01-22T11:23:16.688151",
+      "sensingTime": "2025-01-22T11:23:17.693656",
+      "burstId": "179298"
+    },
+    "xml_dimensions": {
+      "numberOfSamples": "24445",
+      "numberOfLines": "1500"
+    }
+  },
+  {
+    "safe_path": "data/raw/P09-R2/S1A_SLC_20250122T234845_195514_IW2_VV_464710.SAFE",
+    "size_bytes": 148594055,
+    "header": {
+      "missionId": "S1A",
+      "productType": "SLC",
+      "polarisation": "VV",
+      "mode": "IW",
+      "swath": "IW2",
+      "startTime": "2025-01-22T23:48:44.826207",
+      "stopTime": "2025-01-22T23:48:47.905430",
+      "absoluteOrbitNumber": "57564",
+      "missionDataTakeId": "464710",
+      "imageNumber": "005"
+    },
+    "manifest": {
+      "familyName": [
+        "SENTINEL-1",
+        "Synthetic Aperture Radar"
+      ],
+      "number": [
+        "A"
+      ],
+      "mode": [
+        "IW"
+      ],
+      "productType": [
+        "SLC"
+      ],
+      "transmitterReceiverPolarisation": [
+        "VV",
+        "VH"
+      ],
+      "orbitNumber": [
+        "57564",
+        "57564"
+      ],
+      "relativeOrbitNumber": [
+        "92",
+        "92"
+      ],
+      "pass": [
+        "ASCENDING"
+      ],
+      "startTime": [
+        "2025-01-22T23:48:44.826207"
+      ],
+      "stopTime": [
+        "2025-01-22T23:48:47.905430"
+      ]
+    }
+  }
+]
