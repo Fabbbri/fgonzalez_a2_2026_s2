@@ -261,36 +261,48 @@ Computational kernel; pixelwise coregistration not established.
 
 ```text
 fgonzalez_a2_2026_s2/
-├── Makefile
-├── data/
-│   ├── sentinel1_catalog.csv
-│   ├── metadata/
-│   │   └── P09-R2/
-│   └── raw/
-│       └── P09-R2/
-│
-└── interferogram/
-    ├── include/
-    │   └── interferogram/
-    │       ├── complex.hpp
-    │       ├── config.hpp
-    │       ├── interferogram.hpp
-    │       └── slc_reader.hpp
-    │
-    ├── src/
-    │   ├── main.cpp
-    │   ├── config.cpp
-    │   ├── interferogram.cpp
-    │   └── slc_reader.cpp
-    │
-    ├── tests/
-    │   ├── test_interferogram.cpp
-    │   ├── test_slc_reader.cpp
-    │   └── test_cli.sh
-    │
-    └── docs/
-        ├── README.md
-        └── data_acquisition.md
+├── .gitignore
+├── .vscode/
+│   └── c_cpp_properties.json
+├── LICENSE
+├── README.md
+└── sentinel1-SLC/
+    ├── Makefile
+    ├── build/                       
+    ├── data/
+    │   ├── critical_points.csv
+    │   ├── P09-R2_roi.geojson
+    │   ├── sentinel1_catalog.csv
+    │   ├── metadata/
+    │   │   └── P09-R2/              
+    │   └── raw/                    
+    │       └── P09-R2/
+    ├── scripts/
+    │   └── acquire_p09.sh
+    └── interferogram/
+        ├── docs/
+        │   ├── README.md
+        │   └── data_acquisition.md
+        ├── images/
+        │   ├── cmp.png
+        │   ├── coarse_grained.png
+        │   ├── fine_grained.png
+        │   └── simultaneous.png
+        ├── include/
+        │   └── interferogram/
+        │       ├── complex.hpp
+        │       ├── config.hpp
+        │       ├── interferogram.hpp
+        │       └── slc_reader.hpp
+        ├── src/
+        │   ├── config.cpp
+        │   ├── interferogram.cpp
+        │   ├── main.cpp
+        │   └── slc_reader.cpp
+        └── tests/
+            ├── test_cli.sh
+            ├── test_interferogram.cpp
+            └── test_slc_reader.cpp
 ```
 
 Responsabilidades principales:
