@@ -13,8 +13,8 @@
 9. Problemas más complejos -> Modelos más completos
 10. Paralelización en el modelo simple
 11. Propuesta de paralelización dummie para el modelo simple
-12. [Reporte de resultados para el modelo $\textit{dummie}$](#reporte-de-resultados-para-el-modelo)
-13. Deep Learning para modelo complejo MNIST
+12. [Reporte de resultados para el modelo $\textit{dummie}$](#12-reporte-de-resultados-para-el-modelo)
+13. [Deep Learning para modelo complejo MNIST](#13-deep-learning-para-modelo-complejo-mnist)
 
 ## Estructura del proyecto
 
@@ -749,7 +749,7 @@ Núcleo físico 0
 Se realiza una implementacion directa usando paralelismo real sobre multiples nucleos reales mediante procesos o hilos del sistema operativo. La implementación es muy similar a la de SMT, con la diferencia de que son núcleos físicos diferentes por hilo.
 
 
-## Reporte de resultados para el modelo $\textit{dummie}$
+## 12. Reporte de resultados para el modelo $\textit{dummie}$
 
 Para generar los resultados dummie por su cuenta realizar:
 
@@ -897,3 +897,104 @@ Y para las etiquetas, se tiene la siguiente estructura de encabezado:
 ...
 ```
 
+### Forward propagation y Loss Function
+Anteriormente se realizaba solo 1 $\textit{forward-pass}$, el cuál devolvía una `y_pred` a la cuál se le aplicaba MSE para evaluar cuanto se estaba distanciando del valor objetivo.
+
+Ahora, es necesario hacer 3 $\textit{forward-pass}$ y el MSE cambia un poco, pues ahora son 10 elementos que componen a `y`, no 1:
+
+```math
+MSE = \frac{1}{10}\sum_{i=1}^{10}(A_{3,i} - Y_i)^2
+```
+
+dónde `A3` es la salida antes llamada `y_pred`, pero ahora resultante de los 3 $\textit{forward-pass}$ por las 2 capas ocultas y la capa de salida.
+
+### Backpropagation
+
+Al agregar más capas también incrementa la cantidad de derivadas que hay que obtener para poder devolverse: 
+```
+MSE -> A3 -> Z3 -> W3 -> A2 -> Z2 -> W2 -> A1 -> Z1 -> W1
+```
+
+Iniciando con la primera derivada:
+
+```math
+dA_3 = \frac{\partial L}{\partial A_3} = \frac{2}{10} * (A_3 - y)
+```
+
+Recordando que la derivada de Sigmoid es: 
+
+```math
+\sigma′(Z_i​)=A_i​(1−A_i​)
+```
+
+Para `Z_3`, por regla de la cadena: 
+
+```math
+dZ_3​=dA_3  \odot A_3​(1 − A_3​)
+```
+
+Luego, recordando que:
+
+```math
+z_i = a_{i-1} * W_i + b_i 
+```
+
+para `W_3` y `b_3`, por regla de la cadena:
+
+```math
+dW_3=dZ_3A_2^T
+```
+```math
+db_3 = dZ_3
+```
+
+Se puede continuar propagando hacia `A_2` despejando:
+
+```math
+dA_2=dZ_3W_2^T
+```
+
+Teniendo esa derivada, se puede calcular `Z_2`, `W_2` y `b_2` igual que como se hizo con la capa 3:
+
+```math
+dZ_2​=dA_2  \odot A_2​(1 − A_2)
+```
+```math
+dW_2=dZ_2A_1^T
+```
+```math
+db_2 = dZ_2
+```
+
+De la misma forma que antes, se puede obtener la derivada de `A_1` despejando:
+
+```math
+dA_1=dZ_2W_2^T
+```
+
+Se repite lo mismo con la capa 1, calculando las derivadas de `Z_1`, `W_1` y `b_1`
+
+```math
+dZ_1​= dA_1 \odot A_1​(1 − A_1)
+```
+```math
+dW_1=dZ_1 X^T
+```
+```math
+db_1 = dZ_1
+```
+
+Con esto se obtiene las derivadas para todas las capas y todos los pesos, podiendo así entonces usar el $\textbf{descenso de gradiente}$:
+
+```math
+W_{new_i} = W_i - \eta dW_i
+```
+```math
+b_{new_i} = b_i - \eta db_i
+```
+
+donde $\eta$ es el learning rate.
+
+
+
+	

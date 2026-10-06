@@ -9,8 +9,8 @@ using Eigen::Vector2d;
 using Eigen::Matrix2d;
 using Eigen::RowVector2d;
 
-double sigmoid(double x) {
-    return 1.0 / (1.0 + std::exp(-x));
+Eigen::VectorXd sigmoid(const Eigen::VectorXd& z) {
+    return 1.0 / (1.0 + (-z.array()).exp());
 }
 
 Vector2d forwardPassVector2d(Matrix2d W, Vector2d x, Vector2d b){
@@ -54,20 +54,14 @@ int main() {
     // PESOS Y SESGOS
     // =========================================
 
-    // Capa oculta
-    Matrix2d W1;
-    W1 << 0.1, 0.2,
-          0.3, 0.4;
+    Eigen::MatrixXd W1 = Eigen::MatrixXd::Random(128, 784) * 0.1;
+    Eigen::MatrixXd b1 = Eigen::MatrixXd::Zero(128, 1);
 
-    Vector2d b1;
-    b1 << 0.1,
-          0.1;
+    Eigen::MatrixXd W2 = Eigen::MatrixXd::Random(64, 128) * 0.1;
+    Eigen::MatrixXd b2 = Eigen::MatrixXd::Zero(64, 1);
 
-    // Capa de salida de una sola neurona
-    RowVector2d W2;
-    W2 << 0.5, 0.6;
-
-    double b2 = 0.1;
+    Eigen::MatrixXd W3 = Eigen::MatrixXd::Random(10, 64) * 0.1;
+    Eigen::MatrixXd b3 = Eigen::MatrixXd::Zero(10, 1);
 
     // =========================================
     // ENTRENAMIENTO

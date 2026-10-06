@@ -7,13 +7,16 @@ CXXFLAGS = -O2 -Wall -Wextra -std=c++17 -pthread
 EIGEN = -I/opt/homebrew/include/eigen3
 
 SRCS = $(wildcard *.cpp)
-TARGETS = $(SRCS:.cpp=)
+TARGETS = demo
 
 # ==========================================
 # REGLAS
 # ==========================================
 
 all: $(TARGETS)
+
+demo: demo.cpp lector.cpp mnist.h
+	$(CXX) $(CXXFLAGS) $(EIGEN) demo.cpp lector.cpp -o demo
 
 # Enlazado de ejecutable dinamico @ a partir de su archivo fuente <
 %: %.cpp
