@@ -6,20 +6,25 @@ WITH_SDL ?= 1
 SDL_CFLAGS ?= $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL_LIBS ?= $(shell pkg-config --libs sdl2 2>/dev/null)
 BUILD := build/$(if $(filter 1,$(WITH_SDL)),sdl,headless)
-CORE_SOURCES := src/geometry.cpp src/scene.cpp src/camera.cpp src/image.cpp src/tiles.cpp src/transport.cpp src/raytracer.cpp src/sequential.cpp src/fine.cpp src/coarse.cpp src/metrics.cpp
+CORE_SOURCES := src/geometry.cpp src/scene.cpp src/camera.cpp src/image.cpp src/tiles.cpp src/transport.cpp src/raytracer.cpp src/sequential.cpp src/fine.cpp src/coarse.cpp src/cpu.cpp src/parallel.cpp src/metrics.cpp
 APP_SOURCES := src/main.cpp src/options.cpp src/display.cpp src/benchmark.cpp $(CORE_SOURCES)
 APP_OBJECTS := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES))
 HEADERS := $(wildcard src/*.hpp)
 PYTHON ?= python3
 CSV ?= results/metrics.csv
 PLOT_DIR ?= results/plots
+PERF ?= perf
+PROFILE_REPETITIONS ?= 5
+PROFILE_SCOPE ?= process
+PROFILE_EVENTS ?= task-clock,context-switches,cpu-migrations,cycles,instructions,cache-misses
+PROFILE_DIR ?= results/perf
 
 ifeq ($(WITH_SDL),1)
 CPPFLAGS += -DRT_WITH_SDL $(SDL_CFLAGS)
 LDLIBS += $(SDL_LIBS)
 endif
 
-.PHONY: all build run benchmark plots benchmark-plots test test-plots test-display clean
+.PHONY: all build run benchmark plots benchmark-plots profile test test-plots test-display clean
 all: $(BUILD)/raytracer
 
 build: all
@@ -38,6 +43,9 @@ test-plots:
 
 # Compatibilidad: benchmark ya mide y grafica, fuera del intervalo medido.
 benchmark-plots: benchmark
+
+profile: $(BUILD)/raytracer
+	$(PYTHON) scripts/profile_perf.py --perf "$(PERF)" --scope "$(PROFILE_SCOPE)" --events "$(PROFILE_EVENTS)" --repetitions "$(PROFILE_REPETITIONS)" --output-dir "$(PROFILE_DIR)" ./$(BUILD)/raytracer $(ARGS)
 
 $(BUILD)/raytracer: $(APP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@

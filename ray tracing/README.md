@@ -6,7 +6,7 @@ consulta [docs/diseno.md](docs/diseno.md).
 Proyecto de Arquitectura de Computadores II en C++17. La escena contiene esferas
 mates, metálicas y de vidrio sobre un suelo, iluminadas por el cielo mediante
 múltiples muestras y rebotes (path tracing). La cámara ofrece una vista baja y
-frontal. El cálculo se hace en CPU con modelos sequential, fine y coarse; SDL2
+frontal. El cálculo se hace en CPU con modelos sequential, fine, coarse, SMT y CMP; SDL2
 muestra el buffer RGB completo al terminar y atiende eventos durante el cálculo.
 La imagen permanece visible hasta cerrar la ventana o pulsar Esc.
 
@@ -88,7 +88,7 @@ durante el cálculo. Los eventos SDL se atienden en el hilo principal.
 
 ## Modelos de ejecución por tiles
 
-`make run` conserva `sequential` como modelo predeterminado. Los tres modelos
+`make run` conserva `sequential` como modelo predeterminado. Los cinco modelos
 usan la misma escena y el mismo cálculo de píxel; cambian cómo avanzan los tiles.
 
 | Modelo | Ejecución |
@@ -96,6 +96,8 @@ usan la misma escena y el mismo cálculo de píxel; cambian cómo avanzan los ti
 | `sequential` | Un hilo termina un tile antes de comenzar el siguiente |
 | `fine` | Un hilo simula tareas cooperativas: round-robin con hasta K píxeles completos por turno |
 | `coarse` | Un hilo por tile por defecto; `--threads P` permite repartirlos entre P trabajadores, con bloqueos opcionales |
+| `smt` | P trabajadores sobre CPUs lógicas, incluidos hermanos SMT; permite sobresuscripción de CPUs |
+| `cmp` | P trabajadores fijados a núcleos físicos distintos, con P limitado a los núcleos disponibles |
 
 ```sh
 # Fine-grained: K es configurable, por defecto 64 píxeles por turno
@@ -119,9 +121,55 @@ incluso fuera de los bloqueos simulados. Crear muchos hilos tiene un costo y no
 garantiza mayor rendimiento. Los bloqueos se comprueban entre píxeles completos;
 el intervalo es tiempo de pared desde la última reanudación.
 
-SMT y CMP siguen como diseños pendientes; todavía no tienen opciones de ejecución.
 Los valores predeterminados de K y de los bloqueos son puntos de partida, no
 parámetros optimizados mediante mediciones.
+
+### SMT y CMP en Linux
+
+Ambos modelos usan `parallel.cpp`: un contador atómico entrega tiles completos
+a un grupo de trabajadores; cada tile tiene un único dueño. No aplican K ni
+esperas artificiales. `cpu.cpp` detecta la topología en sysfs y las CPUs permitidas
+por la afinidad del principal. Identifica núcleos por `(socket, core_id)`, sin
+suponer que cada núcleo tenga dos hilos lógicos. Se requiere Linux con sysfs.
+
+CMP elige una CPU lógica por núcleo físico y fija allí un trabajador mediante
+[afinidad de Linux](https://man7.org/linux/man-pages/man3/pthread_setaffinity_np.3.html).
+Con `--threads P` exige `P <= C` y `P <= M`; sin el parámetro usa `min(C, M)`.
+C son los núcleos físicos disponibles y M la cantidad de tiles.
+
+SMT primero ocupa una CPU por núcleo y luego sus hermanos lógicos. Por defecto
+usa todas las CPUs lógicas disponibles, limitado por M. Si solo hay una CPU
+disponible por núcleo, usa hasta dos trabajadores por núcleo para aproximar SMT
+mediante sobresuscripción. `--threads P` permite fijar la cantidad: si P supera
+las CPUs lógicas, varios trabajadores quedan en la misma CPU y se alternan por
+el SO; eso no crea más unidades SMT. P no puede superar M. Con P menor o igual
+a C se obtiene una configuración de referencia sin sobresuscribir núcleos.
+
+```sh
+# Consultar núcleos disponibles, CPUs lógicas y estado SMT informado por Linux
+make run ARGS="--cpu-info"
+
+# Ver la escena; cantidad de trabajadores automática según el modelo
+make run ARGS="--model cmp --samples 8"
+make run ARGS="--model smt --samples 8"
+
+# Cinco comparaciones contra sequential, con gráficas automáticas
+make benchmark ARGS="--model cmp --samples 8 --repetitions 5 --metrics-output results/cmp.csv"
+make benchmark ARGS="--model smt --samples 8 --repetitions 5 --metrics-output results/smt.csv"
+
+# Barrido CMP: ajustar la lista para que ningún P supere C
+make benchmark ARGS="--model cmp --thread-counts 1,2,4 --samples 8 --repetitions 5 --metrics-output results/cmp.csv"
+```
+
+La aproximación de SMT desde software no controla la emisión de instrucciones
+dentro de un núcleo. Para aislar el SMT de hardware, el enunciado exige repetir
+las mediciones en el mismo equipo físico con SMT habilitado y deshabilitado en
+BIOS/UEFI, conservando la carga y las mismas cantidades P explícitas (incluida
+alguna P > C). El programa no cambia BIOS. El CSV registra C, CPUs lógicas,
+estado `/sys/devices/system/cpu/smt/active` y la CPU asignada a cada trabajador.
+Ese estado describe lo informado por Linux; no prueba por sí solo cómo se
+configuró BIOS. Si la afinidad falla, se cancela y se informa el error.
+En equipos híbridos, núcleos de distinto tipo pueden tener rendimientos diferentes.
 
 ## Calidad y tiempo de espera
 
@@ -160,6 +208,7 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 | `src/raytracer.hpp`, `src/raytracer.cpp` | Promedio de muestras, gamma y cálculo de un tile |
 | `src/sequential.hpp`, `src/sequential.cpp` | Base secuencial, tiempos y callbacks comunes |
 | `src/execution.hpp`, `src/fine.cpp`, `src/coarse.cpp` | Modelos, round-robin y reparto de tiles |
+| `src/parallel.cpp`, `src/cpu.hpp`, `src/cpu.cpp` | SMT/CMP, topología Linux y afinidad de trabajadores |
 | `src/metrics.hpp`, `src/metrics.cpp`, `src/benchmark.hpp`, `src/benchmark.cpp` | Métricas, repeticiones y exportación CSV |
 | `tests/test_execution.cpp` | Igualdad de modelos, progreso, bloqueos y cancelación |
 | `tests/test_display.cpp` | Presentación y cierre SDL con controlador de prueba |
@@ -198,7 +247,7 @@ una semilla fija: modificar el orden o tamaño de tiles no modifica las muestras
 `TileGrid` calcula límites superiores exclusivos, recortados en los bordes, sin
 almacenar una lista de tiles. `render_tile` recorre filas y columnas y llama a
 `render_pixel`. `render_tile_step` conserva el siguiente píxel en `TileProgress`
-y acepta un límite K; fine lo utiliza para reanudar tareas. Sequential y coarse
+y acepta un límite K; fine lo utiliza para reanudar tareas. Sequential, coarse, SMT y CMP
 usan `render_tile` para avanzar hasta el final. En coarse, las esperas interrumpibles
 conservan ese estado y los callbacks de la aplicación se ejecutan en el principal.
 SDL recibe la imagen completa después de terminar todos los tiles y esperar los hilos.
@@ -282,7 +331,8 @@ make benchmark ARGS="--model coarse --threads 4 --samples 8 --repetitions 200"
 `make run ARGS="--benchmark ..."` para obtener solo CSV. `make benchmark` genera
 también las gráficas al terminar y requiere Matplotlib. Por defecto hace 200 repeticiones; se admiten
 al menos dos para pruebas cortas. `--thread-counts` es un barrido exclusivo de
-coarse y no se combina con `--threads`. P no puede superar la cantidad de tiles.
+coarse, SMT o CMP y no se combina con `--threads`. P no puede superar la cantidad de tiles;
+en CMP tampoco puede superar los núcleos físicos disponibles.
 Cambiar P conserva el tamaño y la cantidad de tiles, así se estudia escalabilidad
 con carga fija. Fine usa P = 1: sus tareas lógicas no se cuentan como hilos
 reales para inflar el denominador de la eficiencia.
@@ -306,7 +356,7 @@ se recorta artificialmente; no es el porcentaje de uso de CPU.
 Los intervalos y las esperas de coarse forman parte de su configuración y deben
 mantenerse fijos al comparar P. Las mediciones finales deben hacerse en hardware
 físico, con la justificación de repeticiones y análisis que pide el enunciado.
-El perfilado con perf/VTune y los modelos SMT y CMP siguen pendientes.
+El perfilado con perf/VTune y la campaña física con SMT activado/desactivado siguen pendientes.
 
 ### Gráficas y repeticiones
 
@@ -324,7 +374,7 @@ make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repeti
 ```
 
 `make benchmark` guarda las gráficas en `results/plots/<nombre-del-csv>/`:
-por ejemplo, `results/plots/fine/`, `results/plots/coarse/` o
+por ejemplo, `results/plots/fine/`, `results/plots/coarse/`, `results/plots/smt/`, `results/plots/cmp/` o
 `results/plots/metrics/`. Así se conservan las gráficas de ambos modelos.
 `make plots` permite volver a graficar CSV existentes o compararlos juntos y
 guarda esa comparación en `results/plots/`. `make benchmark-plots` sigue
@@ -405,6 +455,7 @@ la cámara y la geometría y los escribe en `image` según los límites de `tile
 `RenderHooks` permite notificar tiles terminados y consultar cancelación sin
 acoplar el recorrido a una ventana. Sin callbacks, funciona sin interfaz gráfica.
 `fine.cpp` planifica tareas de tiles y `coarse.cpp` asigna los tiles a hilos.
+`parallel.cpp` distribuye los tiles de SMT/CMP y `cpu.cpp` define su asignación a CPUs.
 Los comentarios de estos módulos señalan el reparto, el progreso y la sincronización.
 `sequential.cpp` conserva el recorrido de referencia para comparar.
 
@@ -419,6 +470,6 @@ La unidad de trabajo sigue siendo el tile: con 640×480 y tiles 32×32 hay 300
 regiones. Los rayos secundarios consultan la geometría, sin depender del buffer
 de otros píxeles. Por ello la ampliación visual conserva la independencia de tiles.
 
-Los diagramas y las decisiones para fine-grained y coarse-grained están en
+Los diagramas y las decisiones para los modelos de ejecución están en
 [el documento de diseño](docs/diseno.md). Allí se explica cómo se reparten los
 tiles, qué significa K píxeles completos y qué falta implementar.
