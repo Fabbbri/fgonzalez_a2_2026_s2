@@ -6,9 +6,9 @@ consulta [docs/diseno.md](docs/diseno.md).
 Proyecto de Arquitectura de Computadores II en C++17. La escena contiene esferas
 mates, metálicas y de vidrio sobre un suelo, iluminadas por el cielo mediante
 múltiples muestras y rebotes (path tracing). La cámara ofrece una vista baja y
-frontal. El cálculo se hace en CPU, sin hilos de renderizado adicionales; SDL2
+frontal. El cálculo se hace en CPU con modelos sequential, fine y coarse; SDL2
 muestra el buffer RGB completo al terminar y atiende eventos durante el cálculo.
-La imagen permanece visible hasta cerrar la ventana o pulsar Esc. 
+La imagen permanece visible hasta cerrar la ventana o pulsar Esc.
 
 ## Dependencias y compilación
 
@@ -80,16 +80,54 @@ repite una dimensión. `--output` sobrescribe el archivo indicado. Al cancelar
 antes de terminar, se omite la escritura para no guardar una imagen incompleta.
 Códigos de salida: 0 completo, 1 error, 2 cancelado.
 
-No hay pausas artificiales ni vsync solicitado. La ventana permanece negra
+No se solicita vsync. Sequential y fine no añaden pausas artificiales; coarse
+permite simular esperas configurables. La ventana permanece negra
 durante el cálculo y muestra la escena completa al terminar, sin barrido visible.
-Los tiles se recorren internamente en un único hilo; se mantienen para comparar
-las políticas de ejecución futuras. Se puede cerrar la ventana durante el cálculo.
+Todos los modelos usan la misma partición en tiles y permiten cerrar la ventana
+durante el cálculo. Los eventos SDL se atienden en el hilo principal.
+
+## Modelos de ejecución por tiles
+
+`make run` conserva `sequential` como modelo predeterminado. Los tres modelos
+usan la misma escena y el mismo cálculo de píxel; cambian cómo avanzan los tiles.
+
+| Modelo | Ejecución |
+| --- | --- |
+| `sequential` | Un hilo termina un tile antes de comenzar el siguiente |
+| `fine` | Un hilo simula tareas cooperativas: round-robin con hasta K píxeles completos por turno |
+| `coarse` | Un hilo por tile por defecto; `--threads P` permite repartirlos entre P trabajadores, con bloqueos opcionales |
+
+```sh
+# Fine-grained: K es configurable, por defecto 64 píxeles por turno
+make run ARGS="--model fine --quantum 64"
+
+# Coarse-grained: por defecto intervalo de 10 ms y espera de 1 ms
+make run ARGS="--model coarse --block-interval-ms 10 --block-duration-ms 1"
+
+# Medir sin ventana; un intervalo 0 desactiva los bloqueos simulados
+make run ARGS="--headless --model coarse --block-interval-ms 0"
+```
+
+Fine-grained implementa la simulación cooperativa diseñada: un solo hilo real
+intercala tareas y no utiliza varios núcleos a la vez. Coarse sigue la asignación
+de un hilo por tile: 640 × 480 con tiles de 32 × 32 crea 300 hilos trabajadores,
+además del principal. `--threads P` activa una variante de reparto con P
+trabajadores y un índice atómico del siguiente tile, manteniendo fija la partición.
+Esta variante permite medir escalabilidad y está documentada como una extensión
+del diseño original de un hilo por tile. La planificación del sistema operativo puede interrumpirlos
+incluso fuera de los bloqueos simulados. Crear muchos hilos tiene un costo y no
+garantiza mayor rendimiento. Los bloqueos se comprueban entre píxeles completos;
+el intervalo es tiempo de pared desde la última reanudación.
+
+SMT y CMP siguen como diseños pendientes; todavía no tienen opciones de ejecución.
+Los valores predeterminados de K y de los bloqueos son puntos de partida, no
+parámetros optimizados mediante mediciones.
 
 ## Calidad y tiempo de espera
 
 `make run` usa 128 muestras por píxel y hasta 12 rebotes. La ventana permanece
 negra mientras calcula; ahora puede tardar varias decenas de segundos según el
-CPU. No se añadió ninguna pausa artificial. Para probar la composición rápido:
+CPU. En sequential no se añaden pausas artificiales. Para probar la composición rápido:
 
 ```sh
 make run ARGS="--samples 8 --bounces 6"
@@ -120,7 +158,11 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 | `src/sampling.hpp` | Muestras reproducibles por píxel sin estado global |
 | `src/transport.hpp`, `src/transport.cpp` | Rebotes, reflexión, refracción e iluminación del cielo |
 | `src/raytracer.hpp`, `src/raytracer.cpp` | Promedio de muestras, gamma y cálculo de un tile |
-| `src/sequential.hpp`, `src/sequential.cpp` | Recorrido secuencial, tiempos y notificaciones |
+| `src/sequential.hpp`, `src/sequential.cpp` | Base secuencial, tiempos y callbacks comunes |
+| `src/execution.hpp`, `src/fine.cpp`, `src/coarse.cpp` | Modelos, round-robin y reparto de tiles |
+| `src/metrics.hpp`, `src/metrics.cpp`, `src/benchmark.hpp`, `src/benchmark.cpp` | Métricas, repeticiones y exportación CSV |
+| `tests/test_execution.cpp` | Igualdad de modelos, progreso, bloqueos y cancelación |
+| `tests/test_display.cpp` | Presentación y cierre SDL con controlador de prueba |
 | `src/options.hpp`, `src/options.cpp` | Configuración y validación de argumentos |
 | `src/display.hpp`, `src/display.cpp` | Recursos SDL2, presentación y eventos |
 | `src/main.cpp` | Conectar módulos, mostrar resultados y controlar la salida |
@@ -155,9 +197,11 @@ una semilla fija: modificar el orden o tamaño de tiles no modifica las muestras
 
 `TileGrid` calcula límites superiores exclusivos, recortados en los bordes, sin
 almacenar una lista de tiles. `render_tile` recorre filas y columnas y llama a
-`render_pixel`; `render_sequential` decide qué tile sigue. El callback opcional atiende
-eventos antes de cada píxel, sin cambiar de tile. Esto permite cancelar incluso con tiles grandes; no es un planificador.
-SDL recibe la imagen calculada solo después de completar todos los tiles.
+`render_pixel`. `render_tile_step` conserva el siguiente píxel en `TileProgress`
+y acepta un límite K; fine lo utiliza para reanudar tareas. Sequential y coarse
+usan `render_tile` para avanzar hasta el final. En coarse, las esperas interrumpibles
+conservan ese estado y los callbacks de la aplicación se ejecutan en el principal.
+SDL recibe la imagen completa después de terminar todos los tiles y esperar los hilos.
 
 ## Cambiar o agregar esferas
 
@@ -205,22 +249,141 @@ add_sphere(4.0, -6.0, 0.6, {1, 1, 1}, {MaterialType::glass, 0.0, 1.5});
 En el vidrio transparente el color RGB no se utiliza como tinte. La rugosidad
 está pensada para valores entre 0 y 1, y el índice de refracción debe ser positivo.
 
-## Medición
+## Métricas del proyecto
 
-Se utiliza `std::chrono::steady_clock`, un reloj monotónico:
+Según [docs/proyecto.md](docs/proyecto.md), se reportan estas métricas:
 
-- `render_ms`: suma del cálculo de tiles; excluye presentación y escritura.
-  En modo ventana se resta el tiempo dentro del callback de eventos, aunque
-  queda la pequeña sobrecarga de invocarlo y medirlo. Usar `--headless` para comparar.
-- `recorrido_ms`: recorrido completo, con selección de tiles y medición;
-  en modo ventana incluye eventos (y posibles redibujados del fondo). Excluye
-  inicialización, presentación de la escena final, escritura y espera del usuario.
-- `escritura_ms`: apertura, escritura y cierre del PPM, solo si se solicita.
-  No fuerza persistencia física con fsync.
+| Métrica | Cálculo |
+| --- | --- |
+| Tiempo total de ejecución del modelo | Tiempo de pared con `steady_clock`, desde el inicio del modelo hasta terminar todos los tiles y sus hilos |
+| Speedup respecto a sequential | `S = T_secuencial / T_modelo` para la misma carga |
+| Eficiencia paralela | `E = S / P`; también se muestra `100 × E` en porcentaje |
+| Escalabilidad | Comparación de tiempo, speedup y eficiencia al variar P con la misma escena y tiles |
 
-Estas comprobaciones funcionales no sustituyen las mediciones del enunciado en
-hardware físico, sus repeticiones y su análisis estadístico.
+La ejecución normal muestra `tiempo_total_ms`. Para obtener también speedup y
+eficiencia, el modo benchmark ejecuta la referencia secuencial y el modelo elegido
+en cada repetición. No abre ventana ni guarda imágenes; construye la escena,
+cámara y buffers antes de medir. El tiempo incluye planificación, creación de
+hilos, esperas simuladas y finalización dentro del modelo. Las comparaciones de
+píxeles, escritura CSV y presentación quedan fuera del intervalo.
 
+```sh
+# Prueba rápida de las métricas de fine (P = 1 hilo real)
+make benchmark ARGS="--model fine --quantum 1 --samples 8 --repetitions 5 --metrics-output results/fine.csv"
+
+# Escalabilidad coarse, misma imagen y tiles, P = 1, 2, 4, 8
+make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 200 --metrics-output results/coarse.csv"
+
+# Una sola configuración coarse, P = 4
+make benchmark ARGS="--model coarse --threads 4 --samples 8 --repetitions 200"
+```
+
+`--benchmark` activa `--headless` automáticamente. También puede usarse dentro de
+`make run ARGS="--benchmark ..."` para obtener solo CSV. `make benchmark` genera
+también las gráficas al terminar y requiere Matplotlib. Por defecto hace 200 repeticiones; se admiten
+al menos dos para pruebas cortas. `--thread-counts` es un barrido exclusivo de
+coarse y no se combina con `--threads`. P no puede superar la cantidad de tiles.
+Cambiar P conserva el tamaño y la cantidad de tiles, así se estudia escalabilidad
+con carga fija. Fine usa P = 1: sus tareas lógicas no se cuentan como hilos
+reales para inflar el denominador de la eficiencia.
+
+Se exportan dos archivos:
+
+- `results/coarse.csv`: cada ejecución, configuración, tiempo total, referencia
+  secuencial, speedup y eficiencia. Se valida que las imágenes sean idénticas.
+- `results/coarse-summary.csv`: una fila por configuración con medias,
+  desviaciones estándar muestrales e intervalos aproximados de confianza del 95 %.
+
+El resumen promedia los speedups calculados en cada par de ejecuciones; no es
+el cociente de las medias de tiempos. Cada configuración tiene un calentamiento
+no exportado y se alterna el orden secuencial/modelo para reducir sesgos de orden.
+El IC de la media usa `media ± 1.96 × desviación / sqrt(n)`; con pocas repeticiones
+es un dato diagnóstico. No describe el rango de todas las ejecuciones. Una
+sola configuración permite calcular speedup y eficiencia, pero no una curva de
+escalabilidad. La eficiencia puede superar 1 por ruido o efectos de caché y no
+se recorta artificialmente; no es el porcentaje de uso de CPU.
+
+Los intervalos y las esperas de coarse forman parte de su configuración y deben
+mantenerse fijos al comparar P. Las mediciones finales deben hacerse en hardware
+físico, con la justificación de repeticiones y análisis que pide el enunciado.
+El perfilado con perf/VTune y los modelos SMT y CMP siguen pendientes.
+
+### Gráficas y repeticiones
+
+El renderizador sigue siendo C++; un script Python con Matplotlib analiza los
+CSV después de medir, sin añadir trabajo al intervalo del benchmark. En Ubuntu:
+
+```sh
+sudo apt install python3-matplotlib
+
+# Graficar los resultados que ya tienes, sin volver a renderizar
+make plots
+
+# Medir 200 veces por configuración y generar las gráficas automáticamente
+make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 200"
+```
+
+`make benchmark` guarda las gráficas en `results/plots/<nombre-del-csv>/`:
+por ejemplo, `results/plots/fine/`, `results/plots/coarse/` o
+`results/plots/metrics/`. Así se conservan las gráficas de ambos modelos.
+`make plots` permite volver a graficar CSV existentes o compararlos juntos y
+guarda esa comparación en `results/plots/`. `make benchmark-plots` sigue
+disponible como alias de `make benchmark`. Se generan:
+
+- Boxplots e histogramas de tiempo, speedup y eficiencia: usan todas las
+  iteraciones de cada configuración, incluidos los valores atípicos.
+- Boxplot de los tiempos de la referencia secuencial de cada comparación.
+- `escalabilidad.png`: medias con barras del IC95 aproximado al variar P.
+- `reporte.md`: cantidad de repeticiones, medias, desviaciones, intervalos y
+  justificación inicial del número de ejecuciones. Indica si n es menor que 200.
+
+Para comparar fine y coarse, usa archivos distintos y la misma carga:
+
+```sh
+make benchmark ARGS="--model fine --quantum 1 --samples 8 --repetitions 200 --metrics-output results/fine.csv"
+make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 200 --metrics-output results/coarse.csv"
+make plots CSV="results/*.csv"
+```
+
+El script omite los CSV de resumen y rechaza cargas diferentes (resolución,
+tiles, muestras, rebotes o semilla) para evitar comparaciones engañosas. Si se
+incluyen varios archivos de la misma configuración, sus iteraciones se agrupan;
+no incluyas copias de las mismas mediciones. K y los bloqueos distinguen políticas.
+Una única configuración produce un punto, no demuestra escalabilidad por sí sola.
+Puedes cambiar `CSV`, `PLOT_DIR` y `PYTHON` en los comandos Make. Los archivos CSV
+y las gráficas se sobrescriben al volver a usar la misma ruta: conserva campañas
+distintas en rutas diferentes.
+
+Se toman **200 repeticiones por configuración** como punto de partida para
+cumplir la referencia del enunciado y estimar variabilidad y precisión. El error
+estándar disminuye como `desviación / sqrt(n)` bajo independencia. Para justificar
+la cantidad final, evalúa el margen relativo del IC95 (`margen / media`) de tiempo
+y speedup; si resulta demasiado grande para tu comparación, aumenta n. No basta
+con alcanzar 200 para garantizar una conclusión: documenta hardware, carga del
+equipo y posibles cambios térmicos o correlación entre ejecuciones.
+Las pruebas cortas con `--repetitions 5` generan las mismas gráficas, pero el
+reporte las marca como pendientes de la campaña final.
+
+## Verificación
+
+```sh
+make test
+make test-plots
+make test-display
+
+# Comparar exactamente las imágenes, con bordes parciales
+./build/sdl/raytracer --headless --width 641 --height 479 --samples 2 --model sequential --output build/seq.ppm
+./build/sdl/raytracer --headless --width 641 --height 479 --samples 2 --model fine --quantum 7 --output build/fine.ppm
+./build/sdl/raytracer --headless --width 641 --height 479 --samples 2 --model coarse --output build/coarse.ppm
+cmp build/seq.ppm build/fine.ppm
+cmp build/seq.ppm build/coarse.ppm
+```
+
+Las pruebas verifican imagen idéntica, tiles de borde, turnos round-robin,
+reanudación después de bloqueos, notificación de tiles desde el principal y
+cancelación durante esperas largas. El controlador SDL `dummy` permite probar
+eventos y presentación sin un escritorio real.
+Los resultados y las limitaciones del entorno están en [docs/validacion.md](docs/validacion.md).
 
 ## Referencias y asistencia
 
@@ -234,20 +397,21 @@ y los parámetros de presentación con
 ## Dependencias entre módulos
 
 Cada `.hpp` declara la interfaz y su `.cpp` implementa el comportamiento.
-`main` conecta las opciones, la presentación y la ejecución secuencial.
+`main` conecta las opciones, la presentación y el modelo de ejecución elegido.
 `sequential` utiliza `raytracer`, que calcula píxeles a partir de la escena,
 la cámara y la geometría y los escribe en `image` según los límites de `tiles`.
 `display` solo necesita imagen y tiles; el núcleo no incluye SDL.
 
 `RenderHooks` permite notificar tiles terminados y consultar cancelación sin
 acoplar el recorrido a una ventana. Sin callbacks, funciona sin interfaz gráfica.
-Los comentarios `FUTURA PARALELIZACIÓN` están en `sequential.cpp` (asignación)
-y `raytracer.cpp` (cálculo). La versión actual sigue siendo secuencial.
+`fine.cpp` planifica tareas de tiles y `coarse.cpp` asigna los tiles a hilos.
+Los comentarios de estos módulos señalan el reparto, el progreso y la sincronización.
+`sequential.cpp` conserva el recorrido de referencia para comparar.
 
 La ampliación visual implementa esos fundamentos con nuestros módulos, un bucle
 iterativo de rebotes y muestras locales por píxel. No se importó el código fuente
 del libro. Es una ampliación del alcance inicial solicitada para mejorar la escena;
-el proyecto conserva su ejecución secuencial y la partición común para futuros modelos.
+el proyecto conserva su referencia secuencial y la partición común entre modelos.
 
 ## Tiles y avance respecto a la propuesta
 

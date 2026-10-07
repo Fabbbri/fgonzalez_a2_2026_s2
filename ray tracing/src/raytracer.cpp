@@ -2,6 +2,8 @@
 #include "transport.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <stdexcept>
 
 namespace rt {
 // FUTURA PARALELIZACIÓN (2): cálculo independiente que compartirán las tareas.
@@ -33,24 +35,35 @@ Pixel render_pixel(const Scene& scene, const Camera& camera, int x, int y) {
 }
 bool render_tile(const Scene& scene, const Camera& camera, Image& image, Tile tile,
                  const std::function<bool()>& keep_running) {
-    // FUTURA PARALELIZACIÓN (3): este es el trabajo de una región asignada.
-    // Tiles disjuntos escriben píxeles distintos del buffer, que ya está reservado;
-    // no requieren un mutex por píxel si no se redimensiona ni se lee antes de tiempo.
-    // Para fine-grained habrá que conservar el próximo píxel y retornar tras K;
-    // K cuenta píxeles COMPLETOS, con todas sus muestras y rebotes. Bastará guardar
-    // el índice del siguiente píxel; un píxel terminado no necesita conservar su RNG.
-    // hoy estos bucles terminan el tile completo y no guardan progreso reanudable.
-    // El callback actual llama a SDL: no trasladarlo a hilos trabajadores.
-    for (int y = tile.y0; y < tile.y1; ++y) {
-        for (int x = tile.x0; x < tile.x1; ++x) {
-            // Cada píxel tiene muchas muestras: atender eventos antes de cada uno.
-            if (keep_running && !keep_running()) return false;
-            // TRABAJO QUE EJECUTARÁ CADA TRABAJADOR: calcular y guardar un píxel
-            // de su tile. El reparto ocurre en el recorrido de sequential.cpp;
-            // dentro de cada tile se conserva este orden de filas y columnas.
-            image.at(x, y) = render_pixel(scene, camera, x, y);
-        }
+    TileProgress progress{tile};
+    return render_tile_step(scene, camera, image, progress,
+                            std::numeric_limits<std::size_t>::max(), keep_running);
+}
+std::size_t tile_pixels(Tile tile) {
+    if (tile.x1 <= tile.x0 || tile.y1 <= tile.y0)
+        throw std::invalid_argument("Tile vacío o invertido");
+    return static_cast<std::size_t>(tile.x1 - tile.x0) * (tile.y1 - tile.y0);
+}
+bool render_tile_step(const Scene& scene, const Camera& camera, Image& image,
+                      TileProgress& progress, std::size_t budget,
+                      const std::function<bool()>& keep_running) {
+    if (budget == 0) throw std::invalid_argument("K debe ser positivo");
+    const Tile tile = progress.tile;
+    const std::size_t total = tile_pixels(tile);
+    if (tile.x0 < 0 || tile.y0 < 0 || tile.x1 > image.width() ||
+        tile.y1 > image.height() || progress.next > total)
+        throw std::invalid_argument("Tile o progreso fuera de imagen");
+    const std::size_t end = progress.next + std::min(budget, total - progress.next);
+    const std::size_t width = tile.x1 - tile.x0;
+    // PARTE QUE EJECUTA CADA TAREA: región exclusiva, muestras locales por píxel.
+    // El ancho REAL permite reanudar también los tiles recortados de los bordes.
+    while (progress.next < end) {
+        if (keep_running && !keep_running()) return false;
+        const int x = tile.x0 + static_cast<int>(progress.next % width);
+        const int y = tile.y0 + static_cast<int>(progress.next / width);
+        image.at(x, y) = render_pixel(scene, camera, x, y);
+        ++progress.next; // Solo guardar progreso después del píxel completo.
     }
-    return true;
+    return progress.next == total;
 }
 } // namespace rt

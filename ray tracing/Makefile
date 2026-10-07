@@ -1,27 +1,43 @@
 CXX ?= g++
 CPPFLAGS += -Isrc
 CXXFLAGS ?= -O2 -g -std=c++17 -Wall -Wextra -Wpedantic
+CXXFLAGS += -pthread
 WITH_SDL ?= 1
 SDL_CFLAGS ?= $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL_LIBS ?= $(shell pkg-config --libs sdl2 2>/dev/null)
 BUILD := build/$(if $(filter 1,$(WITH_SDL)),sdl,headless)
-CORE_SOURCES := src/geometry.cpp src/scene.cpp src/camera.cpp src/image.cpp src/tiles.cpp src/transport.cpp src/raytracer.cpp src/sequential.cpp
-APP_SOURCES := src/main.cpp src/options.cpp src/display.cpp $(CORE_SOURCES)
+CORE_SOURCES := src/geometry.cpp src/scene.cpp src/camera.cpp src/image.cpp src/tiles.cpp src/transport.cpp src/raytracer.cpp src/sequential.cpp src/fine.cpp src/coarse.cpp src/metrics.cpp
+APP_SOURCES := src/main.cpp src/options.cpp src/display.cpp src/benchmark.cpp $(CORE_SOURCES)
 APP_OBJECTS := $(patsubst src/%.cpp,$(BUILD)/%.o,$(APP_SOURCES))
 HEADERS := $(wildcard src/*.hpp)
+PYTHON ?= python3
+CSV ?= results/metrics.csv
+PLOT_DIR ?= results/plots
 
 ifeq ($(WITH_SDL),1)
 CPPFLAGS += -DRT_WITH_SDL $(SDL_CFLAGS)
 LDLIBS += $(SDL_LIBS)
 endif
 
-.PHONY: all build run test test-display clean
+.PHONY: all build run benchmark plots benchmark-plots test test-plots test-display clean
 all: $(BUILD)/raytracer
 
 build: all
 
 run: $(BUILD)/raytracer
 	./$(BUILD)/raytracer $(ARGS)
+
+benchmark: $(BUILD)/raytracer
+	$(PYTHON) scripts/benchmark_plots.py --csv "$(CSV)" --plot-dir "$(PLOT_DIR)" ./$(BUILD)/raytracer $(ARGS)
+
+plots:
+	$(PYTHON) scripts/plot_metrics.py "$(CSV)" --output-dir "$(PLOT_DIR)"
+
+test-plots:
+	$(PYTHON) tests/test_plot_metrics.py
+
+# Compatibilidad: benchmark ya mide y grafica, fuera del intervalo medido.
+benchmark-plots: benchmark
 
 $(BUILD)/raytracer: $(APP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
@@ -30,9 +46,9 @@ $(BUILD)/%.o: src/%.cpp
 	@mkdir -p $(BUILD)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-build/tests: tests/test_core.cpp $(CORE_SOURCES) $(HEADERS)
+build/tests: tests/test_execution.cpp src/options.cpp src/benchmark.cpp $(CORE_SOURCES) $(HEADERS)
 	@mkdir -p build
-	$(CXX) -Isrc $(CXXFLAGS) tests/test_core.cpp $(CORE_SOURCES) -o $@
+	$(CXX) -Isrc $(CXXFLAGS) tests/test_execution.cpp src/options.cpp src/benchmark.cpp $(CORE_SOURCES) -o $@
 
 test: build/tests
 	./build/tests

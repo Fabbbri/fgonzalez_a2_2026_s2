@@ -6,19 +6,22 @@
 
 namespace rt {
 // El recorrido no depende de SDL: la aplicación proporciona acciones opcionales.
-// FUTURA PARALELIZACIÓN: estos callbacks se ejecutan hoy en el hilo principal.
-// Una versión con trabajadores deberá comunicar cancelación/finalización de
-// forma sincronizada; no llamar a SDL desde ellos ni compartir contadores sin protección.
+// Todos los modelos invocan estos callbacks en el hilo que llamó al renderizador.
+// Coarse comunica cancelación y finalización con atomics; sus trabajadores no usan SDL.
+// tile_completed permite leer solo la región terminada; otros tiles pueden seguir escribiendo.
 struct RenderHooks {
     std::function<bool()> keep_running;
     std::function<void(const Tile&)> tile_completed;
 };
 struct RenderStats {
-    // En paralelo, acumular estadísticas por trabajador y combinarlas al terminar.
-    // La suma del tiempo de trabajadores no equivale al tiempo total de pared.
+    // render_time: cálculo acumulado para sequential; pared del modelo para fine/coarse.
+    // loop_time es el tiempo de pared comparable entre modelos en modo headless.
     std::size_t completed = 0;
     std::chrono::steady_clock::duration render_time{};
     std::chrono::steady_clock::duration loop_time{};
+    std::size_t workers = 1;
+    std::size_t quanta = 0; // Turnos cooperativos de fine-grained.
+    std::size_t blocks = 0; // Esperas simuladas de coarse-grained.
 };
 // Conservar esta función como referencia sin paralelismo. Los nuevos modelos
 // tendrán su propia política y reutilizarán escena, cámara, tiles y cálculo de píxel.

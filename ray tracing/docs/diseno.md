@@ -1,10 +1,10 @@
 # Diseño del ray tracing por tiles
 
-La base actual renderiza en un solo hilo de CPU. La imagen se divide en tiles,
-pero `render_sequential` termina uno antes de comenzar el siguiente y SDL2
-presenta el resultado al finalizar. Fine-grained, coarse-grained, SMT y CMP son
-diseños para etapas posteriores: todos usarán la **misma escena, cámara, imagen y
-partición en tiles**. Lo que cambiará será la política de ejecución.
+La referencia secuencial termina un tile antes de comenzar el siguiente.
+Fine-grained y coarse-grained ya están implementados; SMT y CMP conservan sus
+diseños para etapas posteriores. Todos comparten la **misma escena, cámara,
+imagen y partición en tiles**. Cambia la política de ejecución y SDL2 presenta
+el resultado completo al finalizar.
 
 ![Resultado del ray tracing por tiles](images/render.png)
 
@@ -39,7 +39,7 @@ flowchart TD
     G --> H[Presentar o guardar imagen completa]
 ```
 
-La parte que se sustituirá está en el recorrido de `sequential.cpp`. El cálculo
+Los modelos de `fine.cpp` y `coarse.cpp` sustituyen el reparto de `sequential.cpp`. El cálculo
 de `render_pixel` y la geometría son comunes a los modelos. En la base actual,
 `render_tile` termina el rectángulo completo; durante el cálculo la ventana
 permanece negra y receptiva. En los modelos con hilos, la presentación y los
@@ -61,10 +61,10 @@ Para reanudar, el ancho real del tile es `x1 - x0`. A partir de `p` se obtiene
 `x = x0 + p % ancho` y `y = y0 + p / ancho`. Así también funcionan los tiles
 recortados de los bordes. El turno acaba **entre** píxeles: no se interrumpe una
 muestra ni un rebote, y no hay que guardar el estado interno de un rayo.
-Actualmente `render_tile` siempre llega al final; hará falta una variante que
-acepte `p` y el límite K. Por ejemplo, con `K = 64`, la ronda procesa los
+`render_tile_step` ya acepta el estado `TileProgress` y el límite K.
+`fine.cpp` mantiene una cola circular de tareas pendientes. Por ejemplo, con dos tiles activos y `K = 64`, la ronda procesa los
 píxeles 0–63 del tile 0, luego 0–63 del tile 1, y vuelve al tile 0 para sus
-píxeles 64–127.
+píxeles 64–127. Con 300 tiles activos visita los 300 antes de repetir el primero.
 
 ```mermaid
 flowchart TD
@@ -80,9 +80,9 @@ flowchart TD
     C -- No --> I[Imagen completa: presentar o guardar]
 ```
 
-Este intercalado puede implementarse con **un solo hilo del sistema**. En ese
-caso simula los cambios frecuentes de tarea, pero no calcula dos tiles a la
-vez ni ofrece speedup por varios núcleos. Si se añadieran trabajadores, habría
+Este intercalado está implementado con **un solo hilo del sistema**. Simula
+los cambios frecuentes de tarea, pero no calcula dos tiles a la vez ni ofrece
+speedup por varios núcleos. Si se añadieran trabajadores, habría
 que documentar esa decisión como otra configuración del modelo.
 
 ## Coarse-grained: hilos que avanzan hasta un bloqueo
@@ -96,8 +96,7 @@ obligatorio cada K píxeles ni una cola round-robin de tareas.
 Un temporizador puede marcar cuándo toca el evento y una espera suspender
 al hilo. La marca se comprobará después de terminar el píxel actual para
 conservar el resultado. El temporizador **dispara un bloqueo**, no representa
-un quantum
-fine-grained. Los hilos reales también pueden ser desplanificados por el sistema
+un quantum fine-grained. Los hilos reales también pueden ser desplanificados por el sistema
 operativo en cualquier momento; el programa no puede garantizar cambios de
 contexto exclusivamente durante los bloqueos simulados.
 
@@ -116,12 +115,14 @@ flowchart TD
     I --> J[Imagen completa: presentar o guardar]
 ```
 
-Con la configuración inicial serían **300 hilos para 300 tiles**. Eso sigue
+La implementación crea **300 hilos para 300 tiles** con la configuración inicial. Eso sigue
 literalmente la propuesta, aunque crear tantos hilos puede costar más que el
-trabajo de tiles pequeños y aumentar la contención. Una alternativa futura sería
-usar `P` trabajadores que tomen varios tiles; conservaría la partición espacial,
-pero sería un cambio explícito respecto al modelo de un hilo por tile del LaTeX.
-Todavía no se ha elegido ni implementado esa alternativa.
+trabajo de tiles pequeños y aumentar la contención. `--threads P` activa una
+variante implementada con P trabajadores: un índice atómico asigna el siguiente
+tile disponible a cada uno. El trabajador conserva el tile mientras está bloqueado.
+Esta extensión permite medir escalabilidad manteniendo la misma imagen y partición;
+es un cambio explícito respecto al modelo de un hilo por tile de la propuesta.
+El comportamiento predeterminado conserva la asignación Ti a Bi.
 
 | Aspecto | Fine-grained | Coarse-grained |
 | --- | --- | --- |
@@ -228,6 +229,27 @@ cancelación entre píxeles sin invocar callbacks de SDL desde trabajadores.
 | Reparto de tiles | Siguiente índice atómico; un tile completo por toma | Siguiente índice atómico; un tile completo por toma |
 | Comprobación clave | Comparar SMT habilitado y deshabilitado en BIOS/UEFI | Escalar `P` hasta `C` núcleos físicos |
 
+## Parámetros implementados y sincronización
+
+`--model sequential|fine|coarse` selecciona la política; sequential sigue siendo
+el valor predeterminado. `--quantum` controla K (64 por defecto).
+`--block-interval-ms` fija el tiempo de pared desde la última reanudación para
+provocar el siguiente bloqueo (10 ms); `--block-duration-ms` fija cuánto espera
+el hilo (1 ms). El intervalo 0 permite ejecutar coarse sin bloqueos. Estos
+valores son configurables y todavía no están optimizados experimentalmente.
+
+Coarse reutiliza `render_tile`; sus bucles mantienen el siguiente píxel mientras
+el callback interno espera. La escena y cámara son inmutables y cada hilo
+escribe su tile exclusivo. Flags atómicos publican los tiles terminados y una
+señal de cancelación. Los callbacks de la aplicación permanecen en el principal;
+la espera usa una variable de condición para despertar inmediatamente al cancelar.
+Se hace `join` de todos los hilos antes de devolver el buffer o propagar un error.
+
+`tiempo_total_ms` mide tiempo de pared en los tres modelos y es la referencia para
+comparar en modo sin ventana. Coarse incluye creación de hilos, coordinación,
+esperas simuladas y finalización; no suma los tiempos individuales de los hilos.
+La presentación y la escritura se realizan después del intervalo medido.
+
 ## Variables que afectan el paralelismo
 
 Conviene distinguir **más trabajo disponible** de **más ejecución simultánea**.
@@ -268,3 +290,39 @@ de pared desde el comienzo del trabajo hasta que terminen todos los tiles; no
 se sumarán tiempos de hilos. La ventana y la escritura PPM quedarán fuera de
 ese intervalo, como en la medición sin ventana de la base actual.
 
+## Métricas y comparación con carga fija
+
+El enunciado está disponible en [proyecto.md](proyecto.md), y la propuesta original
+en [propuesta.tex](propuesta.tex). El modo `--benchmark` repite una comparación
+pareada contra sequential, verifica igualdad de la imagen y exporta CSV por
+repetición y por configuración. Por defecto realiza 200 repeticiones; una prueba
+corta puede reducirlas explícitamente. El calentamiento y la escritura no se miden.
+
+Para cada par se calcula `S = Tseq / Tmodelo` y `E = S / P`, usando tiempo de
+pared y trabajadores reales. Fine usa P = 1. Coarse con `--thread-counts 1,2,4,8`
+repite la misma carga para cada P y produce los puntos de la escalabilidad;
+los tamaños de tiles permanecen fijos. Variar tiles para cambiar el número de
+hilos mezclaría dos variables distintas en el experimento.
+
+El resumen incluye medias, desviación estándar muestral e IC95 normal aproximado
+de la media, con margen `1.96 × desviación / sqrt(n)`. Los speedups resumidos son
+medias de los cocientes pareados. Las esperas simuladas están incluidas en el
+tiempo de coarse; deben mantenerse fijas durante el barrido. El modo benchmark
+no sustituye el perfilado ni el análisis de convergencia requeridos para el
+informe experimental.
+
+`scripts/plot_metrics.py` utiliza las iteraciones crudas para generar boxplots e
+histogramas por modelo, cantidad de trabajadores y política, sin eliminar valores
+atípicos. La referencia secuencial permanece explícita: coarse con P = 1 también
+tiene planificación y no sustituye a sequential como base. Las curvas de
+escalabilidad muestran medias y barras del IC95 aproximado; las cargas distintas
+se analizan por separado. `make benchmark` encadena medición y análisis,
+siempre en ese orden. Las gráficas y su escritura quedan fuera del tiempo medido.
+
+El reporte generado documenta n y una justificación inicial de 200 repeticiones:
+caracterizar la variación y estimar el error de la media con la referencia mínima
+del enunciado. Para la campaña final se revisará el margen relativo del intervalo
+y se aumentará n si la incertidumbre impide comparar configuraciones. Esta
+decisión y las condiciones del hardware deben justificarse en el informe;
+ni 200 ejecuciones ni un IC estrecho descartan por sí solos sesgos térmicos,
+correlación o interferencia de otros procesos.

@@ -17,13 +17,12 @@ RenderStats render_sequential(const Scene& scene, const Camera& camera, Image& i
     // PARTE QUE VAMOS A PARALELIZAR: el recorrido de tiles de este for.
     // Ejemplo: un trabajador calcula el tile 0 mientras otro calcula el tile 1.
     // Cada tile conserva su región exclusiva de píxeles en la misma imagen.
-    // FUTURA PARALELIZACIÓN (1): aquí cambiará la asignación de tiles.
-    // Hoy se termina un tile antes de comenzar el siguiente. Los futuros modelos
-    // con hilos repartirán tiles; fine-grained intercalará K píxeles por tarea
-    // guardando progreso (intercalado no implica paralelismo entre núcleos).
+    // Esta referencia termina un tile antes de comenzar el siguiente.
+    // fine.cpp intercala K píxeles por tarea; coarse.cpp crea un hilo por tile.
+    // El intercalado cooperativo de fine no implica paralelismo entre núcleos.
     // No paralelizar este for sin coordinar estadísticas y notificaciones.
     // Conservar este recorrido como baseline; implementar el reparto en otro
-    // modelo. Coarse-grained conservará el progreso ante bloqueos simulados;
+    // modelo. Coarse-grained conserva el progreso ante bloqueos simulados;
     // CMP/SMT se evaluarán con sus respectivos trabajadores/configuraciones.
     for (std::size_t i = 0; i < tiles.size(); ++i) {
         const Tile tile = tiles.at(i);

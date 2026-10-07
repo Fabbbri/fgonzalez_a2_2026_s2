@@ -138,6 +138,8 @@ temp/
 .tmp/
 .temp/
 .cache/
+__pycache__/
+*.pyc
 
 # Archives created for submission or distribution
 *.tar

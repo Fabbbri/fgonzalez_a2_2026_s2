@@ -1,6 +1,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include "execution.hpp"
 
 namespace rt {
 struct Options {
@@ -8,6 +10,14 @@ struct Options {
     int samples = 128, max_bounces = 12;
     bool headless = false, help = false;
     std::string output;
+    ExecutionModel model = ExecutionModel::sequential;
+    int quantum = 64;
+    int block_interval_ms = 10, block_duration_ms = 1;
+    int threads = 0; // 0 interno: un hilo por tile. CLI acepta P positivo.
+    bool benchmark = false;
+    int repetitions = 200;
+    std::vector<int> thread_counts;
+    std::string metrics_output = "results/metrics.csv";
 };
 // Interpreta y valida los argumentos; no inicializa escena ni ventana.
 Options parse_options(int argc, char** argv);
