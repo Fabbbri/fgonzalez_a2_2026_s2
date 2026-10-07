@@ -9,6 +9,8 @@ const char* model_name(ExecutionModel model) {
     case ExecutionModel::sequential: return "sequential";
     case ExecutionModel::fine: return "fine";
     case ExecutionModel::coarse: return "coarse";
+    case ExecutionModel::smt: return "smt";
+    case ExecutionModel::cmp: return "cmp";
     }
     throw std::invalid_argument("Modelo inválido");
 }

@@ -19,6 +19,7 @@ Options parse_options(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string flag = argv[i];
         if (flag == "--headless") options.headless = true;
+        else if (flag == "--cpu-info") options.cpu_info = true;
         else if (flag == "--benchmark") options.benchmark = true;
         else if (flag == "--help" || flag == "-h") options.help = true;
         else {
@@ -34,7 +35,9 @@ Options parse_options(int argc, char** argv) {
                 if (value == "sequential") options.model = ExecutionModel::sequential;
                 else if (value == "fine") options.model = ExecutionModel::fine;
                 else if (value == "coarse") options.model = ExecutionModel::coarse;
-                else throw std::invalid_argument("Modelos: sequential, fine, coarse");
+                else if (value == "smt") options.model = ExecutionModel::smt;
+                else if (value == "cmp") options.model = ExecutionModel::cmp;
+                else throw std::invalid_argument("Modelos: sequential, fine, coarse, smt, cmp");
             } else if (flag == "--thread-counts") {
                 options.thread_counts.clear();
                 std::size_t begin = 0;
@@ -70,8 +73,9 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("Ancho excesivo para el pitch RGB");
     if (options.samples > 4096 || options.max_bounces > 64)
         throw std::invalid_argument("Máximos: --samples 4096 y --bounces 64");
-    if (options.model != ExecutionModel::coarse && (options.threads || !options.thread_counts.empty()))
-        throw std::invalid_argument("--threads y --thread-counts requieren el modelo coarse");
+    if ((options.model == ExecutionModel::sequential || options.model == ExecutionModel::fine) &&
+        (options.threads || !options.thread_counts.empty()))
+        throw std::invalid_argument("--threads y --thread-counts requieren coarse, smt o cmp");
     if (!options.thread_counts.empty() && !options.benchmark)
         throw std::invalid_argument("--thread-counts requiere --benchmark");
     if (options.benchmark) {

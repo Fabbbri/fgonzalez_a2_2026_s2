@@ -23,16 +23,32 @@ int main(int argc, char** argv) {
             std::cout << "Uso: raytracer [--width W] [--height H] [--tile-size N]\n"
                          "                 [--tile-width W] [--tile-height H] [--headless]\n"
                          "                 [--samples N] [--bounces N] [--output imagen.ppm]\n"
-                         "                 [--model sequential|fine|coarse] [--quantum K]\n"
+                         "                 [--model sequential|fine|coarse|smt|cmp] [--quantum K]\n"
                          "                 [--block-interval-ms N] [--block-duration-ms N]\n"
                          "                 [--threads P] [--benchmark] [--repetitions N]\n"
                          "                 [--thread-counts 1,2,4,8] [--metrics-output archivo.csv]\n"
+                         "                 [--cpu-info]\n"
                          "Por defecto: 640x480, tiles 32x32, 128 muestras, 12 rebotes.\n"
                          "Modelo sequential; fine: K=64; coarse: intervalo=10 ms, espera=1 ms.\n"
                          "Coarse crea un hilo por tile. Intervalo 0 desactiva bloqueos.\n"
-                         "--threads limita coarse a P trabajadores. Benchmark usa headless y 200 repeticiones.\n"
+                         "--threads fija P en coarse, SMT o CMP; --thread-counts permite barrer P.\n"
+                         "CMP: un trabajador por núcleo físico. SMT: hilos lógicos o sobresuscripción.\n"
+                         "SMT/CMP detectan CPU y usan afinidad Linux. Benchmark: headless, 200 repeticiones.\n"
                          "La escena se muestra al terminar. Esc cierra la ventana.\n";
             return 0;
+        }
+        rt::CpuTopology topology;
+        if (options.cpu_info || (!options.benchmark &&
+            (options.model == rt::ExecutionModel::smt || options.model == rt::ExecutionModel::cmp))) {
+            topology = rt::detect_cpu_topology();
+            std::cout << "nucleos_fisicos_disponibles=" << topology.cores.size()
+                      << " cpus_logicas_disponibles=" << topology.logical_count()
+                      << " smt_activo_linux=" << topology.smt_active << '\n';
+            if (options.cpu_info) {
+                for (std::size_t i = 0; i < topology.cores.size(); ++i)
+                    std::cout << "nucleo=" << i << " cpus=" << rt::cpu_list(topology.cores[i]) << '\n';
+                return 0;
+            }
         }
         rt::Scene scene = rt::default_scene();
         scene.settings.samples = options.samples;
@@ -57,7 +73,7 @@ int main(int argc, char** argv) {
             // Atender eventos no implica mostrar el progreso del buffer.
         }
         // PLANIFICACIÓN POR TILES: misma imagen y cálculo, distinta ejecución.
-        // render_coarse espera (join) a todos sus hilos antes de devolver.
+        // Los modelos con trabajadores hacen join antes de devolver.
         rt::RenderStats stats;
         switch (options.model) {
         case rt::ExecutionModel::sequential:
@@ -69,6 +85,12 @@ int main(int argc, char** argv) {
         case rt::ExecutionModel::coarse:
             stats = rt::render_coarse(scene, camera, image, tiles,
                                      options.block_interval_ms, options.block_duration_ms, hooks, options.threads);
+            break;
+        case rt::ExecutionModel::smt:
+            stats = rt::render_smt(scene, camera, image, tiles, topology, options.threads, hooks);
+            break;
+        case rt::ExecutionModel::cmp:
+            stats = rt::render_cmp(scene, camera, image, tiles, topology, options.threads, hooks);
             break;
         }
         const auto completed = stats.completed;
@@ -91,6 +113,14 @@ int main(int argc, char** argv) {
             std::cout << "intervalo_bloqueo_ms=" << options.block_interval_ms
                       << " espera_bloqueo_ms=" << options.block_duration_ms
                       << " bloqueos=" << stats.blocks << '\n';
+        if (options.model == rt::ExecutionModel::smt || options.model == rt::ExecutionModel::cmp) {
+            const auto cpus = options.model == rt::ExecutionModel::cmp
+                ? rt::cmp_cpus(topology, tiles.size(), options.threads)
+                : rt::smt_cpus(topology, tiles.size(), options.threads);
+            std::cout << "afinidad_cpus=" << rt::cpu_list(cpus) << '\n';
+            if (options.model == rt::ExecutionModel::smt && cpus.size() <= topology.cores.size())
+                std::cout << "SMT: P <= C; esta configuración no sobresuscribe núcleos físicos.\n";
+        }
         std::cout << "tiempo_total_ms=" << milliseconds(loop_time) << '\n';
         // Nunca etiquetar una imagen parcial como resultado completo.
         if (complete && !options.output.empty()) {
