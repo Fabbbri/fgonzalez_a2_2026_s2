@@ -1,6 +1,6 @@
 #pragma once
 
-#include "raytracer.hpp"
+#include "render/raytracer.hpp"
 #include <chrono>
 #include <functional>
 

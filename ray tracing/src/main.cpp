@@ -1,7 +1,7 @@
-#include "display.hpp"
-#include "sequential.hpp"
-#include "options.hpp"
-#include "benchmark.hpp"
+#include "app/display.hpp"
+#include "execution/sequential.hpp"
+#include "app/options.hpp"
+#include "metrics/benchmark.hpp"
 
 #include <chrono>
 #include <iomanip>

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "camera.hpp"
-#include "image.hpp"
-#include "scene.hpp"
-#include "tiles.hpp"
+#include "scene/camera.hpp"
+#include "render/image.hpp"
+#include "scene/scene.hpp"
+#include "render/tiles.hpp"
 #include <functional>
 
 namespace rt {

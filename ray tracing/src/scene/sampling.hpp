@@ -1,6 +1,6 @@
 #pragma once
 
-#include "geometry.hpp"
+#include "scene/geometry.hpp"
 #include <algorithm>
 #include <cstdint>
 

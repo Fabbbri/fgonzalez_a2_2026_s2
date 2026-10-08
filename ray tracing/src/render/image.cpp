@@ -1,4 +1,4 @@
-#include "image.hpp"
+#include "render/image.hpp"
 #include <fstream>
 #include <stdexcept>
 

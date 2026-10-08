@@ -195,33 +195,50 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 
 ## Estructura y cálculo
 
+`src` está organizado por responsabilidad. `main.cpp` conecta los módulos;
+cada subcarpeta conserva sus interfaces `.hpp` y sus implementaciones `.cpp`:
+
+```text
+src/
+├── main.cpp
+├── app/        # Argumentos de consola y ventana SDL
+├── scene/      # Cámara, geometría, materiales, escena y muestreo
+├── render/     # Buffer de imagen, tiles y cálculo del ray tracing
+├── execution/  # Sequential, fine, coarse, SMT/CMP y afinidad CPU
+└── metrics/    # Benchmark, estadísticas y exportación CSV
+```
+
+Los modelos que recorren y reparten tiles están en `src/execution/`.
+Todos reutilizan el cálculo de `src/render/`; la organización no cambia
+los algoritmos ni los comandos de ejecución.
+
 | Archivo | Responsabilidad |
 | --- | --- |
-| `src/geometry.hpp`, `src/geometry.cpp` | Vectores, rayos, esferas e intersección geométrica |
-| `src/scene.hpp`, `src/scene.cpp` | Objetos, materiales, cielo y configuración de calidad |
-| `src/camera.hpp`, `src/camera.cpp` | Cámara y rayos hacia muestras dentro del píxel |
-| `src/image.hpp`, `src/image.cpp` | Buffer RGB y escritura PPM |
-| `src/tiles.hpp`, `src/tiles.cpp` | Partición rectangular y recorte de bordes |
-| `src/material.hpp` | Tipo de material, rugosidad e índice de refracción |
-| `src/sampling.hpp` | Muestras reproducibles por píxel sin estado global |
-| `src/transport.hpp`, `src/transport.cpp` | Rebotes, reflexión, refracción e iluminación del cielo |
-| `src/raytracer.hpp`, `src/raytracer.cpp` | Promedio de muestras, gamma y cálculo de un tile |
-| `src/sequential.hpp`, `src/sequential.cpp` | Base secuencial, tiempos y callbacks comunes |
-| `src/execution.hpp`, `src/fine.cpp`, `src/coarse.cpp` | Modelos, round-robin y reparto de tiles |
-| `src/parallel.cpp`, `src/cpu.hpp`, `src/cpu.cpp` | SMT/CMP, topología Linux y afinidad de trabajadores |
+| `src/scene/geometry.hpp`, `src/scene/geometry.cpp` | Vectores, rayos, esferas e intersección geométrica |
+| `src/scene/scene.hpp`, `src/scene/scene.cpp` | Objetos, materiales, cielo y configuración de calidad |
+| `src/scene/camera.hpp`, `src/scene/camera.cpp` | Cámara y rayos hacia muestras dentro del píxel |
+| `src/render/image.hpp`, `src/render/image.cpp` | Buffer RGB y escritura PPM |
+| `src/render/tiles.hpp`, `src/render/tiles.cpp` | Partición rectangular y recorte de bordes |
+| `src/scene/material.hpp` | Tipo de material, rugosidad e índice de refracción |
+| `src/scene/sampling.hpp` | Muestras reproducibles por píxel sin estado global |
+| `src/render/transport.hpp`, `src/render/transport.cpp` | Rebotes, reflexión, refracción e iluminación del cielo |
+| `src/render/raytracer.hpp`, `src/render/raytracer.cpp` | Promedio de muestras, gamma y cálculo de un tile |
+| `src/execution/sequential.hpp`, `src/execution/sequential.cpp` | Base secuencial, tiempos y callbacks comunes |
+| `src/execution/execution.hpp`, `src/execution/fine.cpp`, `src/execution/coarse.cpp` | Modelos, round-robin y reparto de tiles |
+| `src/execution/parallel.cpp`, `src/execution/cpu.hpp`, `src/execution/cpu.cpp` | SMT/CMP, topología Linux y afinidad de trabajadores |
 | `scripts/profile_perf.py` | Capturas perf por modelo/CPU, referencia secuencial, reportes y gráficas |
-| `src/metrics.hpp`, `src/metrics.cpp`, `src/benchmark.hpp`, `src/benchmark.cpp` | Métricas, repeticiones y exportación CSV |
+| `src/metrics/metrics.hpp`, `src/metrics/metrics.cpp`, `src/metrics/benchmark.hpp`, `src/metrics/benchmark.cpp` | Métricas, repeticiones y exportación CSV |
 | `tests/test_execution.cpp` | Igualdad de modelos, progreso, bloqueos y cancelación |
 | `tests/test_display.cpp` | Presentación y cierre SDL con controlador de prueba |
-| `src/options.hpp`, `src/options.cpp` | Configuración y validación de argumentos |
-| `src/display.hpp`, `src/display.cpp` | Recursos SDL2, presentación y eventos |
+| `src/app/options.hpp`, `src/app/options.cpp` | Configuración y validación de argumentos |
+| `src/app/display.hpp`, `src/app/display.cpp` | Recursos SDL2, presentación y eventos |
 | `src/main.cpp` | Conectar módulos, mostrar resultados y controlar la salida |
 | `docs/diseno.md` | Diagramas y variables para próximas etapas |
 
-La escena se modifica en `default_scene()` de `src/scene.cpp`. Las dimensiones
-predeterminadas están en `Options`, en `src/options.hpp`. La cámara está en
+La escena se modifica en `default_scene()` de `src/scene/scene.cpp`. Las dimensiones
+predeterminadas están en `Options`, en `src/app/options.hpp`. La cámara está en
 `(0, 0.45, 2.0)` y apunta a `(0, 0.25, -7.5)`; ambos vectores se ajustan en
-`src/main.cpp`. El campo de visión vertical es de 36° y está en `src/camera.cpp`.
+`src/main.cpp`. El campo de visión vertical es de 36° y está en `src/scene/camera.cpp`.
 Cada muestra genera un rayo a una posición dentro del píxel, corrigiendo la
 relación ancho/alto y normalizando su dirección.
 
@@ -255,7 +272,7 @@ SDL recibe la imagen completa después de terminar todos los tiles y esperar los
 
 ## Cambiar o agregar esferas
 
-Edita `src/scene.cpp`, dentro de `default_scene()`. Las primeras llamadas a
+Edita `src/scene/scene.cpp`, dentro de `default_scene()`. Las primeras llamadas a
 `add_sphere(x, z, radio, color, material)` definen las tres esferas principales.
 Sus radios actuales son 1.0 (izquierda), 1.15 (cristal central) y 1.5 (metal
 derecha). Cambia el tercer argumento para modificar su tamaño; la altura se
@@ -317,16 +334,43 @@ cámara y buffers antes de medir. El tiempo incluye planificación, creación de
 hilos, esperas simuladas y finalización dentro del modelo. Las comparaciones de
 píxeles, escritura CSV y presentación quedan fuera del intervalo.
 
+### Ejecución rápida de los cuatro modelos
+
+Estos comandos hacen **cinco repeticiones por configuración**, sin ventana,
+y generan CSV, reportes y gráficas automáticamente. Todos comparan el modelo
+elegido contra **sequential con la misma carga**; no necesitas ejecutar la
+referencia aparte. Ejecutarlos desde la carpeta `ray tracing`.
+
 ```sh
-# Prueba rápida de las métricas de fine (P = 1 hilo real)
+# Fine: un hilo real, round-robin cada K = 1 píxel completo
 make benchmark ARGS="--model fine --quantum 1 --samples 8 --repetitions 5 --metrics-output results/fine.csv"
 
-# Escalabilidad coarse, misma imagen y tiles, P = 1, 2, 4, 8
-make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 200 --metrics-output results/coarse.csv"
+# Coarse: barrido de 1, 2, 4 y 8 trabajadores
+make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 5 --metrics-output results/coarse.csv"
 
-# Una sola configuración coarse, P = 4
-make benchmark ARGS="--model coarse --threads 4 --samples 8 --repetitions 200"
+# CMP: trabajadores en núcleos físicos distintos
+make benchmark ARGS="--model cmp --thread-counts 1,2,4,8 --samples 8 --repetitions 5 --metrics-output results/cmp.csv"
+
+# SMT: comparar 8 y 12 trabajadores
+make benchmark ARGS="--model smt --thread-counts 8,12 --samples 8 --repetitions 5 --metrics-output results/smt.csv"
+
+# Comparar todos los CSV anteriores en las mismas gráficas
+make plots CSV="results/*.csv"
 ```
+
+Las listas anteriores son un ejemplo para un equipo de **8 núcleos físicos y
+12 CPUs lógicas**. Consulta `make run ARGS="--cpu-info"` y ajústalas si tu equipo
+es distinto; CMP no permite P mayor que los núcleos físicos disponibles.
+Para comparar políticas con igual cantidad de trabajadores, coarse, CMP y SMT
+incluyen P = 8. Cambiar P dentro de un modelo estudia escalabilidad, conservando
+la misma imagen y los mismos tiles. Fine usa un hilo real y permite variar K.
+`--samples 8` son ocho muestras por píxel, no ocho repeticiones del experimento.
+
+Para la campaña final, sustituye `--repetitions 5` por `--repetitions 200` en
+cada comando. Mantén iguales escena, resolución, tiles, muestras, rebotes y
+semilla entre modelos. Las gráficas individuales quedan en
+`results/plots/fine/`, `coarse/`, `cmp/` y `smt/`; la comparación conjunta se
+guarda en `results/plots/`.
 
 `--benchmark` activa `--headless` automáticamente. También puede usarse dentro de
 `make run ARGS="--benchmark ..."` para obtener solo CSV. `make benchmark` genera
@@ -366,8 +410,25 @@ Para observar ciclos, instrucciones, IPC, fallos de caché y cambios de contexto
 conservando una referencia secuencial y gráficas por evento:
 
 ```sh
+# Cada comando incluye cinco perfiles del modelo y cinco de sequential
+make profile ARGS="--model fine --quantum 1 --samples 8" PROFILE_REPETITIONS=5
+make profile ARGS="--model coarse --threads 4 --samples 8" PROFILE_REPETITIONS=5
 make profile ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
 make profile ARGS="--model cmp --threads 4 --samples 8" PROFILE_REPETITIONS=5
+```
+
+Opciones adicionales de perfilado:
+
+```sh
+# Contadores separados por CPU lógica; incluye otras tareas del sistema
+make profile PROFILE_SCOPE=cpu ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
+
+# Si Linux deniega acceso a los contadores y tienes permiso de administrador
+make profile PERF="sudo perf" ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
+
+# Regenerar gráficas de una captura existente, sin volver a perfilar
+# Sustituye nombre-de-campaña por la carpeta creada en results/perf/
+make profile-plots PROFILE_CAPTURE=results/perf/nombre-de-campaña
 ```
 
 Ajusta P a tu topología (`make run ARGS="--cpu-info"`). Cada comando perfila el
@@ -401,20 +462,31 @@ por ejemplo, `results/plots/fine/`, `results/plots/coarse/`, `results/plots/smt/
 guarda esa comparación en `results/plots/`. `make benchmark-plots` sigue
 disponible como alias de `make benchmark`. Se generan:
 
+- `comparacion-tiempo.png`: tiempo medio en segundos, junto con la referencia
+  secuencial de cada comparación. Menos tiempo es mejor.
+- `comparacion-speedup.png`: aceleración media con referencia en 1×;
+  por ejemplo, 2× significa el doble de rapidez respecto a sequential.
+- `comparacion-eficiencia.png`: eficiencia en porcentaje, con referencia ideal 100 %.
 - Boxplots e histogramas de tiempo, speedup y eficiencia: usan todas las
   iteraciones de cada configuración, incluidos los valores atípicos.
 - Boxplot de los tiempos de la referencia secuencial de cada comparación.
-- `escalabilidad.png`: medias con barras del IC95 aproximado al variar P.
+- `escalabilidad.png`: speedup al variar trabajadores, con línea ideal S = P.
+  Tiempo y eficiencia se muestran en `escalabilidad-tiempo.png` y
+  `escalabilidad-eficiencia.png`; cada imagen responde una pregunta.
 - `reporte.md`: cantidad de repeticiones, medias, desviaciones, intervalos y
   justificación inicial del número de ejecuciones. Indica si n es menor que 200.
 
-Para comparar fine y coarse, usa archivos distintos y la misma carga:
+Todas usan colores consistentes: gris para sequential, violeta para fine,
+naranja para coarse, turquesa para CMP y rosa para SMT. Las barras principales
+muestran valores y el IC95 aproximado. Al pie se indica la carga (resolución,
+tiles, muestras y rebotes); las etiquetas incluyen cantidad de repeticiones.
+Los boxplots son apoyo para estudiar variabilidad: caja = mitad central,
+línea = mediana y puntos = valores atípicos. Las unidades de los tiempos
+en las gráficas son segundos; los CSV y el reporte conservan milisegundos.
 
-```sh
-make benchmark ARGS="--model fine --quantum 1 --samples 8 --repetitions 200 --metrics-output results/fine.csv"
-make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 200 --metrics-output results/coarse.csv"
-make plots CSV="results/*.csv"
-```
+Para comparar los cuatro modelos, usa los comandos de
+[ejecución rápida](#ejecución-rápida-de-los-cuatro-modelos), conserva un archivo
+por modelo y genera la comparación conjunta con `make plots CSV="results/*.csv"`.
 
 El script omite los CSV de resumen y rechaza cargas diferentes (resolución,
 tiles, muestras, rebotes o semilla) para evitar comparaciones engañosas. Si se

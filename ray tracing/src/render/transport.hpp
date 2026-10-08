@@ -1,7 +1,7 @@
 #pragma once
 
-#include "scene.hpp"
-#include "sampling.hpp"
+#include "scene/scene.hpp"
+#include "scene/sampling.hpp"
 
 namespace rt {
 Vec3 reflect(Vec3 direction, Vec3 normal);

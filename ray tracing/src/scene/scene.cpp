@@ -1,4 +1,4 @@
-#include "scene.hpp"
+#include "scene/scene.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>

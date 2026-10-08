@@ -1,4 +1,4 @@
-#include "geometry.hpp"
+#include "scene/geometry.hpp"
 
 namespace rt {
 // Cálculo geométrico reutilizado por los futuros trabajadores para cada rayo.

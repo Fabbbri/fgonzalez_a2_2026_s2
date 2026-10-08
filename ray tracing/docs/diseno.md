@@ -339,5 +339,24 @@ las CPUs lógicas disponibles, el estado SMT informado por Linux y la afinidad
 por trabajador. Las gráficas distinguen topologías y estados SMT diferentes,
 en lugar de agrupar sus iteraciones en una misma distribución.
 `--cpu-info` muestra esa información sin renderizar. La comparación BIOS activado
-frente a desactivado y el perfilado deben realizarse en el hardware de la campaña;
+frente a desactivado y las capturas de perfilado deben realizarse en el hardware de la campaña;
 no se reemplazan por activar `--model smt`.
+
+`make profile` ejecuta `perf stat` alrededor de cada proceso, con referencia
+secuencial, calentamiento y orden alternado. Conserva los contadores crudos y sus
+porcentajes de ejecución, deriva IPC únicamente entre CPU/PMU coincidentes y
+genera reporte y gráficas. En alcance cpu registra cada CPU lógica, incluyendo
+actividad de todo el sistema; en alcance process observa el programa y sus hilos.
+Es una campaña separada del benchmark: el intervalo incluye inicialización y
+finalización del proceso y la instrumentación tiene sobrecarga. No cambia el
+cálculo, la planificación ni la partición en tiles.
+El procedimiento y los límites están en [perfilado.md](perfilado.md).
+
+La presentación de resultados separa comparación, escalabilidad y variabilidad.
+Las gráficas de barras muestran medias e IC95 aproximado; en tiempo se conserva
+una referencia secuencial por comparación, evitando promediar baselines de
+configuraciones distintas. Las curvas separan tiempo, speedup y eficiencia y
+solo conectan puntos de una misma política con distintas cantidades P. Los
+boxplots e histogramas mantienen todas las repeticiones. Los colores representan
+el mismo modelo en benchmark y perf; la presentación no cambia los datos ni
+el cálculo estadístico. `make profile-plots` permite actualizar capturas existentes.

@@ -66,77 +66,155 @@ def label(key):
     return f"{model} · P={workers}\n{detail}"
 
 
+COLORS = {"sequential": "#64748b", "fine": "#8b5cf6", "coarse": "#e69519",
+          "cmp": "#0891b2", "smt": "#d94b73"}
+NAMES = {"sequential": "Secuencial", "fine": "Fine", "coarse": "Coarse", "cmp": "CMP", "smt": "SMT"}
+
+
+def readable(key):
+    policy, workers = key
+    model = policy[0]
+    name = NAMES.get(model, model)
+    detail = "1 hilo real" if model == "fine" else f"{workers} trabajador" + ("es" if workers != 1 else "")
+    if model == "fine":
+        detail += f" · K={policy[1]}"
+    elif model == "coarse":
+        detail += f" · bloqueo {policy[2]}/{policy[3]} ms"
+    elif len(policy) > 4:
+        detail += "\n" + policy[4].replace("C=", "núcleos: ").replace(" L=", " · CPUs lógicas: ").replace(" SMT=1", " · SMT activo").replace(" SMT=0", " · SMT inactivo")
+    return f"{name} · {detail}"
+
+
+def decorate(ax, title, xlabel):
+    ax.set_title(title, loc="left", fontsize=15, fontweight="bold", pad=20)
+    ax.set_xlabel(xlabel, fontsize=11)
+    ax.set_axisbelow(True)
+    ax.grid(axis="x", alpha=.18)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+
+
+def save(fig, path, note):
+    fig.text(.02, .02, note, fontsize=9, color="#475569")
+    fig.tight_layout(rect=(0, .09, 1, 1))
+    fig.savefig(path, dpi=170, facecolor="white")
+
+
 def generate(groups, workload, output):
     try:
         import matplotlib
-        matplotlib.use("Agg")  # No abre ventana y funciona con --headless.
+        matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError as error:
         raise ValueError("Falta Matplotlib. En Ubuntu: sudo apt install python3-matplotlib") from error
     output.mkdir(parents=True, exist_ok=True)
-    keys = list(groups)
-    captions = [f"{label(k)}\nn={len(groups[k])}" for k in keys]
-    metrics = [(0, "Tiempo del modelo (ms)", "tiempo"),
-               (2, "Speedup respecto a sequential", "speedup"),
-               (3, "Eficiencia paralela", "eficiencia")]
-    for index, title, name in metrics:
-        fig, ax = plt.subplots(figsize=(max(8, len(keys) * 1.8), 5))
-        ax.boxplot([[r[index] for r in groups[k]] for k in keys])
-        ax.set_xticks(range(1, len(keys) + 1), captions)
-        ax.set_ylabel(title)
-        ax.set_title("Distribución de todas las iteraciones")
-        ax.grid(axis="y", alpha=0.3)
-        if index != 0:
-            ax.axhline(1, color="gray", linestyle="--", linewidth=1)
-        fig.tight_layout()
-        fig.savefig(output / f"boxplot-{name}.png", dpi=160)
+    keys = sorted(groups, key=lambda k: (list(NAMES).index(k[0][0]), k[0], k[1]))
+    captions = [f"{readable(k)} · {len(groups[k])} repeticiones" for k in keys]
+    colors = [COLORS[k[0][0]] for k in keys]
+    w, h, tw, th, samples, bounces, seed = workload
+    context = f"Imagen {w} × {h} · tiles {tw} × {th} · {samples} muestras/píxel · {bounces} rebotes · semilla {seed}"
+    confidence = "Barras de error: IC95 aproximado de la media. Menos de 200 repeticiones: prueba preliminar."
+    metrics = [(0, "Tiempo (segundos)", "tiempo", .001),
+               (2, "Aceleración frente a secuencial (×)", "speedup", 1),
+               (3, "Eficiencia paralela (%)", "eficiencia", 100)]
+
+    for index, title, name, scale in metrics:
+        values = [[r[index] * scale for r in groups[k]] for k in keys]
+        estimates = [estimate(v) for v in values]
+        fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .8 + 2)))
+        positions = list(range(len(keys)))
+        if index == 0:
+            # Una referencia por comparación, sin mezclar baselines de campañas distintas.
+            bases = [estimate([r[1] * scale for r in groups[k]]) for k in keys]
+            reference_bars = ax.barh([p-.18 for p in positions], [s[0] for s in bases], height=.32,
+                    xerr=[s[2] for s in bases], color=COLORS["sequential"], capsize=3, label="Referencia secuencial del par")
+            ax.bar_label(reference_bars, labels=[f"{s[0]:.3f} s" for s in bases], label_type="center", color="white", fontsize=9)
+            bars = ax.barh([p+.18 for p in positions], [s[0] for s in estimates], height=.32,
+                           xerr=[s[2] for s in estimates], color=colors, capsize=3, label="Modelo evaluado")
+            ax.legend(loc="upper right", bbox_to_anchor=(1,1.035), fontsize=9, ncol=2)
+            question = "¿Cuál termina antes? · Menos tiempo es mejor"
+        else:
+            bars = ax.barh(positions, [s[0] for s in estimates], height=.55,
+                           xerr=[s[2] for s in estimates], color=colors, capsize=4)
+            reference = 1 if index == 2 else 100
+            ax.axvline(reference, color="#64748b", linestyle="--", label="Secuencial = 1×" if index == 2 else "Eficiencia ideal = 100 %")
+            ax.legend(loc="upper right", bbox_to_anchor=(1,1.035), fontsize=9, ncol=2)
+            question = "¿Cuánto acelera? · Más de 1× supera a secuencial" if index == 2 else "¿Cuánta aceleración aporta cada trabajador?"
+        ax.bar_label(bars, labels=[f"{s[0]:.3f} s" if index == 0 else f"{s[0]:.2f}×" if index == 2 else f"{s[0]:.1f} %" for s in estimates], padding=8, fontsize=10)
+        ax.set_yticks(positions, captions, fontsize=9)
+        ax.invert_yaxis()
+        upper = max(s[0] + s[2] for s in estimates)
+        if index == 0:
+            upper = max(upper, max(s[0] + s[2] for s in bases))
+        else:
+            upper = max(upper, reference)
+        ax.set_xlim(0, upper * 1.25)
+        decorate(ax, question, title)
+        save(fig, output / f"comparacion-{name}.png", context + "\n" + confidence)
         plt.close(fig)
-        # Un histograma por configuración evita mezclar distribuciones distintas.
-        fig, axes = plt.subplots(len(keys), 1, figsize=(8, 2.7 * len(keys)), squeeze=False)
-        for key, axes_row in zip(keys, axes):
+
+        fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .65 + 2)))
+        boxes = ax.boxplot(values, vert=False, patch_artist=True)
+        for box, color in zip(boxes["boxes"], colors):
+            box.set_facecolor(color)
+            box.set_alpha(.65)
+        ax.set_yticks(range(1, len(keys)+1), captions, fontsize=9)
+        ax.invert_yaxis()
+        decorate(ax, "¿Qué tan constantes son las ejecuciones?", title)
+        save(fig, output / f"boxplot-{name}.png", context + "\nCaja: mitad central · línea: mediana · puntos: valores atípicos (se conservan).")
+        plt.close(fig)
+
+        fig, axes = plt.subplots(len(keys), 1, figsize=(10, 2.7 * len(keys)), squeeze=False)
+        for key, axes_row, color, data in zip(keys, axes, colors, values):
             ax = axes_row[0]
-            ax.hist([r[index] for r in groups[key]], bins="auto", edgecolor="white")
-            ax.set_title(label(key).replace("\n", " · ") + f" · n={len(groups[key])}")
+            ax.hist(data, bins="auto", color=color, edgecolor="white")
+            ax.set_title(readable(key) + f" · {len(data)} repeticiones", fontsize=10)
             ax.set_xlabel(title)
-            ax.set_ylabel("Frecuencia")
-        fig.tight_layout()
-        fig.savefig(output / f"histograma-{name}.png", dpi=160)
+            ax.set_ylabel("Número de ejecuciones")
+        save(fig, output / f"histograma-{name}.png", context)
         plt.close(fig)
-    # La referencia es sin esquema de hilos, medida en cada par, no coarse P=1.
-    fig, ax = plt.subplots(figsize=(max(8, len(keys) * 1.8), 5))
-    ax.boxplot([[r[1] for r in groups[k]] for k in keys])
-    ax.set_xticks(range(1, len(keys) + 1), captions)
-    ax.set_ylabel("Tiempo sequential (ms)")
-    ax.set_title("Referencia secuencial de cada comparación pareada")
-    fig.tight_layout()
-    fig.savefig(output / "boxplot-base-secuencial.png", dpi=160)
+
+    fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .65 + 2)))
+    ax.boxplot([[r[1]/1000 for r in groups[k]] for k in keys], vert=False)
+    ax.set_yticks(range(1, len(keys)+1), captions, fontsize=9)
+    ax.invert_yaxis()
+    decorate(ax, "Referencia secuencial de cada comparación", "Tiempo (segundos)")
+    save(fig, output / "boxplot-base-secuencial.png", context)
     plt.close(fig)
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     policies = sorted({key[0] for key in keys})
-    for policy in policies:
-        selected = [k for k in keys if k[0] == policy]
-        ps = [k[1] for k in selected]
-        caption = label(selected[0]).replace(f" · P={ps[0]}\n", " · ")
-        for ax, (index, title, _) in zip(axes, metrics):
-            stats = [estimate([r[index] for r in groups[k]]) for k in selected]
+    for index, title, name, scale in metrics:
+        fig, ax = plt.subplots(figsize=(11, 6))
+        for policy in policies:
+            selected = sorted([k for k in keys if k[0] == policy], key=lambda k: k[1])
+            ps = [k[1] for k in selected]
+            stats = [estimate([r[index] * scale for r in groups[k]]) for k in selected]
+            caption = readable(selected[0]).replace(f" · {ps[0]} trabajadores", "").replace(" · 1 hilo real", "")
+            # Un único P se muestra como punto, nunca como una curva de escalabilidad.
             ax.errorbar(ps, [s[0] for s in stats], yerr=[s[2] for s in stats],
-                        marker="o", capsize=4, label=caption)
-            ax.set_xlabel("Trabajadores reales P")
-            ax.set_ylabel(title)
-            ax.set_xticks(sorted({k[1] for k in keys}))
-            ax.grid(alpha=0.3)
-    axes[1].plot(sorted({k[1] for k in keys}), sorted({k[1] for k in keys}),
-                 "--", color="gray", label="Speedup ideal S=P")
-    for ax in axes:
-        ax.legend(fontsize=8)
-    fig.suptitle("Escalabilidad: media e IC95 aproximado (una configuración es un punto)")
-    fig.tight_layout()
-    fig.savefig(output / "escalabilidad.png", dpi=160)
-    plt.close(fig)
+                        marker="o", linestyle="-" if len(ps)>1 else "none", capsize=4,
+                        color=COLORS[policy[0]], label=caption)
+        ps = sorted({k[1] for k in keys})
+        if index == 2:
+            ax.plot(ps, ps, "--", color="#94a3b8", label="Ideal: aceleración = trabajadores")
+            ax.axhline(1, color="#64748b", linestyle=":", label="Referencia secuencial = 1×")
+        elif index == 3:
+            ax.axhline(100, color="#94a3b8", linestyle="--", label="Ideal: 100 %")
+        decorate(ax, "¿Cómo cambia el rendimiento al añadir trabajadores?", "Cantidad de trabajadores reales")
+        ax.set_ylabel(title)
+        ax.set_xticks(ps)
+        ax.legend(fontsize=9)
+        filename = "escalabilidad.png" if index == 2 else f"escalabilidad-{name}.png"
+        save(fig, output / filename, context + "\n" + confidence + " Un solo P representa un punto.")
+        plt.close(fig)
 
     report = ["# Análisis de repeticiones", "",
               "Carga fija: " + ", ".join(f"{k}={v}" for k, v in zip(WORKLOAD, workload)) + ".", "",
+              "Gráficas principales: comparacion-tiempo.png (segundos, menos es mejor), "
+              "comparacion-speedup.png (1× es la referencia) y escalabilidad.png (variar trabajadores). "
+              "Las barras muestran medias con IC95 aproximado; las referencias secuenciales "
+              "de tiempo se conservan por comparación, sin mezclar campañas. "
+              "Los boxplots e histogramas muestran variabilidad y todas las repeticiones.", "",
               "Se incluyen todas las iteraciones, sin eliminar valores atípicos. "
               "La referencia es sequential, medida en cada par de ejecuciones.", "",
               "| Configuración | n | Referencia 200 | Tiempo medio ± IC95 (ms) | Desviación (ms) | Speedup medio ± IC95 | Desviación speedup |",

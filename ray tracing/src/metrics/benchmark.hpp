@@ -1,6 +1,6 @@
 #pragma once
 
-#include "options.hpp"
+#include "app/options.hpp"
 
 namespace rt {
 void benchmark(const Options& options, const Scene& scene, const Camera& camera,

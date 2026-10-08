@@ -1,5 +1,5 @@
-#include "benchmark.hpp"
-#include "metrics.hpp"
+#include "metrics/benchmark.hpp"
+#include "metrics/metrics.hpp"
 
 #include <algorithm>
 #include <cstring>

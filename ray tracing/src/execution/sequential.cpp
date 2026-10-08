@@ -1,4 +1,4 @@
-#include "sequential.hpp"
+#include "execution/sequential.hpp"
 
 namespace rt {
 RenderStats render_sequential(const Scene& scene, const Camera& camera, Image& image,

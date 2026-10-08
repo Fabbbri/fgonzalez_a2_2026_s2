@@ -1,4 +1,4 @@
-#include "camera.hpp"
+#include "scene/camera.hpp"
 #include <cmath>
 #include <stdexcept>
 

@@ -1,5 +1,5 @@
-#include "raytracer.hpp"
-#include "transport.hpp"
+#include "render/raytracer.hpp"
+#include "render/transport.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>

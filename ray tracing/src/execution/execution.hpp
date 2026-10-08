@@ -1,7 +1,7 @@
 #pragma once
 
-#include "sequential.hpp"
-#include "cpu.hpp"
+#include "execution/sequential.hpp"
+#include "execution/cpu.hpp"
 
 namespace rt {
 enum class ExecutionModel { sequential, fine, coarse, smt, cmp };

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cmath>
-#include "material.hpp"
+#include "scene/material.hpp"
 
 namespace rt {
 struct Vec3 {

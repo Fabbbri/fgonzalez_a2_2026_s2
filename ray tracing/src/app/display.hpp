@@ -1,6 +1,6 @@
 #pragma once
-#include "image.hpp"
-#include "tiles.hpp"
+#include "render/image.hpp"
+#include "render/tiles.hpp"
 #include <memory>
 
 namespace rt {
