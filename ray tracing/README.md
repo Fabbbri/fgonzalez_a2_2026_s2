@@ -209,6 +209,7 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 | `src/sequential.hpp`, `src/sequential.cpp` | Base secuencial, tiempos y callbacks comunes |
 | `src/execution.hpp`, `src/fine.cpp`, `src/coarse.cpp` | Modelos, round-robin y reparto de tiles |
 | `src/parallel.cpp`, `src/cpu.hpp`, `src/cpu.cpp` | SMT/CMP, topología Linux y afinidad de trabajadores |
+| `scripts/profile_perf.py` | Capturas perf por modelo/CPU, referencia secuencial, reportes y gráficas |
 | `src/metrics.hpp`, `src/metrics.cpp`, `src/benchmark.hpp`, `src/benchmark.cpp` | Métricas, repeticiones y exportación CSV |
 | `tests/test_execution.cpp` | Igualdad de modelos, progreso, bloqueos y cancelación |
 | `tests/test_display.cpp` | Presentación y cierre SDL con controlador de prueba |
@@ -356,7 +357,27 @@ se recorta artificialmente; no es el porcentaje de uso de CPU.
 Los intervalos y las esperas de coarse forman parte de su configuración y deben
 mantenerse fijos al comparar P. Las mediciones finales deben hacerse en hardware
 físico, con la justificación de repeticiones y análisis que pide el enunciado.
-El perfilado con perf/VTune y la campaña física con SMT activado/desactivado siguen pendientes.
+`make profile` incorpora perfilado con perf. La campaña física con SMT
+activado/desactivado y su análisis siguen pendientes.
+
+### Perfilado con perf
+
+Para observar ciclos, instrucciones, IPC, fallos de caché y cambios de contexto
+conservando una referencia secuencial y gráficas por evento:
+
+```sh
+make profile ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
+make profile ARGS="--model cmp --threads 4 --samples 8" PROFILE_REPETITIONS=5
+```
+
+Ajusta P a tu topología (`make run ARGS="--cpu-info"`). Cada comando perfila el
+modelo y sequential por separado; guarda capturas, CSV, metadata, reporte y
+boxplots en una nueva carpeta de `results/perf/`. Para ver contadores por CPU
+lógica añade `PROFILE_SCOPE=cpu`; ese alcance incluye actividad ajena al programa.
+No sustituye las 200 repeticiones de `make benchmark` sin perf.
+
+El significado de los eventos, permisos, alcance, multiplexación y el procedimiento
+SMT activado/desactivado están en [docs/perfilado.md](docs/perfilado.md).
 
 ### Gráficas y repeticiones
 
@@ -419,6 +440,7 @@ reporte las marca como pendientes de la campaña final.
 ```sh
 make test
 make test-plots
+make test-profile
 make test-display
 
 # Comparar exactamente las imágenes, con bordes parciales

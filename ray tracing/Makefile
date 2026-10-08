@@ -24,7 +24,7 @@ CPPFLAGS += -DRT_WITH_SDL $(SDL_CFLAGS)
 LDLIBS += $(SDL_LIBS)
 endif
 
-.PHONY: all build run benchmark plots benchmark-plots profile test test-plots test-display clean
+.PHONY: all build run benchmark plots benchmark-plots profile test test-plots test-profile test-display clean
 all: $(BUILD)/raytracer
 
 build: all
@@ -46,6 +46,9 @@ benchmark-plots: benchmark
 
 profile: $(BUILD)/raytracer
 	$(PYTHON) scripts/profile_perf.py --perf "$(PERF)" --scope "$(PROFILE_SCOPE)" --events "$(PROFILE_EVENTS)" --repetitions "$(PROFILE_REPETITIONS)" --output-dir "$(PROFILE_DIR)" ./$(BUILD)/raytracer $(ARGS)
+
+test-profile:
+	$(PYTHON) tests/test_profile_perf.py
 
 $(BUILD)/raytracer: $(APP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -o $@
