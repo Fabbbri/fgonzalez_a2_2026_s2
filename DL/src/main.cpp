@@ -1,29 +1,15 @@
 #include <iostream>
-#include <cmath>
-#include <Eigen/Dense>
 #include <chrono>
+#include "mnist.h"
 
 using std::cout;
 
-using Eigen::Vector2d;
-using Eigen::Matrix2d;
-using Eigen::RowVector2d;
+using Eigen::VectorXd;
+using Eigen::MatrixXd;
+using Eigen::RowVectorXd;
 
-Eigen::VectorXd sigmoid(const Eigen::VectorXd& z) {
+VectorXd sigmoid(const VectorXd& z) {
     return 1.0 / (1.0 + (-z.array()).exp());
-}
-
-Vector2d forwardPassVector2d(Matrix2d W, Vector2d x, Vector2d b){
-    // Definir z = función de activación de la capa oculta
-    Vector2d z = W * x + b;
-
-    // Aplicarle una transformación a la función de Activación
-    // Se usa sigmoid, también podría ser válido RELU
-    Vector2d a;
-    a(0) = sigmoid(z(0));
-    a(1) = sigmoid(z(1));
-
-    return a;
 }
 
 int main() {
@@ -32,120 +18,178 @@ int main() {
     // CONFIGURACIÓN DEL ENTRENAMIENTO
     // =========================================
 
-    // n (que tanto avanza en la direccion del gradiente)
+    // n (\eta indica que tanto avanza en la direccion del gradiente)
     double learning_rate = 0.1;
-    int epochs = 1000;
-    // Valor objetivo
-    double y = 1.0;
-
+    const int num_muestras = 100;
+    const int epochs = 1000;
+    double mse_promedio = 0.0;
     auto start = std::chrono::steady_clock::now();
+    int conteo_clases[10] = {0};
 
-    cout << "\nValor Objetivo: y = 1\n";
-
-    // =========================================
-    // DATOS DE ENTRADA
-    // =========================================
-
-    Vector2d x;
-    x << 0.5,
-         0.8;
+    Sample sample;
 
     // =========================================
     // PESOS Y SESGOS
     // =========================================
 
-    Eigen::MatrixXd W1 = Eigen::MatrixXd::Random(128, 784) * 0.1;
-    Eigen::MatrixXd b1 = Eigen::MatrixXd::Zero(128, 1);
+    MatrixXd W1 = MatrixXd::Random(128, 784) * 0.1;
+    MatrixXd b1 = MatrixXd::Zero(128, 1);
 
-    Eigen::MatrixXd W2 = Eigen::MatrixXd::Random(64, 128) * 0.1;
-    Eigen::MatrixXd b2 = Eigen::MatrixXd::Zero(64, 1);
+    MatrixXd W2 = MatrixXd::Random(64, 128) * 0.1;
+    MatrixXd b2 = MatrixXd::Zero(64, 1);
 
-    Eigen::MatrixXd W3 = Eigen::MatrixXd::Random(10, 64) * 0.1;
-    Eigen::MatrixXd b3 = Eigen::MatrixXd::Zero(10, 1);
+    MatrixXd W3 = MatrixXd::Random(10, 64) * 0.1;
+    MatrixXd b3 = MatrixXd::Zero(10, 1);
+
+    // Y_PRED , clase predicha que genera el modelo
+    VectorXd a3 = MatrixXd::Zero(10, 1);
 
     // =========================================
-    // ENTRENAMIENTO
+    // LECTOR.CPP PARA RECIBIR ENTRADA
+    // =========================================
+
+    std::ifstream image_file(
+        "../data/mnist/train-images-idx3-ubyte",
+        std::ios::binary
+    );
+
+    std::ifstream label_file(
+        "../data/mnist/train-labels-idx1-ubyte",
+        std::ios::binary
+    );
+
+    if (!image_file || !label_file) {
+        std::cerr << "No se pudieron abrir los archivos MNIST\n";
+        return 1;
+    }
+    
+    // =========================================
+    // ENTRENAMIENTO VARIAS IMG
     // =========================================
 
     for (int epoch = 0; epoch<epochs ; epoch++){
-        // -----------------------------------------
-        // FORWARD PASS 
-        // -----------------------------------------
 
-        // Propagar Entrada -> Hidden Layer
-        Vector2d a1 = forwardPassVector2d(W1, x, b1);
+        // acumulador de MSE para comparar entre imagenes
+        double mse_total = 0.0;
+        int aciertos = 0;
+        Eigen::Index clase_real;
+        Eigen::Index clase_predicha;
 
-        // Propagar Hidden Layer -> Salida
-        double z2 = (W2 * a1)(0) + b2;
+        for (int i=0 ; i<num_muestras ; i++){
 
-        double y_pred = sigmoid(z2);
+            sample = load_sample(image_file, label_file, i);
+            // sample.x es el vector de entrada
+            // sample.y es la etiqueta (valor objetivo / clase real)
+        
+            // Primer forward-pass a W1
+            // z = función de activación
+            VectorXd z1 = W1 * sample.x + b1;
+        
+            // Aplicar transformación sigmoid
+            VectorXd a1 = sigmoid(z1);
 
-        // -----------------------------------------
-        // LOSS: MSE
-        // -----------------------------------------
+            // Segundo forward-pass a W2
+            VectorXd z2 = W2 * a1 + b2;
 
-        // Error C: diferencia entre predicción y producido
-        double error = y - y_pred;
-        // MSE = error^2
-        double mse = error * error;
+            // Aplicar transformación sigmoid
+            VectorXd a2 = sigmoid(z2);
 
-        // -----------------------------------------
-        // Backpropagation - capa de salida
-        // -----------------------------------------
+            // Tercer y último forward-pass a W3
+            VectorXd z3 = W3 * a2 + b3;
 
-        // Derivada del error respecto al peso W2
-        double dL_dypred = 2.0 * (y_pred - y);
+            // Aplicar transformación sigmoid
+            a3 = sigmoid(z3);
 
-        double dypred_dz2 = y_pred * (1.0 - y_pred);
+            // -----------------------------------------
+            // LOSS FUNCTION: MSE
+            // -----------------------------------------
 
-        double dL_dz2 = dL_dypred * dypred_dz2;
+            double mse = (a3 - sample.y).squaredNorm() / a3.size();
+            mse_total += mse;
 
-        RowVector2d dW2 = dL_dz2 * a1.transpose();
+            // -----------------------------------------
+            // Backpropagation - capa de salida
+            // -----------------------------------------
 
-        // Derivada del error respecto al sesgo b2
-        double db2 = dL_dz2;
+            // Derivada del error respecto a A3
+            VectorXd dA3 = (2.0 / a3.size()) * (a3 - sample.y);
 
+            // Derivada de Z3
+            VectorXd dZ3 = dA3.array() * a3.array() * (1.0 - a3.array());
 
-        // -----------------------------------------
-        // Backpropagation - capa oculta
-        // -----------------------------------------
+            // Derivadas de W3 y b3
+            MatrixXd dW3 = dZ3 * a2.transpose();
+            VectorXd db3 = dZ3;
 
-        // Derivada del error respecto al peso W1
-        Vector2d dL_da1 =
-            W2.transpose() * dL_dz2;
+            // -----------------------------------------
+            // Backpropagation - capas ocultas
+            // -----------------------------------------
 
-        Vector2d sigmoid_derivative =
-            a1.array() * (1.0 - a1.array());
+            // Derivada de A2
+            VectorXd dA2 = W3.transpose() * dZ3;
 
-        Vector2d dL_dz1 =
-            dL_da1.array() * sigmoid_derivative.array();
+            // Derivada de Z2 
+            VectorXd dZ2 = dA2.array() * a2.array() * (1.0 - a2.array());
 
-        Matrix2d dW1 =
-            dL_dz1 * x.transpose();
+            // Derivada de W2 y b2
+            MatrixXd dW2 = dZ2 * a1.transpose();
+            VectorXd db2 = dZ2;
 
-        // Derivada del error respecto al sesgo b1
-        Vector2d db1 =
-            dL_dz1;
+            // Derivada de A1
+            VectorXd dA1 = W2.transpose() * dZ2;
 
-        // -----------------------------------------
-        // Descenso de gradiente -> Actualizar parámetros
-        // -----------------------------------------
+            // Derivada de Z1
+            VectorXd dZ1 = dA1.array() * a1.array() * (1.0 - a1.array());
 
-        W2 -= learning_rate * dW2;
-        b2 -= learning_rate * db2;
+            // Derivada de W1 y b1
+            MatrixXd dW1 = dZ1 * sample.x.transpose();
+            VectorXd db1 = dZ1;
 
-        W1 -= learning_rate * dW1;
-        b1 -= learning_rate * db1;
+            // -----------------------------------------
+            // Descenso de gradiente -> Actualizar parámetros
+            // -----------------------------------------
 
-        if (epoch % 100 == 0) {
-            cout
-                << "Epoch: " << epoch
-                << " | MSE: " << mse
-                << " | Prediction: " << y_pred
-                << '\n';
+            W3 -= learning_rate * dW3;
+            b3 -= learning_rate * db3;
+
+            W2 -= learning_rate * dW2;
+            b2 -= learning_rate * db2;
+
+            W1 -= learning_rate * dW1;
+            b1 -= learning_rate * db1;
+
+            // -----------------------------------------
+            // Registrar aciertos de ESTA imagen
+            // -----------------------------------------
+
+            if (epoch == 0) {
+                Eigen::Index clase_real;
+                sample.y.maxCoeff(&clase_real);
+                conteo_clases[clase_real]++;
+            }
+
+            // maxCoeff devuelve un numero y lo guarda en la direccion del argumento
+            a3.maxCoeff(&clase_predicha);
+
+            sample.y.maxCoeff(&clase_real);
+
+            if (clase_predicha == clase_real) {
+                aciertos++;
+            }
+
         }
-    }
 
+        // ===================================
+        // Fin de las 100 imágenes 
+        // ===================================
+
+        mse_promedio = mse_total / num_muestras;
+        
+        double accuracy = (double) aciertos / num_muestras * 100.0;
+
+        cout << "MSE promedio: " << mse_promedio
+             << " | Accuracy: " << accuracy << "%\n";
+    }
     // =========================================
     // RESULTADOS FINALES
     // =========================================
@@ -157,18 +201,19 @@ int main() {
             end - start
         );
 
+    // Cuantas imágenes corresponden a cada número
+    cout << "\nDistribución de clases:\n";
+
+    for (int i = 0; i < 10; i++) {
+        cout << "Clase " << i << ": "
+             << conteo_clases[i] << "\n";
+    }
+    
     cout << "\n=== Secuencial ===\n";
 
     cout << "\nTiempo total: "
          << elapsed.count()
          << " us\n";
-
-    cout << "\nPesos y sesgos finales:\n";
-    cout << "W1:\n" << W1 << "\n\n";
-    cout << "b1:\n" << b1 << "\n\n";
-
-    cout << "W2:\n" << W2 << "\n\n";
-    cout << "b2: " << b2 << "\n";
 
     return 0;
 }

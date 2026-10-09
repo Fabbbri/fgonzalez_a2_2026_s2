@@ -1,13 +1,12 @@
 # ==========================================
-# CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN MACOS
+# CONFIGURACIÓN PARA macOS
 # ==========================================
 
 CXX = clang++
 CXXFLAGS = -O2 -Wall -Wextra -std=c++17 -pthread
 EIGEN = -I/opt/homebrew/include/eigen3
 
-SRCS = $(wildcard *.cpp)
-TARGETS = demo
+TARGETS = main fino
 
 # ==========================================
 # REGLAS
@@ -15,12 +14,11 @@ TARGETS = demo
 
 all: $(TARGETS)
 
-demo: demo.cpp lector.cpp mnist.h
-	$(CXX) $(CXXFLAGS) $(EIGEN) demo.cpp lector.cpp -o demo
+main: main.cpp lector.cpp mnist.h
+	$(CXX) $(CXXFLAGS) $(EIGEN) main.cpp lector.cpp -o main
 
-# Enlazado de ejecutable dinamico @ a partir de su archivo fuente <
-%: %.cpp
-	$(CXX) $(CXXFLAGS) $(EIGEN) $< -o $@
+fino: fino.cpp lector.cpp mnist.h
+	$(CXX) $(CXXFLAGS) $(EIGEN) fino.cpp lector.cpp -o fino
 
 clean:
 	rm -f $(TARGETS)

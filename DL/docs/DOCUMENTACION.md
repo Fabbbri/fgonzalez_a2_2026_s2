@@ -995,6 +995,58 @@ b_{new_i} = b_i - \eta db_i
 
 donde $\eta$ es el learning rate.
 
+Así, el entrenamiento se repite 1000 veces por ejemplo, actualizando los pesos y sesgos en cada iteración.
+
+### Stochastic Gradient Descent (SGD)
+
+Ahora bien, es necesario hacer esto para varias imágenes, no solo para 1. De forma que:
+
+```
+repetir epochs veces:
+imagen 1 → Forward → Backprop → actualizar
+imagen 2 → Forward → Backprop → actualizar
+...
+imagen n → Forward → Backprop → actualizar
+```
+
+Para esto es necesario generar un acumulador del MSE para compararlo entre imágenes.
+
+## 14. Paralelismo en el modelo complejo MNIST
+
+Previamente se mencionó el paralelismo que contiene una única etapa de entrenamiento.
+
+Ahora bien, también es posible también analizar el paralelismo entre muestras. Entre imagenes no hay dependencias, por lo que no hay nada que lo impida. 
+
+Sin embargo, no es así con las iteracions de entrenamiento: no puede paralelizarse entre `epochs` pues un epoch usa los pesos y sesgos de la iteración previa. 
+
+De esta forma, podría distribuirse de la siguiente forma:
+
+```
+                    ENTRENAMIENTO
+                         │
+                    100 muestras
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+       Muestra 0      Muestra 1      Muestra N
+          │              │              │
+       Forward        Forward        Forward
+          │              │              │
+      Backprop        Backprop        Backprop
+          │              │              │
+       Gradientes     Gradientes     Gradientes
+          └──────────────┼──────────────┘
+                         ▼
+                  Actualizar pesos
+                         │
+                         ▼
+                      Epoch + 1
+```
+
+dónde a su vez, cada muestra puede ser paralelizada en toda la etapa de $\textit{forward-pass}$ y $\textit{backpropagation}$.
+
+
+
 
 
 	
