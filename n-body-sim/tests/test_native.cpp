@@ -1,4 +1,4 @@
-#include "nbody/native_view.hpp"
+#include "nbody.hpp"
 #include <SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -21,15 +21,16 @@ void compare(const std::vector<Body>& actual, const std::vector<Body>& expected)
     }
 }
 int main() try {
+    auto model = make_sequential_model();
     const std::string path = "build/test-trajectory.nbody";
     Config config; config.bodies_per_galaxy = 2; config.steps = 3;
     auto bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
     std::vector<Vec2> scratch;
-    refresh_accelerations(bodies, scratch);
+    refresh_accelerations(bodies, scratch, *model);
     std::vector<std::vector<Body>> expected{bodies};
     TrajectoryWriter writer(path, config, bodies.size()); writer.append(bodies);
     for (std::size_t step = 0; step < config.steps; ++step) {
-        advance_one_step(bodies, scratch, config.dt); writer.append(bodies); expected.push_back(bodies);
+        advance_one_step(bodies, scratch, config.dt, *model); writer.append(bodies); expected.push_back(bodies);
     }
     writer.finish();
     TrajectoryReader trajectory(path);
@@ -42,6 +43,17 @@ int main() try {
     check(SDL_Init(SDL_INIT_VIDEO) == 0, "No se pudo iniciar SDL dummy");
     key(SDLK_PLUS);
     check(replay_native(trajectory, true) == config.steps, "No completa la reproducción");
+    key(SDLK_t); key(SDLK_g);
+    key(SDLK_RIGHT); key(SDLK_RIGHT); key(SDLK_LEFT);
+    key(SDLK_RIGHT); key(SDLK_RIGHT);
+    check(replay_native(trajectory, true) == 3, "La búsqueda con flechas no llega al último frame");
+    compare(trajectory.read_frame(3), expected[3]);
+    SDL_Event click{};
+    click.type = SDL_MOUSEBUTTONDOWN;
+    click.button.button = SDL_BUTTON_LEFT;
+    click.button.x = 1072; click.button.y = 636;
+    check(SDL_PushEvent(&click) == 1, "No se pudo inyectar el clic de la línea de tiempo");
+    check(replay_native(trajectory, true) == 3, "El clic en la barra no busca el último frame");
     key(SDLK_SPACE); key(SDLK_n); key(SDLK_f); key(SDLK_ESCAPE);
     check(replay_native(trajectory, true) == 0, "Esc no detiene la reproducción");
     Config single = config; single.steps = 1;

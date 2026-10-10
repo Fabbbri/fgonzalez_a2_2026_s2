@@ -4,10 +4,12 @@
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Wpedantic
 TARGET := build/nbody
-SOURCES := src/main.cpp src/config.cpp src/simulation.cpp src/native_view.cpp src/trajectory.cpp
-HEADERS := include/nbody/config.hpp include/nbody/simulation.hpp include/nbody/diagnostics.hpp \
-	include/nbody/output.hpp include/nbody/trajectory.hpp include/nbody/native_view.hpp include/nbody/bitmap_text.hpp
-PROJECT_CFLAGS := -Iinclude
+# Física y captura compartidas; cada estrategia ocupa un único .cpp en models/.
+CORE := src/common/physics.cpp src/common/trajectory.cpp
+MODELS := $(wildcard src/models/*.cpp)
+SOURCES := src/main.cpp src/viewer.cpp $(CORE) $(MODELS)
+HEADER := src/nbody.hpp
+PROJECT_CFLAGS := -Isrc
 SDL_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL_LIBS := $(shell pkg-config --libs sdl2 2>/dev/null)
 
@@ -36,19 +38,19 @@ build: $(TARGET)
 benchmark: $(TARGET)
 	bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" $(BENCHMARK_ARGS)
 
-$(TARGET): $(SOURCES) $(HEADERS)
+$(TARGET): $(SOURCES) $(HEADER)
 	@test -n "$(SDL_LIBS)" || { printf 'Falta SDL2: instale libsdl2-dev y pkg-config (Linux), o sdl2 y pkg-config con Homebrew (macOS).\n'; exit 1; }
 	mkdir -p build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(SDL_CFLAGS) $(SOURCES) $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $(TARGET)
 
-build/test_physics: tests/test_physics.cpp src/simulation.cpp src/diagnostics.cpp src/output.cpp $(HEADERS)
+build/test_physics: tests/test_physics.cpp src/common/physics.cpp $(MODELS) $(HEADER)
 	mkdir -p build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) tests/test_physics.cpp src/simulation.cpp src/diagnostics.cpp src/output.cpp $(LDFLAGS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) tests/test_physics.cpp src/common/physics.cpp $(MODELS) $(LDFLAGS) $(LDLIBS) -o $@
 
-build/test_native: tests/test_native.cpp src/native_view.cpp src/trajectory.cpp src/simulation.cpp $(HEADERS)
+build/test_native: tests/test_native.cpp src/viewer.cpp $(CORE) $(MODELS) $(HEADER)
 	@test -n "$(SDL_LIBS)" || { printf 'Falta SDL2: instale libsdl2-dev y pkg-config (Linux), o sdl2 y pkg-config con Homebrew (macOS).\n'; exit 1; }
 	mkdir -p build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(SDL_CFLAGS) tests/test_native.cpp src/native_view.cpp src/trajectory.cpp src/simulation.cpp $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(SDL_CFLAGS) tests/test_native.cpp src/viewer.cpp $(CORE) $(MODELS) $(LDFLAGS) $(SDL_LIBS) $(LDLIBS) -o $@
 
 test: $(TARGET) build/test_physics build/test_native
 	./build/test_physics

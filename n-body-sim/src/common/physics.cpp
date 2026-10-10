@@ -1,4 +1,4 @@
-#include "nbody/simulation.hpp"
+#include "nbody.hpp"
 #include <cmath>
 #include <random>
 #include <stdexcept>
@@ -51,40 +51,34 @@ std::vector<Body> create_galaxies(std::size_t bodies_per_galaxy, std::uint32_t s
     return bodies;
 }
 
-// Cada cuerpo recibe la atracción de todos los demás, de ambas galaxias.
-// Costo O(N²): leemos posiciones fijas y guardamos el resultado por separado.
-void compute_accelerations(const std::vector<Body>& bodies,
-                           std::vector<Vec2>& accelerations,
-                           double gravitational_constant, double softening) {
-    accelerations.assign(bodies.size(), Vec2{});
-    const double softening_squared = softening * softening;
-
-    for (std::size_t i = 0; i < bodies.size(); ++i) {
-        for (std::size_t j = 0; j < bodies.size(); ++j) {
-            if (i == j) {
-                continue;  // Un cuerpo no ejerce atracción sobre sí mismo.
-            }
-
-            const double dx = bodies[j].position.x - bodies[i].position.x;
-            const double dy = bodies[j].position.y - bodies[i].position.y;
-            const double distance_squared = dx * dx + dy * dy + softening_squared;
-
-            // a_i += G * m_j * (r_j - r_i) / (|r_j - r_i|² + epsilon²)^(3/2).
-            // El suavizado evita dividir entre cero si dos cuerpos coinciden.
-            const double factor = gravitational_constant * bodies[j].mass /
-                                  (distance_squared * std::sqrt(distance_squared));
-            accelerations[i].x += factor * dx;
-            accelerations[i].y += factor * dy;
-        }
+// La misma ecuación y orden de suma pueden usarse en cada estrategia por cuerpo.
+Vec2 acceleration_for_body(const std::vector<Body>& bodies, std::size_t index,
+                           double gravity, double epsilon) {
+    Vec2 acceleration{};
+    const double epsilon_squared = epsilon * epsilon;
+    for (std::size_t j = 0; j < bodies.size(); ++j) {
+        if (index == j) continue;
+        const double dx = bodies[j].position.x - bodies[index].position.x;
+        const double dy = bodies[j].position.y - bodies[index].position.y;
+        const double distance_squared = dx * dx + dy * dy + epsilon_squared;
+        const double factor = gravity * bodies[j].mass /
+                              (distance_squared * std::sqrt(distance_squared));
+        acceleration.x += factor * dx;
+        acceleration.y += factor * dy;
     }
+    return acceleration;
 }
 
 bool is_finite(Vec2 value) {
     return std::isfinite(value.x) && std::isfinite(value.y);
 }
 
-void refresh_accelerations(std::vector<Body>& bodies, std::vector<Vec2>& accelerations) {
-    compute_accelerations(bodies, accelerations, gravitational_constant, softening);
+void refresh_accelerations(std::vector<Body>& bodies, std::vector<Vec2>& accelerations,
+                           ExecutionModel& model) {
+    model.compute_accelerations(bodies, accelerations, gravitational_constant, softening);
+    if (accelerations.size() != bodies.size()) {
+        throw std::runtime_error("El modelo devolvió una cantidad incorrecta de aceleraciones.");
+    }
     for (std::size_t i = 0; i < bodies.size(); ++i) {
         if (!is_finite(accelerations[i])) {
             throw std::runtime_error("Aceleración no finita en el cuerpo " + std::to_string(i));
@@ -96,7 +90,7 @@ void refresh_accelerations(std::vector<Body>& bodies, std::vector<Vec2>& acceler
 // Euler simpléctico: primero v(t+dt) = v(t) + a(t)*dt;
 // después r(t+dt) = r(t) + v(t+dt)*dt, usando la velocidad nueva.
 void advance_one_step(std::vector<Body>& bodies, std::vector<Vec2>& accelerations,
-                      double dt) {
+                      double dt, ExecutionModel& model) {
     for (Body& body : bodies) {
         body.velocity.x += body.acceleration.x * dt;
         body.velocity.y += body.acceleration.y * dt;
@@ -109,7 +103,7 @@ void advance_one_step(std::vector<Body>& bodies, std::vector<Vec2>& acceleration
 
     // Todas las posiciones ya están en t+dt. Preparamos a(t+dt) para la salida
     // y para el siguiente paso, sin mezclar estados temporales en las fuerzas.
-    refresh_accelerations(bodies, accelerations);
+    refresh_accelerations(bodies, accelerations, model);
 }
 
 }  // namespace nbody

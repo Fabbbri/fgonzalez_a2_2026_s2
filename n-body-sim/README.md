@@ -108,6 +108,21 @@ no ejecuta el integrador ni imprime nuevas métricas. Espacio pausa; N avanza un
 frame; R vuelve al estado inicial y pausa; F encuadra. La rueda y el arrastre
 controlan la cámara, +/- cambia el ritmo de reproducción y Esc cierra la ventana.
 
+El reproductor muestra estrellas con halos suaves, colores por galaxia y etiquetas
+que siguen sus centros geométricos. Las estelas contienen posiciones reales de
+los últimos 32 estados muestreados, aproximadamente cada 0.025 unidades de tiempo
+simulado (o cada paso si `dt` es mayor). Su duración no depende de los FPS.
+El fondo estrellado es decorativo y no representa cuerpos de la simulación.
+
+- `T`: mostrar u ocultar estelas.
+- `G`: mostrar u ocultar la rejilla, desactivada inicialmente; una regla indica la escala.
+- Flechas izquierda/derecha: buscar en saltos del 1 % de la trayectoria y pausar.
+- Clic en la barra de progreso: buscar un instante y pausar.
+
+Al buscar se reconstruye el historial desde el archivo; al reiniciar se vacía.
+El brillo y las estelas se generan únicamente durante la reproducción y no
+intervienen en las métricas ni alteran los estados guardados.
+
 ### Interpretación de métricas
 
 El enunciado (§4.4) exige tiempo total de ejecución, speedup, eficiencia paralela
@@ -118,8 +133,9 @@ registra el tiempo total y los parámetros necesarios para comparar muestras:
 model,workers,bodies,steps,dt,seed,total_seconds
 ```
 
-`total_seconds` es el intervalo continuo desde la apertura del archivo hasta su
-flush y cierre, incluyendo cálculo y captura. Excluye inicialización aleatoria,
+`total_seconds` es el intervalo continuo desde la creación de la estrategia de
+ejecución hasta finalizar la trayectoria, incluyendo apertura, cálculo, captura,
+liberación de trabajadores y flush/cierre. Excluye inicialización aleatoria,
 impresión y reproducción. `model` y `workers` identifican el esquema de ejecución;
 `bodies`, `steps`, `dt` y `seed` identifican la entrada. Actualmente se utiliza
 `sequential` con un trabajador como referencia.
@@ -276,30 +292,62 @@ La ayuda integrada muestra las opciones disponibles:
 
 ```text
 n-body-sim/
-├── include/nbody/       Interfaces y estructuras compartidas
-├── src/                 Implementación secuencial y visualización
-├── tests/               Pruebas físicas, de CLI, de ventana y estadísticas
-├── scripts/             Repeticiones Bash y análisis Python
-├── docs/diagrams/       Diagramas de los modelos de ejecución
+├── src/
+│   ├── main.cpp             CLI y flujo de ejecución/medición
+│   ├── nbody.hpp            Único contrato compartido
+│   ├── viewer.cpp           Reproductor SDL2, cámara, estelas y fuente
+│   ├── common/
+│   │   ├── physics.cpp      Inicialización, ecuación gravitacional e integrador
+│   │   └── trajectory.cpp   Lectura y escritura del formato común
+│   └── models/
+│       └── sequential.cpp   Estrategia de referencia sin hilos
+├── scripts/                 Repeticiones Bash y análisis Python
+├── tests/                   Validación física, archivos, reproductor y estadísticas
+├── docs/diagrams/            Diseños de los cuatro modelos posteriores
 ├── Makefile
 └── README.md
 ```
 
-Responsabilidades principales:
+El código de producción pasa de siete headers y siete fuentes a **un header y
+cinco fuentes**. Se mantiene un único header porque las unidades C++ necesitan
+compartir los tipos y sus contratos. La configuración vive en `main.cpp` y la
+fuente bitmap es privada a `viewer.cpp`. Los diagnósticos físicos se calculan
+dentro de las pruebas, sin fuentes adicionales en el ejecutable.
 
-- [`src/main.cpp`](src/main.cpp): coordina configuración, simulación,
-  medición y diagnósticos.
-- [`src/config.cpp`](src/config.cpp): valida las opciones de línea de
-  comandos.
-- [`src/simulation.cpp`](src/simulation.cpp): inicialización, cálculo
-  gravitacional e integración temporal.
-- [`src/diagnostics.cpp`](src/diagnostics.cpp): masa, energía, momento y
-  centro de masa.
-- [`src/trajectory.cpp`](src/trajectory.cpp): escritura y lectura de estados binarios.
-- [`src/native_view.cpp`](src/native_view.cpp): reproductor SDL2 y controles,
-  ejecutado después de finalizar las mediciones.
-- [`src/output.cpp`](src/output.cpp): presentación textual de los
-  diagnósticos.
+### Organización de los cinco modelos
+
+[`ExecutionModel`](src/nbody.hpp) define el nombre, la cantidad de trabajadores
+y el método `compute_accelerations`. Cada implementación recibe posiciones de
+solo lectura y devuelve aceleraciones en un vector separado. Debe completar y
+sincronizar sus tareas antes de retornar. El objeto permanece vivo durante la
+simulación para reutilizar trabajadores o el estado del planificador.
+
+| Modelo | Archivo en `src/models/` | Estado / estrategia |
+|---|---|---|
+| Secuencial | `sequential.cpp` | Implementado: recorre los cuerpos en un único hilo |
+| Fine-Grained | `fine_grained.cpp` | Futuro: tareas con progreso y cuantums round-robin |
+| Coarse-Grained | `coarse_grained.cpp` | Futuro: bloques de trabajo y bloqueo/sincronización observable |
+| SMT | `smt.cpp` | Futuro: distribución entre hilos lógicos, documentando topología |
+| CMP | `cmp.cpp` | Futuro: bloques distribuidos entre núcleos físicos |
+
+Los cuatro archivos futuros se crearán al implementar sus modelos. No hay
+implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
+paralelos. El Makefile incorpora las fuentes de `src/models/` automáticamente;
+la selección y parámetros de los nuevos modelos se añadirán en `main.cpp`.
+
+La inicialización y el integrador de [`common/physics.cpp`](src/common/physics.cpp),
+la captura de [`common/trajectory.cpp`](src/common/trajectory.cpp), el CSV y el
+reproductor son compartidos. La primera interfaz permite variar el cálculo de
+fuerzas manteniendo la actualización de velocidades/posiciones común y
+secuencial. `acceleration_for_body` conserva la misma ecuación y orden de suma
+para las estrategias que reparten cuerpos completos. Fine-Grained podrá
+conservar sumas parciales entre cuantums respetando la misma ecuación.
+
+El ciclo crea el modelo dentro del cronómetro y lo destruye antes de finalizar
+la trayectoria; así las futuras creaciones/cierres de trabajadores forman parte
+del tiempo total. Las pruebas pueden recibir cualquier implementación de
+`ExecutionModel`, usando la secuencial como referencia. Los comandos `make`,
+`make build`, `make benchmark` y `make test` conservan sus comportamientos.
 
 ## Variables que aumentan el paralelismo disponible
 
@@ -319,7 +367,7 @@ N = 2 × bodies_per_galaxy
 ```
 
 El
-[núcleo de cálculo gravitacional](src/simulation.cpp#L56-L80) es la región que
+[núcleo de cálculo gravitacional](src/common/physics.cpp) es la región que
 concentra la mayor parte del trabajo de la simulación: cada cuerpo `i` calcula
 su aceleración recorriendo los otros $N-1$ cuerpos. Por tanto:
 
@@ -333,7 +381,7 @@ su aceleración recorriendo los otros $N-1$ cuerpos. Por tanto:
 La separación entre el vector de entrada `bodies` y el vector de salida
 `accelerations` evita que el cálculo de un cuerpo modifique las posiciones
 que leen los demás. Esa interfaz está declarada en
-[`include/nbody/simulation.hpp`](include/nbody/simulation.hpp#L26-L30).
+[`src/nbody.hpp`](src/nbody.hpp).
 
 
 

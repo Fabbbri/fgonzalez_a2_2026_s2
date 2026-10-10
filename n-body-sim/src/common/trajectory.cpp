@@ -1,4 +1,4 @@
-#include "nbody/trajectory.hpp"
+#include "nbody.hpp"
 #include <array>
 #include <cmath>
 #include <cstring>

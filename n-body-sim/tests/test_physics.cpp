@@ -1,11 +1,61 @@
-#include "nbody/diagnostics.hpp"
-#include "nbody/output.hpp"
-#include "nbody/simulation.hpp"
+#include "nbody.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
+
+namespace nbody {
+struct Diagnostics {
+    double mass = 0.0;
+    double kinetic_energy = 0.0;
+    double potential_energy = 0.0;
+    Vec2 momentum;
+    Vec2 center_of_mass;
+
+    double energy() const { return kinetic_energy + potential_energy; }
+};
+
+// Diagnóstico independiente usado solo para validar el motor en las pruebas.
+Diagnostics measure_physics(const std::vector<Body>& bodies) {
+    Diagnostics result;
+    for (std::size_t i = 0; i < bodies.size(); ++i) {
+        const Body& body = bodies[i];
+        if (!std::isfinite(body.mass) || body.mass <= 0.0) {
+            throw std::runtime_error("El diagnóstico requiere masas positivas y finitas.");
+        }
+        result.mass += body.mass;
+        result.kinetic_energy += 0.5 * body.mass *
+            (body.velocity.x * body.velocity.x + body.velocity.y * body.velocity.y);
+        result.momentum.x += body.mass * body.velocity.x;
+        result.momentum.y += body.mass * body.velocity.y;
+        result.center_of_mass.x += body.mass * body.position.x;
+        result.center_of_mass.y += body.mass * body.position.y;
+
+        // Cada pareja se cuenta una vez. El potencial usa el mismo suavizado
+        // que las fuerzas: U_ij = -G*m_i*m_j / sqrt(r_ij² + epsilon²).
+        for (std::size_t j = i + 1; j < bodies.size(); ++j) {
+            const double dx = bodies[j].position.x - body.position.x;
+            const double dy = bodies[j].position.y - body.position.y;
+            result.potential_energy -= gravitational_constant * body.mass * bodies[j].mass /
+                std::sqrt(dx * dx + dy * dy + softening * softening);
+        }
+    }
+    if (result.mass == 0.0) {
+        throw std::runtime_error("No hay cuerpos para calcular el centro de masa.");
+    }
+    result.center_of_mass.x /= result.mass;
+    result.center_of_mass.y /= result.mass;
+    if (!std::isfinite(result.mass) || !std::isfinite(result.energy()) ||
+        !std::isfinite(result.momentum.x) || !std::isfinite(result.momentum.y) ||
+        !std::isfinite(result.center_of_mass.x) || !std::isfinite(result.center_of_mass.y)) {
+        throw std::runtime_error("Diagnóstico físico no finito.");
+    }
+    return result;
+}
+}  // namespace nbody
+
+
+
 
 using namespace nbody;
 
@@ -18,15 +68,16 @@ bool near(double actual, double expected, double tolerance = 1e-11) {
 }
 
 double orbit_drift(double dt, std::size_t steps) {
+    auto model = make_sequential_model();
     const double speed = std::sqrt(0.25 / std::pow(1 + softening * softening, 1.5));
     std::vector<Body> bodies{{0.5, {-0.5, 0}, {0, -speed}, {}, 0},
                              {0.5, {0.5, 0}, {0, speed}, {}, 1}};
     std::vector<Vec2> accelerations;
-    refresh_accelerations(bodies, accelerations);
+    refresh_accelerations(bodies, accelerations, *model);
     const double initial_energy = measure_physics(bodies).energy();
     double max_drift = 0;
     for (std::size_t i = 0; i < steps; ++i) {
-        advance_one_step(bodies, accelerations, dt);
+        advance_one_step(bodies, accelerations, dt, *model);
         const auto physics = measure_physics(bodies);
         max_drift = std::max(max_drift, std::abs((physics.energy() - initial_energy) / initial_energy));
         check(near(physics.momentum.x, 0) && near(physics.momentum.y, 0), "Momento orbital no conservado");
@@ -35,6 +86,7 @@ double orbit_drift(double dt, std::size_t steps) {
 }
 
 int main() try {
+    auto model = make_sequential_model();
     // Dos masas con energía, momento y centro de masa calculables a mano.
     std::vector<Body> bodies{{2, {0, 0}, {1, -2}, {}, 0}, {3, {3, 4}, {0, 1}, {}, 1}};
     const auto initial = measure_physics(bodies);
@@ -45,9 +97,9 @@ int main() try {
     check(near(initial.center_of_mass.x, 1.8) && near(initial.center_of_mass.y, 2.4), "Centro de masa incorrecto");
 
     std::vector<Vec2> accelerations;
-    refresh_accelerations(bodies, accelerations);
+    refresh_accelerations(bodies, accelerations, *model);
     const auto before = bodies;
-    advance_one_step(bodies, accelerations, 0.01);
+    advance_one_step(bodies, accelerations, 0.01, *model);
     for (std::size_t i = 0; i < bodies.size(); ++i) {
         const double vx = before[i].velocity.x + before[i].acceleration.x * 0.01;
         const double vy = before[i].velocity.y + before[i].acceleration.y * 0.01;
@@ -55,21 +107,18 @@ int main() try {
         check(near(bodies[i].position.x, before[i].position.x + vx * 0.01) &&
               near(bodies[i].position.y, before[i].position.y + vy * 0.01), "No se usa Euler simpléctico");
     }
-    for (std::size_t i = 1; i < 100; ++i) advance_one_step(bodies, accelerations, 0.01);
+    for (std::size_t i = 1; i < 100; ++i) advance_one_step(bodies, accelerations, 0.01, *model);
     const auto final = measure_physics(bodies);
     check(near(final.momentum.x, initial.momentum.x) && near(final.momentum.y, initial.momentum.y), "Cambio de momento");
     check(near(final.center_of_mass.x, initial.center_of_mass.x + initial.momentum.x / initial.mass) &&
           near(final.center_of_mass.y, initial.center_of_mass.y + initial.momentum.y / initial.mass), "Movimiento del centro de masa incorrecto");
 
     bodies = {{1, {0, 0}, {}, {}, 0}, {1, {0, 0}, {}, {}, 1}};
-    refresh_accelerations(bodies, accelerations);
+    refresh_accelerations(bodies, accelerations, *model);
     check(near(bodies[0].acceleration.x, 0) && near(bodies[0].acceleration.y, 0), "Singularidad en cuerpos coincidentes");
     check(near(measure_physics(bodies).potential_energy, -1 / softening), "Potencial coincidente incorrecto");
     bodies.resize(1);
-    const auto zero = measure_physics(bodies);
-    std::ostringstream report;
-    write_physics_report(zero, zero, 0, report);
-    check(report.str().find("no definido") != std::string::npos, "No se trata la energía inicial cero");
+    check(near(measure_physics(bodies).energy(), 0), "Energía incorrecta para un cuerpo inmóvil aislado");
 
     const double coarse = orbit_drift(0.01, 1000);
     const double fine = orbit_drift(0.005, 2000);
