@@ -132,7 +132,7 @@ struct View {
         }
         SDL_RenderSetClipRect(render, nullptr);
 
-        draw_text(render, "DOS GALAXIAS / 2D", 20, 16, white);
+        draw_text(render, "DOS GALAXIAS / REPLAY", 20, 16, white);
         draw_text(render, "GALAXIA 0", 20, 47, cyan);
         draw_text(render, "GALAXIA 1", 165, 47, orange);
         const char* state = step == config.steps ? "COMPLETA" : paused ? "PAUSA" : "EN MARCHA";
@@ -145,21 +145,19 @@ struct View {
         camera << "CUERPOS " << bodies.size() << "  FUERA DE VISTA " << bodies.size() - visible
                << "  VELOCIDAD " << speed << " U/S  REJILLA " << std::setprecision(3) << grid;
         draw_text(render, camera.str(), 20, height - 77, muted);
-        draw_text(render, "ESPACIO PAUSA   N PASO   R REINICIAR   F ENCUADRAR", 20, height - 50, muted);
+        draw_text(render, "ESPACIO PAUSA   N FRAME   R REINICIAR   F ENCUADRAR", 20, height - 50, muted);
         draw_text(render, "+/- VELOCIDAD   RUEDA ZOOM   ARRASTRAR CAMARA   ESC SALIR", 20, height - 23, muted);
         SDL_RenderPresent(render);
     }
 };
 }  // namespace
 
-RunResult run_native(std::vector<Body>& bodies, std::vector<Vec2>& accelerations,
-                     const Config& config, bool close_when_complete) {
+std::size_t replay_native(TrajectoryReader& trajectory, bool close_when_complete) {
+    const Config& config = trajectory.config();
+    auto bodies = trajectory.read_frame(0);
     View view;
     view.fit(bodies);
-    RunResult result;
-    auto start = Clock::now();
-    refresh_accelerations(bodies, accelerations);
-    result.compute_seconds = std::chrono::duration<double>(Clock::now() - start).count();
+    std::size_t step = 0;
     bool paused = false;
     bool quit = false;
     double speed = 1.0;
@@ -185,11 +183,8 @@ RunResult run_native(std::vector<Body>& bodies, std::vector<Vec2>& accelerations
             case SDLK_PLUS: case SDLK_EQUALS: case SDLK_KP_PLUS: speed = std::min(speed * 2, 16.0); break;
             case SDLK_MINUS: case SDLK_KP_MINUS: speed = std::max(speed / 2, 0.125); break;
             case SDLK_r:
-                bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
-                result = {};
-                start = Clock::now();
-                refresh_accelerations(bodies, accelerations);
-                result.compute_seconds = std::chrono::duration<double>(Clock::now() - start).count();
+                bodies = trajectory.read_frame(0);
+                step = 0;
                 accumulated = 0;
                 paused = true;
                 single_step = false;
@@ -201,25 +196,23 @@ RunResult run_native(std::vector<Body>& bodies, std::vector<Vec2>& accelerations
         if (quit) break;
         if (!paused) accumulated = std::min(accumulated + std::min(elapsed, 0.1) * speed, std::max(0.25 * speed, config.dt));
 
-        // Siempre usamos el mismo dt. La velocidad visual solo cambia cuántos
-        // pasos se ejecutan antes de dibujar; nunca altera el integrador.
+        // La reproducción lee estados ya guardados. Ningún control ejecuta
+        // física ni modifica las métricas de la simulación.
         const auto batch_start = Clock::now();
-        while (result.completed_steps < config.steps && (single_step || (!paused && accumulated >= config.dt))) {
-            advance_one_step(bodies, accelerations, config.dt);
-            ++result.completed_steps;
+        while (step < config.steps && (single_step || (!paused && accumulated >= config.dt))) {
+            bodies = trajectory.read_frame(++step);
             if (single_step) { single_step = false; break; }
             accumulated -= config.dt;
-            // Conserva respuesta a eventos cuando la simulación es costosa.
+            // Conserva respuesta a eventos al leer trayectorias grandes.
             if (Clock::now() - batch_start > std::chrono::milliseconds(8)) break;
         }
-        result.compute_seconds += std::chrono::duration<double>(Clock::now() - batch_start).count();
-        if (result.completed_steps == config.steps) paused = true;
-        view.draw(bodies, config, result.completed_steps, paused, speed);
-        if (close_when_complete && result.completed_steps == config.steps) break;
+        if (step == config.steps) paused = true;
+        view.draw(bodies, config, step, paused, speed);
+        if (close_when_complete && step == config.steps) break;
 
         const double frame_ms = std::chrono::duration<double, std::milli>(Clock::now() - frame_start).count();
         if (frame_ms < 16.0) SDL_Delay(static_cast<Uint32>(16.0 - frame_ms));
     }
-    return result;
+    return step;
 }
 }  // namespace nbody

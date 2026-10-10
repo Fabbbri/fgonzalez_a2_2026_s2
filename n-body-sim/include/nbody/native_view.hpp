@@ -1,15 +1,8 @@
 #pragma once
-#include "nbody/config.hpp"
-#include "nbody/simulation.hpp"
+#include "nbody/trajectory.hpp"
 
 namespace nbody {
-struct RunResult {
-    std::size_t completed_steps = 0;
-    double compute_seconds = 0.0;
-};
-
-// Visualiza el mismo vector que modifica el integrador, sin archivos intermedios.
-// El cierre automático permite verificar el ciclo gráfico en pruebas.
-RunResult run_native(std::vector<Body>& bodies, std::vector<Vec2>& accelerations,
-                     const Config& config, bool close_when_complete = false);
+// Reproduce estados del archivo finalizado sin ejecutar el integrador.
+// El cierre automático permite verificar controles con SDL dummy.
+std::size_t replay_native(TrajectoryReader& trajectory, bool close_when_complete = false);
 }  // namespace nbody

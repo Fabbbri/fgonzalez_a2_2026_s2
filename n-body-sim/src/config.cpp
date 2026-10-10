@@ -16,7 +16,7 @@ std::size_t parse_integer(const std::string& value) {
     return result;
 }
 
-// Validamos los parámetros antes de reservar memoria o producir el CSV.
+// Validamos los parámetros antes de reservar memoria o crear archivos.
 Config parse_arguments(int argc, char* argv[]) {
     Config config;
     for (int i = 1; i < argc; ++i) {
@@ -26,14 +26,19 @@ Config parse_arguments(int argc, char* argv[]) {
             continue;
         }
         if (option != "--bodies-per-galaxy" && option != "--steps" &&
-            option != "--dt" && option != "--seed") {
+            option != "--dt" && option != "--seed" &&
+            option != "--trajectory" && option != "--replay") {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
         if (++i == argc) {
             throw std::invalid_argument("Falta el valor de " + option);
         }
         const std::string value = argv[i];
-        if (option == "--bodies-per-galaxy") {
+        if (option == "--trajectory" || option == "--replay") {
+            if (value.empty()) throw std::invalid_argument("La ruta no puede estar vacía.");
+            if (option == "--trajectory") config.trajectory_path = value;
+            else config.replay_path = value;
+        } else if (option == "--bodies-per-galaxy") {
             config.bodies_per_galaxy = parse_integer(value);
         } else if (option == "--steps") {
             config.steps = parse_integer(value);
@@ -50,6 +55,12 @@ Config parse_arguments(int argc, char* argv[]) {
                 throw std::invalid_argument("dt no válido: " + value);
             }
         }
+    }
+    if (!config.replay_path.empty() && argc != 3) {
+        throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
+    }
+    if (config.steps == std::numeric_limits<std::size_t>::max()) {
+        throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
     }
     if (config.bodies_per_galaxy == 0) {
         throw std::invalid_argument("La cantidad de cuerpos debe ser positiva.");
@@ -68,10 +79,12 @@ void print_usage(std::ostream& output) {
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
               "  --dt X                 Duración de cada paso (0.002)\n"
               "  --seed N               Semilla de 32 bits (42)\n"
-              "  --no-output            Ejecutar sin ventana para medir rendimiento\n"
-              "Por defecto abre una ventana nativa 2D. No genera CSV.\n"
-              "Espacio: pausa; N: un paso; R: reiniciar; F: encuadrar.\n"
+              "  --trajectory ARCHIVO   Trayectoria (output/trajectory.nbody)\n"
+              "  --no-output            Guardar y medir sin abrir la ventana\n"
+              "  --replay ARCHIVO       Reproducir una trayectoria sin simular\n"
+              "Simula, cierra la trayectoria, imprime métricas CSV y abre el reproductor.\n"
+              "Espacio: pausa; N: un frame; R: volver al inicio; F: encuadrar.\n"
               "Rueda: zoom; arrastrar: mover cámara; +/-: velocidad; Esc: salir.\n"
-              "Tiempos y diagnóstico inicial/final por stderr, fuera de la visualización.\n";
+              "Tiempo total y parámetros en CSV por stdout, antes de visualizar.\n";
 }
 }  // namespace nbody

@@ -9,10 +9,11 @@ La base secuencial incluye:
 - interacción N-body completa con complejidad $O(N^2)$ por paso;
 - suavizado gravitacional para evitar singularidades numéricas;
 - integración temporal mediante Euler simpléctico;
-- visualización nativa 2D sin archivos intermedios;
+- trayectoria binaria con el estado inicial y todos los pasos;
+- reproducción nativa 2D posterior al cálculo;
 - ejecución sin ventana para mediciones;
-- medición del tiempo de cálculo separada del dibujo y de los diagnósticos;
-- diagnóstico de masa, energía, momento lineal y centro de masa;
+- tiempo total de ejecución en CSV, antes de abrir la ventana;
+- validación de masa, energía, momento lineal y centro de masa en las pruebas;
 - condiciones iniciales reproducibles mediante una semilla;
 - pruebas físicas, de interfaz de línea de comandos y de visualización.
 
@@ -76,18 +77,160 @@ Desde la carpeta `n-body-sim`:
 
 ```bash
 make
-./build/nbody
 ```
 
-La ejecución normal abre la ventana nativa. Para ejecutar el sistema base sin
-visualización y obtener una medición adecuada para futuros benchmarks:
+La ejecución normal sigue este orden:
+
+1. Ejecuta toda la simulación y guarda el estado inicial y cada paso.
+2. Finaliza y cierra `output/trajectory.nbody`.
+3. Imprime el tiempo total y los parámetros de la ejecución en CSV por stdout.
+4. Abre una ventana que reproduce el archivo, sin recalcular la física.
+
+Para generar datos sin abrir la ventana:
 
 ```bash
-./build/nbody --no-output
+./build/nbody --no-output --trajectory output/run-001.nbody > metrics-001.csv
 ```
 
-El modo `--no-output` no inicializa SDL2. El tiempo reportado excluye la
-inicialización aleatoria, los diagnósticos físicos y el dibujo.
+`--no-output` conserva la captura y escritura de todos los estados; únicamente
+omite el reproductor y no inicializa SDL2. Los directorios de la trayectoria
+se crean automáticamente. La ruta elegida se sobrescribe en cada ejecución;
+use rutas distintas si desea conservar varias trayectorias.
+
+Para reproducir un archivo ya generado, en una ejecución independiente:
+
+```bash
+./build/nbody --replay output/run-001.nbody
+```
+
+`--replay` se utiliza sin opciones de simulación: lee sus parámetros del archivo,
+no ejecuta el integrador ni imprime nuevas métricas. Espacio pausa; N avanza un
+frame; R vuelve al estado inicial y pausa; F encuadra. La rueda y el arrastre
+controlan la cámara, +/- cambia el ritmo de reproducción y Esc cierra la ventana.
+
+### Interpretación de métricas
+
+El enunciado (§4.4) exige tiempo total de ejecución, speedup, eficiencia paralela
+y escalabilidad según la cantidad de hilos o procesos. Una ejecución individual
+registra el tiempo total y los parámetros necesarios para comparar muestras:
+
+```text
+model,workers,bodies,steps,dt,seed,total_seconds
+```
+
+`total_seconds` es el intervalo continuo desde la apertura del archivo hasta su
+flush y cierre, incluyendo cálculo y captura. Excluye inicialización aleatoria,
+impresión y reproducción. `model` y `workers` identifican el esquema de ejecución;
+`bodies`, `steps`, `dt` y `seed` identifican la entrada. Actualmente se utiliza
+`sequential` con un trabajador como referencia.
+
+La salida normal no imprime diagnósticos físicos ni tiempos parciales. Las
+validaciones físicas siguen disponibles mediante `make test`.
+
+Las métricas comparativas se obtienen externamente mediante Make/scripts:
+
+- Speedup: tiempo medio secuencial dividido entre tiempo medio del modelo,
+  con la misma entrada y política de captura.
+- Eficiencia: speedup dividido entre la cantidad de trabajadores, explicando
+  su significado para cada modelo, especialmente si es simulado.
+- Escalabilidad: evolución del tiempo, speedup y eficiencia al variar la cantidad
+  de hilos o procesos.
+- Estadísticas: número de repeticiones, media, desviación estándar e intervalos
+  de confianza del 95 % del tiempo y speedup.
+- Distribuciones y estabilidad: boxplots o histogramas de las muestras y análisis
+  de convergencia para justificar si las 200 repeticiones iniciales bastan.
+
+El enunciado también exige perfilado con herramientas como perf o VTune
+(ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
+habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
+Las repeticiones, estadísticas del tiempo e histograma están implementados.
+Los modelos paralelos y el análisis comparativo de speedup/eficiencia todavía
+están pendientes; una sola configuración secuencial no permite compararlos.
+
+El cierre comprueba los errores de escritura, pero no fuerza persistencia física
+con `fsync`; el sistema operativo puede mantener datos en su caché de archivos.
+Todos los modelos futuros deberán conservar estas mismas condiciones.
+
+### Repeticiones y análisis estadístico
+
+Se requiere Python 3.8 o posterior, sin paquetes externos. C++ ejecuta la
+simulación, Bash controla las repeticiones y Python analiza los tiempos.
+
+```bash
+make benchmark
+```
+
+Ejecuta 200 simulaciones completas consecutivas, sin ventana, y genera un lote
+nuevo en `output/benchmark-FECHA-HORA-ID/`. Conserva el mismo estado inicial y
+la misma captura por paso en todas las repeticiones. Se sobrescribe la trayectoria
+del lote para conservar únicamente la última; las muestras y lotes anteriores
+se mantienen. No ejecuta simulaciones en paralelo, ni descarta warmups u outliers.
+Un proceso fallido detiene el lote y conserva las muestras ya completadas.
+
+Para cambiar la entrada o la cantidad de repeticiones:
+
+```bash
+make benchmark REPETITIONS=200 BENCHMARK_ARGS="--bodies-per-galaxy 200 --steps 15000 --dt 0.002 --seed 42"
+```
+
+`REPETITIONS` permite valores desde 2 para pruebas rápidas; usar menos de 200
+se indica explícitamente en el reporte y requiere justificación experimental.
+`BENCHMARK_ARGS` acepta opciones físicas; el script controla la ruta de captura
+y la ejecución sin ventana. Cada lote incluye:
+
+| Archivo | Contenido |
+|---|---|
+| `samples.csv` | Número de repetición, configuración y tiempo individual |
+| `summary.csv` | n, media, desviación estándar muestral e IC 95 % de la media |
+| `histogram.svg` | Histograma de todos los tiempos, con frecuencias absolutas |
+| `convergence.csv` | Media, desviación e IC para cada prefijo desde n=2 |
+| `trajectory.nbody` | Trayectoria de la última repetición, lista para reproducir |
+| `command.txt`, `environment.txt` | Comando, repeticiones, SO y topología de CPU si hay lscpu |
+| `last-run.log` | Mensajes de la última simulación |
+
+Puede recalcular el análisis sin repetir simulaciones:
+
+```bash
+python3 scripts/analyze.py output/benchmark-FECHA-HORA-ID/samples.csv
+```
+
+La desviación estándar utiliza el denominador `n-1`. El intervalo de confianza
+bilateral para la media es `media ± t(0.975, n-1) * s / sqrt(n)`; no es un rango
+que contenga el 95 % de las ejecuciones. El cuantil Student t se calcula por
+integración numérica y bisección, con pruebas contra casos analíticos y la
+[tabla de NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda3672.htm).
+La fórmula sigue los [límites de confianza para la media de NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm).
+
+Se supone que las mediciones son suficientemente independientes y que la media
+puede aproximarse con este método. Para justificar el número de repeticiones,
+revise `convergence.csv`, el semiancho del IC relativo a la media y el cambio
+entre las medias de las dos mitades del lote, incluidos en el resumen.
+Un IC estrecho por sí solo no demuestra estabilidad ni elimina sesgos por
+carga, temperatura o cachés. El script no declara automáticamente convergencia:
+la tolerancia aceptable debe justificarse en el paper. El histograma usa la
+regla de Sturges para la cantidad de intervalos e incluye todas las muestras.
+
+Las mediciones principales deben ejecutarse sobre hardware físico, como exige
+el enunciado. Registre además compilador, banderas y estado de SMT para cada
+experimento. La configuración predeterminada escribe unos 24 GB acumulados
+en 200 ejecuciones, aunque solo conserva una trayectoria de unos 120 MB.
+
+### Archivo de trayectoria
+
+El formato binario v1 comienza con `NBODY001`, una marca de orden de bytes,
+cantidad total de cuerpos, pasos, `dt` y semilla. Cada frame guarda, en orden,
+masa, posición XY, velocidad XY, aceleración XY e identificador de galaxia de
+cada cuerpo. El frame 0 incluye las aceleraciones iniciales; hay `steps + 1`
+frames. El archivo usa doubles IEEE 754 de 64 bits y enteros de tamaño fijo,
+sin volcar estructuras C++ ni su padding. Se rechaza otro orden de bytes.
+El modelo v1 utiliza las constantes físicas documentadas arriba.
+
+Tamaño: `40 + (steps + 1) * cuerpos * 60` bytes. La configuración predeterminada
+ocupa aproximadamente 120 MB. Se escribe y reproduce un frame a la vez, con
+memoria O(N). El lector verifica versión, dimensiones y tamaño exacto, y valida
+los valores de cada frame al leerlo. Si la generación falla, puede quedar un
+archivo parcial; no se publican métricas exitosas y el lector rechaza su tamaño
+incompleto.
 
 ### Parámetros
 
@@ -97,7 +240,9 @@ inicialización aleatoria, los diagnósticos físicos y el dibujo.
 | `--steps N` | Cantidad de pasos temporales | `10000` |
 | `--dt X` | Duración de cada paso | `0.002` |
 | `--seed N` | Semilla de 32 bits para la inicialización | `42` |
-| `--no-output` | Ejecuta sin ventana para medir rendimiento | desactivado |
+| `--trajectory ARCHIVO` | Ruta de la trayectoria generada | `output/trajectory.nbody` |
+| `--no-output` | Guarda y mide sin abrir el reproductor | desactivado |
+| `--replay ARCHIVO` | Reproduce un archivo existente sin simular | — |
 
 Ejemplo con 400 cuerpos totales:
 
@@ -120,10 +265,10 @@ La ayuda integrada muestra las opciones disponibles:
 
 | Comando | Acción |
 |---|---|
-| `make` o `make all` | Compila `build/nbody` |
-| `make run` | Compila si es necesario y abre la simulación |
+| `make` | Compila si es necesario, simula, guarda, imprime métricas y reproduce |
+| `make build` | Solo compila `build/nbody` |
+| `make benchmark` | Ejecuta 200 repeticiones y genera estadísticas e histograma |
 | `make test` | Compila y ejecuta todas las pruebas |
-| `make check-sdl` | Comprueba que SDL2 esté disponible para enlazar |
 | `make clean` | Elimina los ejecutables generados en `build/` |
 
 
@@ -133,7 +278,8 @@ La ayuda integrada muestra las opciones disponibles:
 n-body-sim/
 ├── include/nbody/       Interfaces y estructuras compartidas
 ├── src/                 Implementación secuencial y visualización
-├── tests/               Pruebas físicas, de CLI y de ventana
+├── tests/               Pruebas físicas, de CLI, de ventana y estadísticas
+├── scripts/             Repeticiones Bash y análisis Python
 ├── docs/diagrams/       Diagramas de los modelos de ejecución
 ├── Makefile
 └── README.md
@@ -149,8 +295,9 @@ Responsabilidades principales:
   gravitacional e integración temporal.
 - [`src/diagnostics.cpp`](src/diagnostics.cpp): masa, energía, momento y
   centro de masa.
-- [`src/native_view.cpp`](src/native_view.cpp): ventana SDL2 y controles,
-  separados del modo de medición.
+- [`src/trajectory.cpp`](src/trajectory.cpp): escritura y lectura de estados binarios.
+- [`src/native_view.cpp`](src/native_view.cpp): reproductor SDL2 y controles,
+  ejecutado después de finalizar las mediciones.
 - [`src/output.cpp`](src/output.cpp): presentación textual de los
   diagnósticos.
 
