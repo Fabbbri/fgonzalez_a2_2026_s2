@@ -74,6 +74,16 @@ gunzip data/mnist/*.gz
 
 # Para comprimir las img
 gzip data/mnist/*
+
+# Para PERF
+
+# Bajar permisos (se reinician al reiniciar la PC)
+sudo sysctl -w kernel.perf_event_paranoid=1 
+
+# Permisos para USO POR HILO LOGICO
+sudo sysctl -w kernel.perf_event_paranoid=0
+
+
 ```
 
 ## ¿Qué busca Deep Learning?

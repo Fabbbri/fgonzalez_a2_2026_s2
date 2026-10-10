@@ -1,5 +1,7 @@
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
+#include "checksum.h"        
 #include "mnist.h"
 
 using std::cout;
@@ -12,7 +14,7 @@ VectorXd sigmoid(const VectorXd& z) {
     return 1.0 / (1.0 + (-z.array()).exp());
 }
 
-int main() {
+int main(int argc, char** argv) {
 
     // =========================================
     // CONFIGURACIÓN DEL ENTRENAMIENTO
@@ -21,7 +23,7 @@ int main() {
     // n (\eta indica que tanto avanza en la direccion del gradiente)
     double learning_rate = 0.1;
     const int num_muestras = 100;
-    const int epochs = 1000;
+    const int epochs = (argc > 1) ? std::atoi(argv[1]) : 1000;
     double mse_promedio = 0.0;
     auto start = std::chrono::steady_clock::now();
     int conteo_clases[10] = {0};
@@ -201,6 +203,12 @@ int main() {
             end - start
         );
 
+    uint64_t h = CHECKSUM_INICIAL;
+    h = hash_params(W1, h); h = hash_params(b1, h);
+    h = hash_params(W2, h); h = hash_params(b2, h);
+    h = hash_params(W3, h); h = hash_params(b3, h);
+    cout << "\nChecksum parametros: " << std::hex << h << std::dec << "\n";
+
     // Cuantas imágenes corresponden a cada número
     cout << "\nDistribución de clases:\n";
 
@@ -208,6 +216,17 @@ int main() {
         cout << "Clase " << i << ": "
              << conteo_clases[i] << "\n";
     }
+
+    cout << "\n=== Pesos y sesgos finales ===\n";
+
+    cout << "W1:\n" << W1 << "\n";
+    cout << "b1:\n" << b1 << "\n";
+
+    cout << "W2:\n" << W2 << "\n";
+    cout << "b2:\n" << b2 << "\n";
+
+    cout << "W3:\n" << W3 << "\n";
+    cout << "b3:\n" << b3 << "\n";
     
     cout << "\n=== Secuencial ===\n";
 

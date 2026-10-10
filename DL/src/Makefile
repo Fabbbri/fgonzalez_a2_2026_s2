@@ -1,12 +1,13 @@
 # ==========================================
-# CONFIGURACIÓN PARA macOS
+# CONFIGURACIÓN PARA UBUNTU
 # ==========================================
 
-CXX = clang++
+CXX = g++
 CXXFLAGS = -O2 -Wall -Wextra -std=c++17 -pthread
-EIGEN = -I/opt/homebrew/include/eigen3
+EIGEN = -I/usr/include/eigen3
 
-TARGETS = main fino
+TARGETS = main fino grueso smt cmp
+HEADERS = mnist.h checksum.h
 
 # ==========================================
 # REGLAS
@@ -14,11 +15,9 @@ TARGETS = main fino
 
 all: $(TARGETS)
 
-main: main.cpp lector.cpp mnist.h
-	$(CXX) $(CXXFLAGS) $(EIGEN) main.cpp lector.cpp -o main
-
-fino: fino.cpp lector.cpp mnist.h
-	$(CXX) $(CXXFLAGS) $(EIGEN) fino.cpp lector.cpp -o fino
+# Cada ejecutable X se construye desde X.cpp + lector.cpp
+$(TARGETS): %: %.cpp lector.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) $(EIGEN) $< lector.cpp -o $@
 
 clean:
 	rm -f $(TARGETS)

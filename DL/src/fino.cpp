@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <chrono>
 #include <cmath>
@@ -6,6 +5,7 @@
 #include <fstream>
 #include <cstdlib>
 #include "mnist.h"
+#include "checksum.h"
 
 using std::cout;
 using Eigen::VectorXd;
@@ -253,10 +253,10 @@ void entrenar_muestra(
 // MAIN
 // =========================================
 
-int main() {
+int main(int argc, char** argv) {
     const double learning_rate = 0.1;
     const int num_muestras = 100;
-    const int epochs = 1000;
+    const int epochs = (argc > 1) ? std::atoi(argv[1]) : 1000;
 
     ModeloFG modelo;
 
@@ -314,6 +314,23 @@ int main() {
         std::chrono::duration_cast<std::chrono::microseconds>(
             end - start
         );
+
+    uint64_t h = CHECKSUM_INICIAL;
+    h = hash_params(modelo.W1, h); h = hash_params(modelo.b1, h);
+    h = hash_params(modelo.W2, h); h = hash_params(modelo.b2, h);
+    h = hash_params(modelo.W3, h); h = hash_params(modelo.b3, h);
+    cout << "\nChecksum parametros: " << std::hex << h << std::dec << "\n";
+
+    cout << "\n=== Pesos y sesgos finales ===\n";
+
+    cout << "W1:\n" << modelo.W1 << "\n";
+    cout << "b1:\n" << modelo.b1 << "\n";
+
+    cout << "W2:\n" << modelo.W2 << "\n";
+    cout << "b2:\n" << modelo.b2 << "\n";
+
+    cout << "W3:\n" << modelo.W3 << "\n";
+    cout << "b3:\n" << modelo.b3 << "\n";
 
     cout << "\n=== Fine-Grained ===\n";
     cout << "Tiempo total: " << elapsed.count() << " us\n";

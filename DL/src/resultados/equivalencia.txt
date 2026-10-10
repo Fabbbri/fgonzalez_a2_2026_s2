@@ -1,0 +1,8 @@
+Modelo     Checksum             vs fino      vs main     
+--------------------------------------------------------------
+main       NA                   NA           NA          
+fino       NA                   NA           NA          
+grueso     NA                   NA           NA          
+smt1       9a6c7d2229e7e1d4     DIFERENTE    DIFERENTE   
+smt_smt    9a6c7d2229e7e1d4     DIFERENTE    DIFERENTE   
+smt_cmp    9a6c7d2229e7e1d4     DIFERENTE    DIFERENTE   
