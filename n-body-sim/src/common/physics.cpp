@@ -55,8 +55,15 @@ std::vector<Body> create_galaxies(std::size_t bodies_per_galaxy, std::uint32_t s
 Vec2 acceleration_for_body(const std::vector<Body>& bodies, std::size_t index,
                            double gravity, double epsilon) {
     Vec2 acceleration{};
+    accumulate_accelerations(bodies, index, 0, bodies.size(), acceleration, gravity, epsilon);
+    return acceleration;
+}
+
+void accumulate_accelerations(const std::vector<Body>& bodies, std::size_t index,
+                              std::size_t begin, std::size_t end, Vec2& acceleration,
+                              double gravity, double epsilon) {
     const double epsilon_squared = epsilon * epsilon;
-    for (std::size_t j = 0; j < bodies.size(); ++j) {
+    for (std::size_t j = begin; j < end; ++j) {
         if (index == j) continue;
         const double dx = bodies[j].position.x - bodies[index].position.x;
         const double dy = bodies[j].position.y - bodies[index].position.y;
@@ -66,7 +73,6 @@ Vec2 acceleration_for_body(const std::vector<Body>& bodies, std::size_t index,
         acceleration.x += factor * dx;
         acceleration.y += factor * dy;
     }
-    return acceleration;
 }
 
 bool is_finite(Vec2 value) {

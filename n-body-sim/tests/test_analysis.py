@@ -42,8 +42,8 @@ class AnalysisTests(unittest.TestCase):
             root = Path(temporary)
             sample = root / "samples.csv"
             header = ["repetition", *analysis.CONFIG_FIELDS, "total_seconds"]
-            rows = [[1, "sequential", 1, 4, 10, 0.002, 42, 1],
-                    [2, "sequential", 1, 8, 10, 0.002, 42, 2]]
+            rows = [[1, "sequential", 1, 4, 10, 0.002, 42, 0, 1],
+                    [2, "sequential", 1, 8, 10, 0.002, 42, 0, 2]]
             with sample.open("w", newline="") as target:
                 writer = csv.writer(target); writer.writerow(header); writer.writerows(rows)
             with self.assertRaises(ValueError):
@@ -53,6 +53,25 @@ class AnalysisTests(unittest.TestCase):
             chart = ET.parse(root / "histogram.svg").getroot()
             bars = chart.findall(".//{http://www.w3.org/2000/svg}rect/{http://www.w3.org/2000/svg}title")
             self.assertEqual(sum(int(bar.text.split()[0]) for bar in bars), 200)
+
+    def test_quantum_separates_samples_and_legacy_sequential(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            sample = Path(temporary) / "samples.csv"
+            header = ["repetition", *analysis.CONFIG_FIELDS, "total_seconds"]
+            rows = [[1, "fine-grained", 1, 4, 10, 0.002, 42, 1, 1],
+                    [2, "fine-grained", 1, 4, 10, 0.002, 42, 3, 2]]
+            with sample.open("w", newline="") as target:
+                writer = csv.writer(target); writer.writerow(header); writer.writerows(rows)
+            with self.assertRaises(ValueError):
+                analysis.load_samples(sample)
+            with sample.open("w", newline="") as target:
+                writer = csv.writer(target)
+                writer.writerow([field for field in header if field != "quantum"])
+                writer.writerows([[1, "sequential", 1, 4, 10, 0.002, 42, 1],
+                                  [2, "sequential", 1, 4, 10, 0.002, 42, 2]])
+            config, values = analysis.load_samples(sample)
+            self.assertEqual(config["quantum"], "0")
+            self.assertEqual(values, [1, 2])
 
 
 if __name__ == "__main__":

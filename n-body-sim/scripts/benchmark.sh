@@ -29,7 +29,7 @@ printf '\nrepetitions: %s\n' "$repetitions" >> "$result_dir/command.txt"
     uname -a
     if command -v lscpu >/dev/null; then lscpu; fi
 } > "$result_dir/environment.txt"
-printf 'repetition,model,workers,bodies,steps,dt,seed,total_seconds\n' > "$result_dir/samples.csv"
+printf 'repetition,model,workers,bodies,steps,dt,seed,quantum,total_seconds\n' > "$result_dir/samples.csv"
 for (( run=1; run<=repetitions; run++ )); do
     if ! "$binary" "$@" --no-output --trajectory "$result_dir/trajectory.nbody" \
             > "$result_dir/current.csv" 2> "$result_dir/last-run.log"; then
@@ -39,8 +39,8 @@ for (( run=1; run<=repetitions; run++ )); do
     fi
     # No se cuentan procesos fallidos ni salidas con un esquema inesperado.
     awk -F, -v run="$run" '
-        NR==1 {if ($0!="model,workers,bodies,steps,dt,seed,total_seconds") exit 1}
-        NR==2 {if (NF!=7 || $7 !~ /^[0-9.eE+-]+$/ || $7<=0) exit 1; row=$0}
+        NR==1 {if ($0!="model,workers,bodies,steps,dt,seed,quantum,total_seconds") exit 1}
+        NR==2 {if (NF!=8 || $8 !~ /^[0-9.eE+-]+$/ || $8<=0) exit 1; row=$0}
         END {if (NR!=2 || row=="") exit 1; print run "," row}
     ' "$result_dir/current.csv" >> "$result_dir/samples.csv"
     if (( run == 1 || run % 10 == 0 || run == repetitions )); then

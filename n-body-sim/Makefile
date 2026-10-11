@@ -29,9 +29,10 @@ endif
 REPETITIONS ?= 200
 BENCHMARK_ARGS ?=
 PYTHON ?= python3
+ARGS ?=
 
 run: $(TARGET)
-	./$(TARGET)
+	./$(TARGET) $(ARGS)
 
 build: $(TARGET)
 

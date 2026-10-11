@@ -14,7 +14,7 @@ from pathlib import Path
 import statistics
 import sys
 
-CONFIG_FIELDS = ("model", "workers", "bodies", "steps", "dt", "seed")
+CONFIG_FIELDS = ("model", "workers", "bodies", "steps", "dt", "seed", "quantum")
 
 
 def integrate(function, left, right, tolerance=1e-11):
@@ -75,10 +75,15 @@ def load_samples(path):
     with path.open(newline="", encoding="utf-8") as source:
         reader = csv.DictReader(source)
         expected = ["repetition", *CONFIG_FIELDS, "total_seconds"]
-        if reader.fieldnames != expected:
+        legacy = reader.fieldnames == [field for field in expected if field != "quantum"]
+        if reader.fieldnames != expected and not legacy:
             raise ValueError("Cabecera de samples.csv incompatible")
         config, values = None, []
         for row in reader:
+            if legacy:
+                if row.get("model") != "sequential":
+                    raise ValueError("Falta quantum para identificar la configuración del modelo")
+                row["quantum"] = "0"  # Lotes secuenciales previos a Fine-Grained.
             if None in row or any(value is None for value in row.values()):
                 raise ValueError("Fila incompleta o con columnas adicionales")
             current = {field: row[field] for field in CONFIG_FIELDS}
@@ -112,6 +117,8 @@ def histogram(values, config, summary, path):
         counts[min(bins - 1, int((value - low) / width))] += 1
     peak = max(counts)
     title = f"Tiempo total — {config['model']} ({config['workers']} trabajador/es)"
+    if config.get("quantum", "0") != "0":
+        title += f" / quantum {config['quantum']}"
     svg = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img">',
            f'<title>{escape(title)}</title>',
            '<rect width="960" height="600" fill="white"/>',

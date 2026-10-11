@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace nbody {
@@ -85,7 +86,37 @@ double orbit_drift(double dt, std::size_t steps) {
     return max_drift;
 }
 
+void test_fine_grained() {
+    auto reference = make_sequential_model();
+    for (std::size_t quantum : {std::size_t{1}, std::size_t{2}, std::size_t{3},
+                                std::size_t{100}, std::numeric_limits<std::size_t>::max()}) {
+        auto fine = make_fine_grained_model(quantum);
+        for (std::size_t count : {0, 1, 2, 3, 7, 12}) {
+            auto bodies = create_galaxies(6, 19);
+            bodies.resize(count);
+            std::vector<Vec2> expected, actual;
+            reference->compute_accelerations(bodies, expected, 0.7, 0.03);
+            const auto before = fine->scheduling_stats();
+            fine->compute_accelerations(bodies, actual, 0.7, 0.03);
+            check(actual.size() == expected.size(), "Fine-Grained pierde cuerpos");
+            for (std::size_t i = 0; i < count; ++i) {
+                check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
+                      "Fine-Grained altera el orden de suma o pierde interacciones");
+            }
+            const std::size_t rounds = count == 0 ? 0 : count == 1 ? 1 : 1 + (count - 2) / quantum;
+            const auto after = fine->scheduling_stats();
+            check(after.tasks == count && after.rounds - before.rounds == rounds &&
+                  after.dispatches - before.dispatches == count * rounds,
+                  "Quantum o reinicio de contextos incorrecto");
+        }
+    }
+    bool rejected = false;
+    try { make_fine_grained_model(0); } catch (const std::invalid_argument&) { rejected = true; }
+    check(rejected, "Admite quantum cero");
+}
+
 int main() try {
+    test_fine_grained();
     auto model = make_sequential_model();
     // Dos masas con energía, momento y centro de masa calculables a mano.
     std::vector<Body> bodies{{2, {0, 0}, {1, -2}, {}, 0}, {3, {3, 4}, {0, 1}, {}, 1}};

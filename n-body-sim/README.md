@@ -17,9 +17,48 @@ La base secuencial incluye:
 - condiciones iniciales reproducibles mediante una semilla;
 - pruebas físicas, de interfaz de línea de comandos y de visualización.
 
-Los modelos Fine-Grained, Coarse-Grained, SMT y CMP todavía no están
-implementados. Sus diagramas preliminares ya documentan cómo se dividirá y
-sincronizará el cálculo gravitacional en cada modelo.
+La versión secuencial y Fine-Grained están implementadas. Coarse-Grained, SMT
+y CMP siguen pendientes; sus diagramas preliminares documentan cómo se dividirá
+y sincronizará el cálculo gravitacional.
+
+## Fine-Grained: planificación cooperativa simulada
+
+Para ejecutar y visualizar:
+
+```bash
+make ARGS="--model fine-grained --quantum 1"
+```
+
+Para generar 200 muestras con la misma política de captura:
+
+```bash
+make benchmark BENCHMARK_ARGS="--model fine-grained --quantum 1"
+```
+
+El modelo crea una tarea por cuerpo. Cada tarea conserva el índice de la próxima
+fuente y su aceleración acumulada. El planificador visita todas las tareas
+pendientes en orden round-robin; cada turno calcula como máximo `quantum`
+interacciones distintas de sí misma y cede el turno, sin esperar bloqueos.
+El quantum predeterminado es 1. Si excede `N-1`, cada tarea puede terminar en
+una sola visita y la intercalación se reduce. Cambiarlo no cambia `dt`.
+
+Cuando todas las tareas terminan se alcanza una barrera lógica y el integrador
+común puede actualizar los cuerpos. Los contextos se reinician al calcular las
+fuerzas del siguiente estado; los contadores de rondas y despachos se acumulan
+durante toda la ejecución (incluidas las aceleraciones iniciales) y se imprimen
+por stderr, después del CSV. Un despacho es una visita a una tarea pendiente,
+no un cambio de contexto del sistema operativo.
+
+Esta aproximación se ejecuta en **un único hilo real**, sin OpenMP ni std::thread.
+Simula la intercalación fina; no implementa multithreading microarquitectónico ni
+promete aceleración en varios núcleos. La comparación mide también el costo del
+planificador. `workers=1` no debe confundirse con las `N` tareas simuladas.
+
+La ecuación y el orden de suma de cada cuerpo coinciden con la referencia.
+Las pruebas verifican aceleraciones y trayectorias completas para varios
+quantums, además del reinicio de contextos y los conteos de planificación.
+El formato de trayectoria v1 y `viewer.cpp` se comparten sin cambios; el modelo
+y quantum se registran en el CSV y el comando del lote, no en la trayectoria.
 
 ## Modelo físico
 
@@ -130,15 +169,19 @@ y escalabilidad según la cantidad de hilos o procesos. Una ejecución individua
 registra el tiempo total y los parámetros necesarios para comparar muestras:
 
 ```text
-model,workers,bodies,steps,dt,seed,total_seconds
+model,workers,bodies,steps,dt,seed,quantum,total_seconds
 ```
 
 `total_seconds` es el intervalo continuo desde la creación de la estrategia de
 ejecución hasta finalizar la trayectoria, incluyendo apertura, cálculo, captura,
 liberación de trabajadores y flush/cierre. Excluye inicialización aleatoria,
 impresión y reproducción. `model` y `workers` identifican el esquema de ejecución;
-`bodies`, `steps`, `dt` y `seed` identifican la entrada. Actualmente se utiliza
-`sequential` con un trabajador como referencia.
+`bodies`, `steps`, `dt` y `seed` identifican la entrada. Se utiliza `sequential` como referencia y `fine-grained` como planificación
+cooperativa simulada. Ambos tienen `workers=1`, que cuenta hilos reales del SO.
+`quantum=0` identifica al secuencial; en Fine-Grained es el número máximo de
+interacciones entre cuerpos distintos por turno. Cada quantum define una
+configuración diferente. El analizador también acepta los CSV secuenciales
+anteriores que no tenían esta columna.
 
 La salida normal no imprime diagnósticos físicos ni tiempos parciales. Las
 validaciones físicas siguen disponibles mediante `make test`.
@@ -160,7 +203,7 @@ El enunciado también exige perfilado con herramientas como perf o VTune
 (ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
 habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
 Las repeticiones, estadísticas del tiempo e histograma están implementados.
-Los modelos paralelos y el análisis comparativo de speedup/eficiencia todavía
+Coarse-Grained, SMT, CMP y el análisis comparativo de speedup/eficiencia todavía
 están pendientes; una sola configuración secuencial no permite compararlos.
 
 El cierre comprueba los errores de escritura, pero no fuerza persistencia física
@@ -252,6 +295,8 @@ incompleto.
 
 | Opción | Descripción | Valor predeterminado |
 |---|---|---:|
+| `--model MODELO` | `sequential` o `fine-grained` | `sequential` |
+| `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
 | `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `100` |
 | `--steps N` | Cantidad de pasos temporales | `10000` |
 | `--dt X` | Duración de cada paso | `0.002` |
@@ -282,6 +327,7 @@ La ayuda integrada muestra las opciones disponibles:
 | Comando | Acción |
 |---|---|
 | `make` | Compila si es necesario, simula, guarda, imprime métricas y reproduce |
+| `make ARGS="--model fine-grained --quantum 1"` | Ejecuta el flujo completo con Fine-Grained |
 | `make build` | Solo compila `build/nbody` |
 | `make benchmark` | Ejecuta 200 repeticiones y genera estadísticas e histograma |
 | `make test` | Compila y ejecuta todas las pruebas |
@@ -300,7 +346,8 @@ n-body-sim/
 │   │   ├── physics.cpp      Inicialización, ecuación gravitacional e integrador
 │   │   └── trajectory.cpp   Lectura y escritura del formato común
 │   └── models/
-│       └── sequential.cpp   Estrategia de referencia sin hilos
+│       ├── sequential.cpp   Estrategia de referencia sin hilos
+│       └── fine_grained.cpp Planificador cooperativo round-robin
 ├── scripts/                 Repeticiones Bash y análisis Python
 ├── tests/                   Validación física, archivos, reproductor y estadísticas
 ├── docs/diagrams/            Diseños de los cuatro modelos posteriores
@@ -308,8 +355,8 @@ n-body-sim/
 └── README.md
 ```
 
-El código de producción pasa de siete headers y siete fuentes a **un header y
-cinco fuentes**. Se mantiene un único header porque las unidades C++ necesitan
+El código de producción utiliza **un header y una fuente por modelo**, además
+del programa principal, el reproductor y las dos fuentes comunes. Se mantiene un único header porque las unidades C++ necesitan
 compartir los tipos y sus contratos. La configuración vive en `main.cpp` y la
 fuente bitmap es privada a `viewer.cpp`. Los diagnósticos físicos se calculan
 dentro de las pruebas, sin fuentes adicionales en el ejecutable.
@@ -325,23 +372,23 @@ simulación para reutilizar trabajadores o el estado del planificador.
 | Modelo | Archivo en `src/models/` | Estado / estrategia |
 |---|---|---|
 | Secuencial | `sequential.cpp` | Implementado: recorre los cuerpos en un único hilo |
-| Fine-Grained | `fine_grained.cpp` | Futuro: tareas con progreso y cuantums round-robin |
+| Fine-Grained | `fine_grained.cpp` | Implementado: tareas con progreso y cuantums round-robin |
 | Coarse-Grained | `coarse_grained.cpp` | Futuro: bloques de trabajo y bloqueo/sincronización observable |
 | SMT | `smt.cpp` | Futuro: distribución entre hilos lógicos, documentando topología |
 | CMP | `cmp.cpp` | Futuro: bloques distribuidos entre núcleos físicos |
 
-Los cuatro archivos futuros se crearán al implementar sus modelos. No hay
+Los tres archivos futuros se crearán al implementar sus modelos. No hay
 implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
 paralelos. El Makefile incorpora las fuentes de `src/models/` automáticamente;
-la selección y parámetros de los nuevos modelos se añadirán en `main.cpp`.
+la selección y parámetros de los modelos se gestionan en `main.cpp`.
 
 La inicialización y el integrador de [`common/physics.cpp`](src/common/physics.cpp),
 la captura de [`common/trajectory.cpp`](src/common/trajectory.cpp), el CSV y el
 reproductor son compartidos. La primera interfaz permite variar el cálculo de
 fuerzas manteniendo la actualización de velocidades/posiciones común y
 secuencial. `acceleration_for_body` conserva la misma ecuación y orden de suma
-para las estrategias que reparten cuerpos completos. Fine-Grained podrá
-conservar sumas parciales entre cuantums respetando la misma ecuación.
+para las estrategias que reparten cuerpos completos. Fine-Grained conserva sumas parciales entre cuantums usando el mismo helper
+`accumulate_accelerations` y manteniendo el orden ascendente de las fuentes.
 
 El ciclo crea el modelo dentro del cronómetro y lo destruye antes de finalizar
 la trayectoria; así las futuras creaciones/cierres de trabajadores forman parte

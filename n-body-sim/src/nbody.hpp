@@ -14,6 +14,8 @@ struct Config {
     std::size_t steps = 10000;
     double dt = 0.002;
     std::uint32_t seed = 42;
+    std::string model = "sequential";
+    std::size_t quantum = 1;
     bool no_output = false;
     std::string trajectory_path = "output/trajectory.nbody";
     std::string replay_path;
@@ -35,21 +37,33 @@ inline constexpr double softening = 0.05;
 // Un modelo distribuye el cálculo de fuerzas. Al retornar, todas las salidas
 // deben estar listas: ninguna tarea puede seguir leyendo el estado anterior.
 // El objeto puede mantener trabajadores/planificadores vivos entre pasos.
+struct SchedulingStats {
+    std::size_t tasks = 0;
+    std::uint64_t rounds = 0;
+    std::uint64_t dispatches = 0;
+};
 class ExecutionModel {
 public:
     virtual ~ExecutionModel() = default;
     virtual const char* name() const = 0;
     virtual std::size_t workers() const = 0;
+    virtual SchedulingStats scheduling_stats() const { return {}; }
     virtual void compute_accelerations(const std::vector<Body>& bodies,
                                       std::vector<Vec2>& accelerations,
                                       double gravity, double epsilon) = 0;
 };
 std::unique_ptr<ExecutionModel> make_sequential_model();
+std::unique_ptr<ExecutionModel> make_fine_grained_model(std::size_t quantum);
 
 // Física e integrador comunes: cada estrategia cambia la ejecución, no la entrada.
 std::vector<Body> create_galaxies(std::size_t bodies_per_galaxy, std::uint32_t seed);
 Vec2 acceleration_for_body(const std::vector<Body>& bodies, std::size_t index,
                            double gravity, double epsilon);
+// Acumula un intervalo de fuentes en orden ascendente; permite reanudar tareas
+// sin cambiar la ecuación ni reagrupar sumas respecto a la referencia.
+void accumulate_accelerations(const std::vector<Body>& bodies, std::size_t index,
+                              std::size_t begin, std::size_t end, Vec2& partial,
+                              double gravity, double epsilon);
 void refresh_accelerations(std::vector<Body>& bodies, std::vector<Vec2>& accelerations,
                            ExecutionModel& model);
 void advance_one_step(std::vector<Body>& bodies, std::vector<Vec2>& accelerations,

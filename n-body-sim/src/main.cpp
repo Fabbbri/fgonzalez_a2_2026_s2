@@ -23,6 +23,7 @@ std::size_t parse_integer(const std::string& value) {
 // Validamos los parámetros antes de reservar memoria o crear archivos.
 Config parse_arguments(int argc, char* argv[]) {
     Config config;
+    bool quantum_given = false;
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
         if (option == "--no-output") {
@@ -31,14 +32,20 @@ Config parse_arguments(int argc, char* argv[]) {
         }
         if (option != "--bodies-per-galaxy" && option != "--steps" &&
             option != "--dt" && option != "--seed" &&
-            option != "--trajectory" && option != "--replay") {
+            option != "--trajectory" && option != "--replay" &&
+            option != "--model" && option != "--quantum") {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
         if (++i == argc) {
             throw std::invalid_argument("Falta el valor de " + option);
         }
         const std::string value = argv[i];
-        if (option == "--trajectory" || option == "--replay") {
+        if (option == "--model") {
+            config.model = value;
+        } else if (option == "--quantum") {
+            config.quantum = parse_integer(value);
+            quantum_given = true;
+        } else if (option == "--trajectory" || option == "--replay") {
             if (value.empty()) throw std::invalid_argument("La ruta no puede estar vacía.");
             if (option == "--trajectory") config.trajectory_path = value;
             else config.replay_path = value;
@@ -63,6 +70,12 @@ Config parse_arguments(int argc, char* argv[]) {
     if (!config.replay_path.empty() && argc != 3) {
         throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
     }
+    if (config.model != "sequential" && config.model != "fine-grained") {
+        throw std::invalid_argument("Modelo no disponible: " + config.model);
+    }
+    if (config.quantum == 0 || (quantum_given && config.model != "fine-grained")) {
+        throw std::invalid_argument("--quantum debe ser positivo y requiere --model fine-grained.");
+    }
     if (config.steps == std::numeric_limits<std::size_t>::max()) {
         throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
     }
@@ -79,6 +92,8 @@ Config parse_arguments(int argc, char* argv[]) {
 
 void print_usage(std::ostream& output) {
     output << "Uso: nbody [opciones]\n"
+              "  --model MODELO         sequential (por defecto) o fine-grained\n"
+              "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
               "  --bodies-per-galaxy N  Cuerpos por galaxia (100)\n"
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
               "  --dt X                 Duración de cada paso (0.002)\n"
@@ -112,7 +127,8 @@ int main(int argc, char* argv[]) try {
     // Intervalo total continuo: apertura, cálculo, captura, flush y cierre.
     // La generación aleatoria y la reproducción quedan fuera de este tiempo.
     const auto total_start = Clock::now();
-    auto model = make_sequential_model();
+    auto model = config.model == "sequential" ? make_sequential_model()
+                                              : make_fine_grained_model(config.quantum);
     const std::string model_name = model->name();
     const std::size_t workers = model->workers();
     TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
@@ -122,17 +138,24 @@ int main(int argc, char* argv[]) try {
         advance_one_step(bodies, accelerations, config.dt, *model);
         writer.append(bodies);
     }
+    const SchedulingStats scheduling = model->scheduling_stats();
     model.reset();  // Incluye el cierre de futuros trabajadores en el tiempo total.
     writer.finish();
     const double total_seconds = std::chrono::duration<double>(Clock::now() - total_start).count();
     // Una cabecera y una fila por ejecución permiten agregación externa con Make/Bash.
     // Speedup, eficiencia y estadísticas requieren comparar varias muestras/modelos.
-    std::cout << "model,workers,bodies,steps,dt,seed,total_seconds\n"
+    std::cout << "model,workers,bodies,steps,dt,seed,quantum,total_seconds\n"
               << std::setprecision(17) << model_name << ',' << workers << ',' << bodies.size() << ',' << config.steps
-              << ',' << config.dt << ',' << config.seed << ',' << total_seconds << '\n';
+              << ',' << config.dt << ',' << config.seed << ','
+              << (config.model == "fine-grained" ? config.quantum : 0) << ',' << total_seconds << '\n';
     std::cout.flush();
     if (!std::cout) throw std::runtime_error("No se pudieron imprimir las métricas.");
     std::cerr << "Trayectoria finalizada: " << config.trajectory_path << '\n';
+    if (config.model == "fine-grained") {
+        std::cerr << "Fine-Grained simulado: 1 hilo real, " << scheduling.tasks
+                  << " tareas, " << scheduling.rounds << " rondas y "
+                  << scheduling.dispatches << " despachos (acumulados).\n";
+    }
     std::cerr.flush();
 
     // La ventana solo se crea después de cerrar el archivo e imprimir los resultados.
