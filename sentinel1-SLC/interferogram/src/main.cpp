@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
                   << "Kernel time: " << milliseconds << " ms\n"
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
-                  << "Computational kernel; pixelwise coregistration not established.\n";
+                  << "Computational kernel; coregistration quality is not verified by this executable.\n";
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.
     } catch (const std::exception& error) {

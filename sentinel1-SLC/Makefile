@@ -33,6 +33,7 @@ test: $(TARGET) build/test_interferogram build/test_slc_reader
 	./build/test_interferogram
 	./build/test_slc_reader
 	bash interferogram/tests/test_cli.sh ./$(TARGET)
+	python3 interferogram/tests/test_coregister.py
 
 clean:
 	rm -rf build

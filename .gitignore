@@ -148,3 +148,5 @@ temp/
 # --- Sentinel-1 SLC project specific ---
 /sentinel1-SLC/data/raw/
 /sentinel1-SLC/build/
+/sentinel1-SLC/data/coregistered/
+__pycache__/

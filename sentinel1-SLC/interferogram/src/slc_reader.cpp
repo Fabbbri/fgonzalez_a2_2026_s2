@@ -2,11 +2,12 @@
 #include <gdal_priv.h>
 #include <cpl_error.h>
 #include <memory>
+#include <cmath>
 #include <stdexcept>
 
 namespace interferogram {
 /*
- * Comprueba que la ventana esté contenida en el burst esperado para P09-R2.
+ * Comprueba el origen y el tamaño de la ventana; los límites se validan al abrir.
  *
  * @param x      Columna inicial de la ventana, en base cero.
  * @param y      Fila inicial de la ventana, en base cero.
@@ -14,20 +15,16 @@ namespace interferogram {
  * @param height Alto de la ventana en píxeles; debe ser positivo.
  *
  * @throws std::invalid_argument si el origen es negativo, el tamaño no es
- *         positivo o la ventana excede las dimensiones slcWidth × slcHeight.
+ *         positivo.
  */
 void validateWindow(int x, int y, int width, int height) {
-    // Restar dimensiones evita el desbordamiento que podría producir x + width
-    // o y + height con argumentos grandes; primero se comprueban los tamaños.
-    if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
-        width > slcWidth || height > slcHeight ||
-        x > slcWidth - width || y > slcHeight - height)
-        throw std::invalid_argument("Ventana fuera de límites: se requiere 24445 x 1500.");
+    if (x < 0 || y < 0 || width <= 0 || height <= 0)
+        throw std::invalid_argument("Origen negativo o tamaño de ventana no positivo.");
 }
 /*
  * Abre una adquisición en modo lectura y extrae una ventana compleja.
  *
- * Exige una banda compleja de dimensiones slcWidth × slcHeight. Conserva
+ * Exige una banda compleja y una ventana contenida en las dimensiones del archivo. Conserva
  * las componentes real e imaginaria sin realizar remuestreo ni corregistro.
  *
  * @param path   Ruta del archivo de la adquisición SLC.
@@ -53,10 +50,14 @@ std::vector<Complex> readSlcWindow(const std::string& path,
                     GDALClose);
     if (!dataset)
         throw std::runtime_error("No se pudo abrir " + path + ": " + CPLGetLastErrorMsg());
-    if (dataset->GetRasterCount() != 1 ||
-        dataset->GetRasterXSize() != slcWidth ||
-        dataset->GetRasterYSize() != slcHeight)
-        throw std::runtime_error("Se esperaba una banda de 24445 x 1500: " + path);
+    if (dataset->GetRasterCount() != 1)
+        throw std::runtime_error("Se esperaba una banda compleja: " + path);
+    const int rasterWidth = dataset->GetRasterXSize();
+    const int rasterHeight = dataset->GetRasterYSize();
+    // Restar evita desbordamientos de x + width o y + height.
+    if (width > rasterWidth || height > rasterHeight ||
+        x > rasterWidth - width || y > rasterHeight - height)
+        throw std::invalid_argument("Ventana fuera de las dimensiones del archivo: " + path);
     // GDAL numera las bandas desde 1; se exige un tipo que conserve la fase.
     GDALRasterBand* band = dataset->GetRasterBand(1);
     if (!band || !GDALDataTypeIsComplex(band->GetRasterDataType()))
@@ -71,9 +72,12 @@ std::vector<Complex> readSlcWindow(const std::string& path,
                            width, 1, GDT_CFloat64, 0, 0, nullptr) != CE_None)
             throw std::runtime_error("Error de lectura en " + path + ": " + CPLGetLastErrorMsg());
         // Convertir la posición local (j, i) al índice lineal j * width + i.
-        for (int i = 0; i < width; ++i)
+        for (int i = 0; i < width; ++i) {
+            if (!std::isfinite(row[2 * i]) || !std::isfinite(row[2 * i + 1]))
+                throw std::runtime_error("Ventana con NoData/no finitos; selecciona una región común válida: " + path);
             result[static_cast<std::size_t>(j) * width + i] =
                 {row[2 * i], row[2 * i + 1]};
+        }
     }
     return result;
 }

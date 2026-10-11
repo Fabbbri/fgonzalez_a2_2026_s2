@@ -106,7 +106,7 @@ void printHelp(std::ostream& out) {
         << "  --x N          Columna inicial, base cero (0)\n"
         << "  --y N          Fila inicial, base cero (0)\n"
         << "  --help         Mostrar ayuda\n"
-        << "Misma ventana para A/B, contenida en 24445 x 1500.\n"
+        << "Misma ventana para A/B, contenida en las dimensiones de cada TIFF.\n"
         << "Ejecutar desde la raíz del repositorio para usar las rutas predeterminadas.\n";
 }
 
