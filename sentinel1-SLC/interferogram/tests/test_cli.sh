@@ -43,3 +43,15 @@ grep -q 'Mode: tiled' <<< "$tiled"
 grep -q 'Tiles: 12' <<< "$tiled"
 [[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$tiled") ]]
 echo 'PASS: CLI de tiles y resultado equivalente'
+
+fails --mode fine-grained --quantum 0
+fails --mode fine-grained --quantum -1
+fails --quantum abc
+fails --quantum
+fine=$("$exe" --x 12000 --y 750 --width 16 --height 16 --mode fine-grained --tile-width 6 --tile-height 5 --quantum 2)
+grep -q 'Mode: fine-grained' <<< "$fine"
+grep -q 'Tasks: 12' <<< "$fine"
+grep -q 'Rounds: 15' <<< "$fine"
+grep -q 'Dispatches: 128' <<< "$fine"
+[[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$fine") ]]
+echo 'PASS: CLI Fine-Grained y equivalencia'

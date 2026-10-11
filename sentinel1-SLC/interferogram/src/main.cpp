@@ -1,10 +1,12 @@
 #include "interferogram/config.hpp"
 #include "interferogram/slc_reader.hpp"
 #include "interferogram/interferogram.hpp"
+#include "interferogram/models/fine_grained.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <memory>
 
 /*
  * Coordina la configuración, la lectura de las adquisiciones y el cálculo.
@@ -33,9 +35,17 @@ int main(int argc, char* argv[]) {
             ? makeTiles(config.width, config.height, config.tileWidth, config.tileHeight)
             : std::vector<Tile>{};
 
+        std::unique_ptr<FineGrained> fineGrained;
+        if (config.mode == "fine-grained")
+            fineGrained = std::make_unique<FineGrained>(config.width, config.height,
+                config.tileWidth, config.tileHeight, config.quantum);
+
         // El reloj monótono mide solo el kernel, excluyendo lectura e impresión.
         const auto start = std::chrono::steady_clock::now();
-        if (config.mode == "tiled")
+        if (fineGrained) {
+            while (!fineGrained->finished())
+                fineGrained->runRound(a, b, result);
+        } else if (config.mode == "tiled")
             computeInterferogramTiled(a, b, result, config.width, tiles);
         else
             computeInterferogramSequential(a, b, result);
@@ -62,6 +72,13 @@ int main(int argc, char* argv[]) {
         if (config.mode == "tiled")
             std::cout << "Tile size: " << config.tileWidth << " x " << config.tileHeight
                       << "\nTiles: " << tiles.size() << '\n';
+        if (fineGrained)
+            std::cout << "Execution: cooperative round-robin (1 OS thread)\n"
+                      << "Tile size: " << config.tileWidth << " x " << config.tileHeight
+                      << "\nTasks: " << fineGrained->tasks()
+                      << "\nQuantum (pixels): " << config.quantum
+                      << "\nRounds: " << fineGrained->rounds()
+                      << "\nDispatches: " << fineGrained->dispatches() << '\n';
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.
     } catch (const std::exception& error) {

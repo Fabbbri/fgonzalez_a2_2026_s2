@@ -19,6 +19,7 @@ struct Config {
     std::string mode = "sequential";
     int tileWidth = 32;
     int tileHeight = 32;
+    int quantum = 1; // Píxeles por turno cooperativo.
     bool help = false;
 };
 /*
