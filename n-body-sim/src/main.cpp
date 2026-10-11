@@ -24,6 +24,7 @@ std::size_t parse_integer(const std::string& value) {
 Config parse_arguments(int argc, char* argv[]) {
     Config config;
     bool quantum_given = false;
+    bool threads_given = false;
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
         if (option == "--no-output") {
@@ -33,7 +34,7 @@ Config parse_arguments(int argc, char* argv[]) {
         if (option != "--bodies-per-galaxy" && option != "--steps" &&
             option != "--dt" && option != "--seed" &&
             option != "--trajectory" && option != "--replay" &&
-            option != "--model" && option != "--quantum") {
+            option != "--model" && option != "--quantum" && option != "--threads") {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
         if (++i == argc) {
@@ -42,6 +43,9 @@ Config parse_arguments(int argc, char* argv[]) {
         const std::string value = argv[i];
         if (option == "--model") {
             config.model = value;
+        } else if (option == "--threads") {
+            config.threads = parse_integer(value);
+            threads_given = true;
         } else if (option == "--quantum") {
             config.quantum = parse_integer(value);
             quantum_given = true;
@@ -70,11 +74,15 @@ Config parse_arguments(int argc, char* argv[]) {
     if (!config.replay_path.empty() && argc != 3) {
         throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
     }
-    if (config.model != "sequential" && config.model != "fine-grained") {
+    if (config.model != "sequential" && config.model != "fine-grained" &&
+        config.model != "coarse-grained") {
         throw std::invalid_argument("Modelo no disponible: " + config.model);
     }
     if (config.quantum == 0 || (quantum_given && config.model != "fine-grained")) {
         throw std::invalid_argument("--quantum debe ser positivo y requiere --model fine-grained.");
+    }
+    if (config.threads == 0 || (threads_given && config.model != "coarse-grained")) {
+        throw std::invalid_argument("--threads debe ser positivo y requiere --model coarse-grained.");
     }
     if (config.steps == std::numeric_limits<std::size_t>::max()) {
         throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
@@ -92,8 +100,9 @@ Config parse_arguments(int argc, char* argv[]) {
 
 void print_usage(std::ostream& output) {
     output << "Uso: nbody [opciones]\n"
-              "  --model MODELO         sequential (por defecto) o fine-grained\n"
+              "  --model MODELO         sequential (defecto), fine-grained o coarse-grained\n"
               "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
+              "  --threads N            Hilos persistentes Coarse-Grained (2)\n"
               "  --bodies-per-galaxy N  Cuerpos por galaxia (100)\n"
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
               "  --dt X                 Duración de cada paso (0.002)\n"
@@ -127,8 +136,10 @@ int main(int argc, char* argv[]) try {
     // Intervalo total continuo: apertura, cálculo, captura, flush y cierre.
     // La generación aleatoria y la reproducción quedan fuera de este tiempo.
     const auto total_start = Clock::now();
-    auto model = config.model == "sequential" ? make_sequential_model()
-                                              : make_fine_grained_model(config.quantum);
+    std::unique_ptr<ExecutionModel> model;
+    if (config.model == "sequential") model = make_sequential_model();
+    else if (config.model == "fine-grained") model = make_fine_grained_model(config.quantum);
+    else model = make_coarse_grained_model(config.threads);
     const std::string model_name = model->name();
     const std::size_t workers = model->workers();
     TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
@@ -155,6 +166,9 @@ int main(int argc, char* argv[]) try {
         std::cerr << "Fine-Grained simulado: 1 hilo real, " << scheduling.tasks
                   << " tareas, " << scheduling.rounds << " rondas y "
                   << scheduling.dispatches << " despachos (acumulados).\n";
+    } else if (config.model == "coarse-grained") {
+        std::cerr << "Coarse-Grained: " << workers << " hilos persistentes, "
+                  << scheduling.rounds << " fases de sincronización completadas.\n";
     }
     std::cerr.flush();
 

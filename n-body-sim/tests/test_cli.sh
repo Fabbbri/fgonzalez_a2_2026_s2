@@ -19,7 +19,18 @@ for quantum in 1 3 50; do
     cmp "$test_dir/first.nbody" "$test_dir/fine.nbody"
     awk -F, -v quantum="$quantum" 'NR==2 {if (NF!=8 || $1!="fine-grained" || $2!=1 || $7!=quantum || $8<=0) exit 1}' "$test_dir/fine.csv"
 done
-for options in '--model unknown' '--model fine-grained --quantum 0' '--quantum 2'; do
+for threads in 1 2 3 12; do
+    "$binary" "${args[@]}" --model coarse-grained --threads "$threads" --trajectory "$test_dir/coarse.nbody" > "$test_dir/coarse.csv" 2> "$test_dir/coarse.txt"
+    cmp "$test_dir/first.nbody" "$test_dir/coarse.nbody"
+    awk -F, -v threads="$threads" 'NR==2 {if (NF!=8 || $1!="coarse-grained" || $2!=threads || $7!=0 || $8<=0) exit 1}' "$test_dir/coarse.csv"
+    grep -q '26 fases de sincronización completadas' "$test_dir/coarse.txt"
+done
+"$binary" --model coarse-grained --steps 0 --no-output --trajectory "$test_dir/default-coarse.nbody" > "$test_dir/default-coarse.csv" 2> /dev/null
+awk -F, 'NR==2 {if ($2!=2 || $4!=0) exit 1}' "$test_dir/default-coarse.csv"
+# Un error de archivo debe cerrar el pool y no publicar métricas.
+if "$binary" --model coarse-grained --no-output --trajectory "$test_dir" > "$test_dir/coarse-failed.csv" 2> /dev/null; then exit 1; fi
+test ! -s "$test_dir/coarse-failed.csv"
+for options in '--model unknown' '--model fine-grained --quantum 0' '--quantum 2' '--threads 2' '--model fine-grained --threads 2' '--model coarse-grained --threads 0' '--model coarse-grained --threads -1' '--model coarse-grained --quantum 1'; do
     read -r -a invalid <<< "$options"
     if "$binary" "${invalid[@]}" --no-output --steps 0 > /dev/null 2>&1; then exit 1; fi
 done

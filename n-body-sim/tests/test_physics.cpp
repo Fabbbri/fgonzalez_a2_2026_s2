@@ -115,8 +115,44 @@ void test_fine_grained() {
     check(rejected, "Admite quantum cero");
 }
 
+void test_coarse_grained() {
+    auto reference = make_sequential_model();
+    for (std::size_t workers : {1, 2, 3, 12}) {
+        auto coarse = make_coarse_grained_model(workers);
+        check(coarse->workers() == workers, "Cantidad de hilos incorrecta");
+        // Reutilizar el pool con tamaños cambiantes, bloques vacíos y residuos.
+        for (std::size_t count : {0, 1, 2, 7, 12, 3, 0}) {
+            auto bodies = create_galaxies(6, 19);
+            bodies.resize(count);
+            for (int phase = 0; phase < 20; ++phase) {
+                std::vector<Vec2> expected, actual;
+                const double gravity = 0.7 + phase * 0.01;
+                reference->compute_accelerations(bodies, expected, gravity, 0.03);
+                const auto before = coarse->scheduling_stats();
+                coarse->compute_accelerations(bodies, actual, gravity, 0.03);
+                check(actual.size() == expected.size(), "Coarse-Grained pierde cuerpos");
+                for (std::size_t i = 0; i < count; ++i) {
+                    check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
+                          "Coarse-Grained altera fuerzas o retorna antes de terminar");
+                    bodies[i].position.x += 0.001;
+                }
+                const auto after = coarse->scheduling_stats();
+                check(after.rounds == before.rounds + 1 &&
+                      after.dispatches == before.dispatches + workers,
+                      "Conteo de fases Coarse-Grained incorrecto");
+            }
+        }
+    }
+    // Destruir un pool que todavía no recibió trabajo también debe finalizar.
+    make_coarse_grained_model(2);
+    bool rejected = false;
+    try { make_coarse_grained_model(0); } catch (const std::invalid_argument&) { rejected = true; }
+    check(rejected, "Admite cero hilos");
+}
+
 int main() try {
     test_fine_grained();
+    test_coarse_grained();
     auto model = make_sequential_model();
     // Dos masas con energía, momento y centro de masa calculables a mano.
     std::vector<Body> bodies{{2, {0, 0}, {1, -2}, {}, 0}, {3, {3, 4}, {0, 1}, {}, 1}};

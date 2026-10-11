@@ -9,7 +9,7 @@ CORE := src/common/physics.cpp src/common/trajectory.cpp
 MODELS := $(wildcard src/models/*.cpp)
 SOURCES := src/main.cpp src/viewer.cpp $(CORE) $(MODELS)
 HEADER := src/nbody.hpp
-PROJECT_CFLAGS := -Isrc
+PROJECT_CFLAGS := -Isrc -pthread
 SDL_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL_LIBS := $(shell pkg-config --libs sdl2 2>/dev/null)
 

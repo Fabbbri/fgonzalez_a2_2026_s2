@@ -16,6 +16,7 @@ struct Config {
     std::uint32_t seed = 42;
     std::string model = "sequential";
     std::size_t quantum = 1;
+    std::size_t threads = 2;
     bool no_output = false;
     std::string trajectory_path = "output/trajectory.nbody";
     std::string replay_path;
@@ -54,6 +55,7 @@ public:
 };
 std::unique_ptr<ExecutionModel> make_sequential_model();
 std::unique_ptr<ExecutionModel> make_fine_grained_model(std::size_t quantum);
+std::unique_ptr<ExecutionModel> make_coarse_grained_model(std::size_t workers);
 
 // Física e integrador comunes: cada estrategia cambia la ejecución, no la entrada.
 std::vector<Body> create_galaxies(std::size_t bodies_per_galaxy, std::uint32_t seed);

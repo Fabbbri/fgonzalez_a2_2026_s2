@@ -17,7 +17,7 @@ La base secuencial incluye:
 - condiciones iniciales reproducibles mediante una semilla;
 - pruebas físicas, de interfaz de línea de comandos y de visualización.
 
-La versión secuencial y Fine-Grained están implementadas. Coarse-Grained, SMT
+La versión secuencial, Fine-Grained y Coarse-Grained están implementadas. SMT
 y CMP siguen pendientes; sus diagramas preliminares documentan cómo se dividirá
 y sincronizará el cálculo gravitacional.
 
@@ -59,6 +59,35 @@ Las pruebas verifican aceleraciones y trayectorias completas para varios
 quantums, además del reinicio de contextos y los conteos de planificación.
 El formato de trayectoria v1 y `viewer.cpp` se comparten sin cambios; el modelo
 y quantum se registran en el CSV y el comando del lote, no en la trayectoria.
+
+## Coarse-Grained: hilos persistentes y bloques completos
+
+```bash
+make ARGS="--model coarse-grained --threads 4"
+make benchmark BENCHMARK_ARGS="--model coarse-grained --threads 4"
+```
+
+Se crean `--threads` hilos de C++ (2 por defecto) una sola vez. Cada hilo
+recibe un bloque contiguo de cuerpos y calcula todas sus interacciones sin
+ceder voluntariamente por quantum. Los bloques difieren como máximo en un
+cuerpo; si hay más hilos que cuerpos, algunos bloques quedan vacíos y todos
+los hilos siguen participando en la sincronización. `workers` registra el
+número de hilos trabajadores creados, sin contar el hilo coordinador.
+
+Al completar un bloque, el hilo espera trabajo mediante una variable de
+condición. El coordinador espera que todos los bloques estén listos antes de
+actualizar posiciones, guardar el estado y publicar la siguiente fase. Estas
+esperas son el evento de bloqueo explícito de la aproximación Coarse-Grained;
+no se simulan fallos de caché ni se fuerzan pausas artificiales. El SO puede
+interrumpir hilos en otros momentos: `std::thread` no controla la política de
+cambios de contexto del hardware. No se fija afinidad a núcleos físicos.
+
+La salida informa las fases de sincronización completadas (`steps + 1`,
+incluyendo las fuerzas iniciales), sin presentarlas como un conteo de cambios
+de contexto o de esperas efectivas. El tiempo total incluye crear y unir los
+hilos. La actualización del integrador y la escritura permanecen secuenciales.
+Las pruebas comparan fuerzas y trayectorias completas con el secuencial para
+varias cantidades de hilos, incluidos bloques vacíos y particiones desiguales.
 
 ## Modelo físico
 
@@ -178,7 +207,8 @@ liberación de trabajadores y flush/cierre. Excluye inicialización aleatoria,
 impresión y reproducción. `model` y `workers` identifican el esquema de ejecución;
 `bodies`, `steps`, `dt` y `seed` identifican la entrada. Se utiliza `sequential` como referencia y `fine-grained` como planificación
 cooperativa simulada. Ambos tienen `workers=1`, que cuenta hilos reales del SO.
-`quantum=0` identifica al secuencial; en Fine-Grained es el número máximo de
+`coarse-grained` registra sus hilos persistentes en `workers`.
+`quantum=0` corresponde al secuencial y Coarse-Grained; en Fine-Grained es el número máximo de
 interacciones entre cuerpos distintos por turno. Cada quantum define una
 configuración diferente. El analizador también acepta los CSV secuenciales
 anteriores que no tenían esta columna.
@@ -203,8 +233,8 @@ El enunciado también exige perfilado con herramientas como perf o VTune
 (ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
 habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
 Las repeticiones, estadísticas del tiempo e histograma están implementados.
-Coarse-Grained, SMT, CMP y el análisis comparativo de speedup/eficiencia todavía
-están pendientes; una sola configuración secuencial no permite compararlos.
+SMT, CMP y el análisis comparativo de speedup/eficiencia todavía
+están pendientes; cada lote actual analiza una sola configuración.
 
 El cierre comprueba los errores de escritura, pero no fuerza persistencia física
 con `fsync`; el sistema operativo puede mantener datos en su caché de archivos.
@@ -295,7 +325,8 @@ incompleto.
 
 | Opción | Descripción | Valor predeterminado |
 |---|---|---:|
-| `--model MODELO` | `sequential` o `fine-grained` | `sequential` |
+| `--model MODELO` | `sequential`, `fine-grained` o `coarse-grained` | `sequential` |
+| `--threads N` | Hilos persistentes; requiere Coarse-Grained | `2` |
 | `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
 | `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `100` |
 | `--steps N` | Cantidad de pasos temporales | `10000` |
@@ -347,7 +378,8 @@ n-body-sim/
 │   │   └── trajectory.cpp   Lectura y escritura del formato común
 │   └── models/
 │       ├── sequential.cpp   Estrategia de referencia sin hilos
-│       └── fine_grained.cpp Planificador cooperativo round-robin
+│       ├── fine_grained.cpp Planificador cooperativo round-robin
+│       └── coarse_grained.cpp Hilos persistentes y sincronización por bloques
 ├── scripts/                 Repeticiones Bash y análisis Python
 ├── tests/                   Validación física, archivos, reproductor y estadísticas
 ├── docs/diagrams/            Diseños de los cuatro modelos posteriores
@@ -373,11 +405,11 @@ simulación para reutilizar trabajadores o el estado del planificador.
 |---|---|---|
 | Secuencial | `sequential.cpp` | Implementado: recorre los cuerpos en un único hilo |
 | Fine-Grained | `fine_grained.cpp` | Implementado: tareas con progreso y cuantums round-robin |
-| Coarse-Grained | `coarse_grained.cpp` | Futuro: bloques de trabajo y bloqueo/sincronización observable |
+| Coarse-Grained | `coarse_grained.cpp` | Implementado: hilos persistentes, bloques completos y espera por fases |
 | SMT | `smt.cpp` | Futuro: distribución entre hilos lógicos, documentando topología |
 | CMP | `cmp.cpp` | Futuro: bloques distribuidos entre núcleos físicos |
 
-Los tres archivos futuros se crearán al implementar sus modelos. No hay
+Los dos archivos futuros se crearán al implementar sus modelos. No hay
 implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
 paralelos. El Makefile incorpora las fuentes de `src/models/` automáticamente;
 la selección y parámetros de los modelos se gestionan en `main.cpp`.
@@ -391,7 +423,7 @@ para las estrategias que reparten cuerpos completos. Fine-Grained conserva sumas
 `accumulate_accelerations` y manteniendo el orden ascendente de las fuentes.
 
 El ciclo crea el modelo dentro del cronómetro y lo destruye antes de finalizar
-la trayectoria; así las futuras creaciones/cierres de trabajadores forman parte
+la trayectoria; así las creaciones/cierres de trabajadores forman parte
 del tiempo total. Las pruebas pueden recibir cualquier implementación de
 `ExecutionModel`, usando la secuencial como referencia. Los comandos `make`,
 `make build`, `make benchmark` y `make test` conservan sus comportamientos.
