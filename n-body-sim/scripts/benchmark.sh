@@ -12,8 +12,8 @@ if [[ ! $repetitions =~ ^[1-9][0-9]*$ ]] || (( repetitions < 2 )); then
 fi
 for arg in "$@"; do
     case "$arg" in
-        --replay|--trajectory|--no-output)
-            printf 'El benchmark controla --trajectory y --no-output; no admite --replay.\n' >&2
+        --replay|--trajectory|--no-output|--topology)
+            printf 'El benchmark controla --trajectory y --no-output; no admite --replay ni --topology.\n' >&2
             exit 1 ;;
     esac
 done
@@ -29,14 +29,25 @@ printf '\nrepetitions: %s\n' "$repetitions" >> "$result_dir/command.txt"
     uname -a
     if command -v lscpu >/dev/null; then lscpu; fi
 } > "$result_dir/environment.txt"
+"$binary" --topology > "$result_dir/topology.txt"
+cat "$result_dir/topology.txt" >> "$result_dir/environment.txt"
+check_topology() {
+    "$binary" --topology > "$result_dir/current-topology.txt"
+    if ! cmp -s "$result_dir/topology.txt" "$result_dir/current-topology.txt"; then
+        printf 'Cambió la topología/afinidad o el estado SMT; lote interrumpido: %s\n' "$result_dir" >&2
+        exit 1
+    fi
+}
 printf 'repetition,model,workers,bodies,steps,dt,seed,quantum,total_seconds\n' > "$result_dir/samples.csv"
 for (( run=1; run<=repetitions; run++ )); do
+    check_topology
     if ! "$binary" "$@" --no-output --trajectory "$result_dir/trajectory.nbody" \
             > "$result_dir/current.csv" 2> "$result_dir/last-run.log"; then
         cat "$result_dir/last-run.log" >&2
         printf 'Falló la repetición %s; las muestras anteriores se conservan en %s.\n' "$run" "$result_dir" >&2
         exit 1
     fi
+    check_topology  # No incorporar una muestra medida durante un cambio detectado.
     # No se cuentan procesos fallidos ni salidas con un esquema inesperado.
     awk -F, -v run="$run" '
         NR==1 {if ($0!="model,workers,bodies,steps,dt,seed,quantum,total_seconds") exit 1}
@@ -48,4 +59,5 @@ for (( run=1; run<=repetitions; run++ )); do
     fi
 done
 rm "$result_dir/current.csv"
+rm "$result_dir/current-topology.txt"
 "$python" "$(dirname "$0")/analyze.py" "$result_dir/samples.csv"

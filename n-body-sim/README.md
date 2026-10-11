@@ -17,8 +17,8 @@ La base secuencial incluye:
 - condiciones iniciales reproducibles mediante una semilla;
 - pruebas físicas, de interfaz de línea de comandos y de visualización.
 
-La versión secuencial, Fine-Grained y Coarse-Grained están implementadas. SMT
-y CMP siguen pendientes; sus diagramas preliminares documentan cómo se dividirá
+Las versiones secuencial, Fine-Grained, Coarse-Grained y SMT están implementadas.
+CMP sigue pendiente; sus diagramas preliminares documentan cómo se dividirá
 y sincronizará el cálculo gravitacional.
 
 ## Fine-Grained: planificación cooperativa simulada
@@ -88,6 +88,78 @@ de contexto o de esperas efectivas. El tiempo total incluye crear y unir los
 hilos. La actualización del integrador y la escritura permanecen secuenciales.
 Las pruebas comparan fuerzas y trayectorias completas con el secuencial para
 varias cantidades de hilos, incluidos bloques vacíos y particiones desiguales.
+
+## SMT: aproximación por sobresuscripción
+
+```bash
+make ARGS="--model smt"
+make benchmark BENCHMARK_ARGS="--model smt"
+```
+
+Con `C` núcleos físicos disponibles, el modelo crea `2*C` hilos persistentes.
+También acepta `--threads N`, pero rechaza `N <= C`: la sobresuscripción respecto
+a núcleos físicos es obligatoria, incluso si SMT del hardware está desactivado
+o no existe. En un equipo con 4 núcleos, el valor automático es 8 trabajadores.
+No se usa `hardware_concurrency()` como conteo físico, porque representa
+procesadores lógicos y cambia al activar/desactivar SMT.
+
+En Linux se cuentan pares únicos `(physical_package_id, core_id)` entre las CPU
+permitidas por `sched_getaffinity`, respetando restricciones como `taskset`.
+La detección falla explícitamente si no puede determinar la topología; no
+sustituye núcleos físicos por procesadores lógicos. En macOS se consultan
+`hw.physicalcpu` y `hw.logicalcpu`; el alcance es el sistema, sin máscara de
+afinidad equivalente. El estado de hardware que no puede verificarse se
+registra como `unknown`, sin deducir soporte a partir de una razón 1:1.
+
+```bash
+./build/nbody --topology
+```
+
+SMT reutiliza el pool de bloques y sincronización de Coarse-Grained. Su condición
+experimental adicional es la sobresuscripción comprobada; no es un simulador de
+unidades funcionales ni reproduce la emisión de instrucciones del hardware.
+El SO decide dónde ejecutar los hilos, sin afinidad impuesta. Los hilos adicionales
+pueden competir por CPU, caché y ancho de banda; no se garantiza una aceleración.
+Si hay menos cuerpos que trabajadores, algunos bloques quedan vacíos.
+
+Cada lote conserva `topology.txt` y añade la topología a `environment.txt`, con
+núcleos físicos accesibles, CPU lógicas accesibles, máscara de CPU y los estados
+Linux `smt/control` y `smt/active` (estos últimos tienen alcance del sistema).
+Se compara la topología antes y después de cada ejecución y se interrumpe el
+lote si cambia, antes de incorporar la muestra afectada. Estas comprobaciones
+están fuera del tiempo medido; detectan diferencias entre instantáneas, no
+cambios transitorios que se reviertan entre ellas. El CSV mantiene el esquema
+común: `model=smt`, `workers=N`, `quantum=0`. Los lotes se analizan por separado.
+
+### Comparación con SMT de hardware
+
+El enunciado §4.1.c exige repetir las mediciones con SMT **habilitado y deshabilitado
+desde BIOS/UEFI**, manteniendo iguales entrada, número de hilos, compilación y
+política de captura. Ejecutar un lote de al menos 200 repeticiones por condición,
+conservar sus directorios separados y documentar la configuración de firmware
+usada (el estado de sysfs por sí solo no prueba cómo se configuró). Repetir también
+la referencia secuencial bajo ambas condiciones. La implementación no modifica
+BIOS/UEFI ni el estado global de SMT; la comparación experimental queda pendiente
+hasta ejecutar ambos lotes en hardware compatible.
+
+Linux permite consultar y, en equipos compatibles, cambiar SMT desde terminal:
+
+```bash
+cat /sys/devices/system/cpu/smt/control
+cat /sys/devices/system/cpu/smt/active
+# Solo para equipos compatibles; cambia la configuración global de Linux:
+echo off | sudo tee /sys/devices/system/cpu/smt/control
+echo on  | sudo tee /sys/devices/system/cpu/smt/control
+```
+
+Estos comandos no sustituyen el procedimiento BIOS/UEFI exigido por el enunciado.
+`notsupported` indica que SMT no está disponible para el kernel; `forceoff` impide
+reactivarlo mediante esta interfaz. Véase la [documentación del kernel Linux](https://www.kernel.org/doc/html/v6.8/admin-guide/hw-vuln/l1tf.html#smt-control).
+
+En el equipo revisado, Linux identifica un AMD Ryzen 3 3200G, 4 núcleos / 4 hilos,
+con `smt/control=notsupported` y `smt/active=0`. Aquí se puede evaluar la aproximación
+por software con 8 hilos, pero se necesita otro equipo con SMT compatible para
+hacer la comparación de hardware activado/desactivado solicitada.
 
 ## Modelo físico
 
@@ -207,8 +279,8 @@ liberación de trabajadores y flush/cierre. Excluye inicialización aleatoria,
 impresión y reproducción. `model` y `workers` identifican el esquema de ejecución;
 `bodies`, `steps`, `dt` y `seed` identifican la entrada. Se utiliza `sequential` como referencia y `fine-grained` como planificación
 cooperativa simulada. Ambos tienen `workers=1`, que cuenta hilos reales del SO.
-`coarse-grained` registra sus hilos persistentes en `workers`.
-`quantum=0` corresponde al secuencial y Coarse-Grained; en Fine-Grained es el número máximo de
+`coarse-grained` y `smt` registran sus hilos persistentes en `workers`.
+`quantum=0` corresponde al secuencial, Coarse-Grained y SMT; en Fine-Grained es el número máximo de
 interacciones entre cuerpos distintos por turno. Cada quantum define una
 configuración diferente. El analizador también acepta los CSV secuenciales
 anteriores que no tenían esta columna.
@@ -233,7 +305,7 @@ El enunciado también exige perfilado con herramientas como perf o VTune
 (ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
 habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
 Las repeticiones, estadísticas del tiempo e histograma están implementados.
-SMT, CMP y el análisis comparativo de speedup/eficiencia todavía
+CMP, la comparación de SMT por BIOS/UEFI y el análisis comparativo de speedup/eficiencia todavía
 están pendientes; cada lote actual analiza una sola configuración.
 
 El cierre comprueba los errores de escritura, pero no fuerza persistencia física
@@ -325,8 +397,9 @@ incompleto.
 
 | Opción | Descripción | Valor predeterminado |
 |---|---|---:|
-| `--model MODELO` | `sequential`, `fine-grained` o `coarse-grained` | `sequential` |
-| `--threads N` | Hilos persistentes; requiere Coarse-Grained | `2` |
+| `--model MODELO` | `sequential`, `fine-grained`, `coarse-grained` o `smt` | `sequential` |
+| `--threads N` | Hilos persistentes Coarse-Grained o SMT | Coarse: `2`; SMT: `2*C` |
+| `--topology` | Consulta CPU disponibles y estado SMT sin simular | — |
 | `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
 | `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `100` |
 | `--steps N` | Cantidad de pasos temporales | `10000` |
@@ -379,7 +452,8 @@ n-body-sim/
 │   └── models/
 │       ├── sequential.cpp   Estrategia de referencia sin hilos
 │       ├── fine_grained.cpp Planificador cooperativo round-robin
-│       └── coarse_grained.cpp Hilos persistentes y sincronización por bloques
+│       ├── coarse_grained.cpp Hilos persistentes y sincronización por bloques
+│       └── smt.cpp            Topología y sobresuscripción comprobada
 ├── scripts/                 Repeticiones Bash y análisis Python
 ├── tests/                   Validación física, archivos, reproductor y estadísticas
 ├── docs/diagrams/            Diseños de los cuatro modelos posteriores
@@ -406,10 +480,10 @@ simulación para reutilizar trabajadores o el estado del planificador.
 | Secuencial | `sequential.cpp` | Implementado: recorre los cuerpos en un único hilo |
 | Fine-Grained | `fine_grained.cpp` | Implementado: tareas con progreso y cuantums round-robin |
 | Coarse-Grained | `coarse_grained.cpp` | Implementado: hilos persistentes, bloques completos y espera por fases |
-| SMT | `smt.cpp` | Futuro: distribución entre hilos lógicos, documentando topología |
+| SMT | `smt.cpp` | Implementado: sobresuscripción respecto a núcleos físicos disponibles |
 | CMP | `cmp.cpp` | Futuro: bloques distribuidos entre núcleos físicos |
 
-Los dos archivos futuros se crearán al implementar sus modelos. No hay
+El archivo de CMP se creará al implementar ese modelo. No hay
 implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
 paralelos. El Makefile incorpora las fuentes de `src/models/` automáticamente;
 la selección y parámetros de los modelos se gestionan en `main.cpp`.

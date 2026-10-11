@@ -75,15 +75,16 @@ Config parse_arguments(int argc, char* argv[]) {
         throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
     }
     if (config.model != "sequential" && config.model != "fine-grained" &&
-        config.model != "coarse-grained") {
+        config.model != "coarse-grained" && config.model != "smt") {
         throw std::invalid_argument("Modelo no disponible: " + config.model);
     }
     if (config.quantum == 0 || (quantum_given && config.model != "fine-grained")) {
         throw std::invalid_argument("--quantum debe ser positivo y requiere --model fine-grained.");
     }
-    if (config.threads == 0 || (threads_given && config.model != "coarse-grained")) {
-        throw std::invalid_argument("--threads debe ser positivo y requiere --model coarse-grained.");
+    if (config.threads == 0 || (threads_given && config.model != "coarse-grained" && config.model != "smt")) {
+        throw std::invalid_argument("--threads debe ser positivo y requiere --model coarse-grained o smt.");
     }
+    if (config.model == "smt" && !threads_given) config.threads = 0;  // Automático: 2*C.
     if (config.steps == std::numeric_limits<std::size_t>::max()) {
         throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
     }
@@ -100,9 +101,10 @@ Config parse_arguments(int argc, char* argv[]) {
 
 void print_usage(std::ostream& output) {
     output << "Uso: nbody [opciones]\n"
-              "  --model MODELO         sequential (defecto), fine-grained o coarse-grained\n"
+              "  --model MODELO         sequential (defecto), fine-grained, coarse-grained o smt\n"
               "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
-              "  --threads N            Hilos persistentes Coarse-Grained (2)\n"
+              "  --threads N            Coarse-Grained: 2; SMT: 2*C (debe superar C)\n"
+              "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
               "  --bodies-per-galaxy N  Cuerpos por galaxia (100)\n"
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
               "  --dt X                 Duración de cada paso (0.002)\n"
@@ -125,6 +127,10 @@ int main(int argc, char* argv[]) try {
         print_usage(std::cout);
         return 0;
     }
+    if (argc == 2 && std::string(argv[1]) == "--topology") {
+        print_cpu_topology(std::cout, detect_cpu_topology());
+        return 0;
+    }
     const Config config = parse_arguments(argc, argv);
     if (!config.replay_path.empty()) {
         TrajectoryReader trajectory(config.replay_path);
@@ -133,13 +139,16 @@ int main(int argc, char* argv[]) try {
     }
     auto bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
     std::vector<Vec2> accelerations(bodies.size());
+    CpuTopology topology;
+    if (config.model == "smt") topology = detect_cpu_topology();
     // Intervalo total continuo: apertura, cálculo, captura, flush y cierre.
     // La generación aleatoria y la reproducción quedan fuera de este tiempo.
     const auto total_start = Clock::now();
     std::unique_ptr<ExecutionModel> model;
     if (config.model == "sequential") model = make_sequential_model();
     else if (config.model == "fine-grained") model = make_fine_grained_model(config.quantum);
-    else model = make_coarse_grained_model(config.threads);
+    else if (config.model == "coarse-grained") model = make_coarse_grained_model(config.threads);
+    else model = make_smt_model(config.threads);
     const std::string model_name = model->name();
     const std::size_t workers = model->workers();
     TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
@@ -169,6 +178,9 @@ int main(int argc, char* argv[]) try {
     } else if (config.model == "coarse-grained") {
         std::cerr << "Coarse-Grained: " << workers << " hilos persistentes, "
                   << scheduling.rounds << " fases de sincronización completadas.\n";
+    } else if (config.model == "smt") {
+        std::cerr << "SMT aproximado por sobresuscripción: " << workers << " hilos; ";
+        print_cpu_topology(std::cerr, topology);
     }
     std::cerr.flush();
 

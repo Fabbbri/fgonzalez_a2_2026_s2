@@ -153,6 +153,29 @@ void test_coarse_grained() {
 int main() try {
     test_fine_grained();
     test_coarse_grained();
+    const auto topology = detect_cpu_topology();
+    check(topology.physical_cores > 0 && topology.logical_cpus >= topology.physical_cores,
+          "Topología inválida");
+    bool smt_rejected = false;
+    try { make_smt_model(topology.physical_cores); }
+    catch (const std::invalid_argument&) { smt_rejected = true; }
+    check(smt_rejected, "SMT acepta hilos sin sobresuscripción");
+    {
+        auto smt = make_smt_model(topology.physical_cores + 1);
+        auto reference = make_sequential_model();
+        for (std::size_t count : {12, 7, 1, 0, 3}) {
+            auto sample = create_galaxies(6, 19);
+            sample.resize(count);
+            std::vector<Vec2> expected, actual;
+            reference->compute_accelerations(sample, expected, 0.7, 0.03);
+            smt->compute_accelerations(sample, actual, 0.7, 0.03);
+            check(actual.size() == expected.size(), "SMT pierde cuerpos");
+            for (std::size_t i = 0; i < count; ++i) {
+                check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
+                      "SMT altera fuerzas respecto al secuencial");
+            }
+        }
+    }
     auto model = make_sequential_model();
     // Dos masas con energía, momento y centro de masa calculables a mano.
     std::vector<Body> bodies{{2, {0, 0}, {1, -2}, {}, 0}, {3, {3, 4}, {0, 1}, {}, 1}};

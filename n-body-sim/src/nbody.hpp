@@ -56,6 +56,15 @@ public:
 std::unique_ptr<ExecutionModel> make_sequential_model();
 std::unique_ptr<ExecutionModel> make_fine_grained_model(std::size_t quantum);
 std::unique_ptr<ExecutionModel> make_coarse_grained_model(std::size_t workers);
+struct CpuTopology {
+    std::size_t physical_cores = 0, logical_cpus = 0;
+    std::string allowed_cpus;
+    std::string smt_control = "unknown", smt_active = "unknown";
+};
+CpuTopology detect_cpu_topology();
+void print_cpu_topology(std::ostream& output, const CpuTopology& topology);
+// Cero selecciona 2*C; un valor explícito debe superar C núcleos disponibles.
+std::unique_ptr<ExecutionModel> make_smt_model(std::size_t workers = 0);
 
 // Física e integrador comunes: cada estrategia cambia la ejecución, no la entrada.
 std::vector<Body> create_galaxies(std::size_t bodies_per_galaxy, std::uint32_t seed);
