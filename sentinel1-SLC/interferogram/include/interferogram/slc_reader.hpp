@@ -4,9 +4,6 @@
 #include <vector>
 
 namespace interferogram {
-// Dimensiones de los bursts seleccionados para P09-R2.
-inline constexpr int slcWidth = 24445;
-inline constexpr int slcHeight = 1500;
 /*
  * Valida el origen (x, y) en base cero y las dimensiones positivas de la ventana.
  * Lanza std::invalid_argument por origen negativo o tamaño no positivo.

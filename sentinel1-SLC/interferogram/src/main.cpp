@@ -28,9 +28,17 @@ int main(int argc, char* argv[]) {
         std::vector<Complex> result(a.size());
         validateInterferogramInputs(a, b, result);
 
+        // Preparar la partición fuera de la medición del kernel.
+        const auto tiles = config.mode == "tiled"
+            ? makeTiles(config.width, config.height, config.tileWidth, config.tileHeight)
+            : std::vector<Tile>{};
+
         // El reloj monótono mide solo el kernel, excluyendo lectura e impresión.
         const auto start = std::chrono::steady_clock::now();
-        computeInterferogramSequential(a, b, result);
+        if (config.mode == "tiled")
+            computeInterferogramTiled(a, b, result, config.width, tiles);
+        else
+            computeInterferogramSequential(a, b, result);
         const auto stop = std::chrono::steady_clock::now();
         const double milliseconds =
             std::chrono::duration<double, std::milli>(stop - start).count();
@@ -45,12 +53,15 @@ int main(int argc, char* argv[]) {
                   << "A: " << config.a << "\nB: " << config.b << '\n'
                   << "Window: " << config.width << " x " << config.height << '\n'
                   << "Offset: " << config.x << ", " << config.y << '\n'
-                  << "Samples: " << a.size() << "\nMode: sequential\n"
+                  << "Samples: " << a.size() << "\nMode: " << config.mode << '\n'
                   << std::fixed << std::setprecision(6)
                   << "Kernel time: " << milliseconds << " ms\n"
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
                   << "Computational kernel; coregistration quality is not verified by this executable.\n";
+        if (config.mode == "tiled")
+            std::cout << "Tile size: " << config.tileWidth << " x " << config.tileHeight
+                      << "\nTiles: " << tiles.size() << '\n';
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.
     } catch (const std::exception& error) {

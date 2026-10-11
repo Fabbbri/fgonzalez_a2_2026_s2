@@ -32,3 +32,14 @@ fails --threads 2
 fails --a /nonexistent/slc.tiff
 fails --b /nonexistent/slc.tiff
 echo 'PASS: CLI válida, límites y errores'
+
+fails --mode unknown
+fails --tile-width 0
+fails --tile-height -1
+fails --tile-width
+reference=$("$exe" --x 12000 --y 750 --width 16 --height 16)
+tiled=$("$exe" --x 12000 --y 750 --width 16 --height 16 --mode tiled --tile-width 6 --tile-height 5)
+grep -q 'Mode: tiled' <<< "$tiled"
+grep -q 'Tiles: 12' <<< "$tiled"
+[[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$tiled") ]]
+echo 'PASS: CLI de tiles y resultado equivalente'

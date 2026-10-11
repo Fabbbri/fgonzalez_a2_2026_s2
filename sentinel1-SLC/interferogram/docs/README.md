@@ -241,7 +241,7 @@ Samples: 262144
 Mode: sequential
 Kernel time: 0.445534 ms
 Result sum (real, imag): -7416021, -30561704
-Computational kernel; pixelwise coregistration not established.
+Computational kernel; coregistration quality is not verified by this executable.
 ```
 
 `Result sum` corresponde a la suma de las componentes real e imaginaria de todos los resultados. Se utiliza como resumen de la ejecución y no representa una medida de calidad física del interferograma.
@@ -393,3 +393,22 @@ En este modelo, las $N$ muestras se dividen en $C$ bloques, donde $C$ representa
        alt="Diagrama de Chip Multiprocessing"
        width="450">
 </p>
+
+## Recorrido secuencial por tiles
+
+Divide la ventana de procesamiento en bloques más pequeños (*tiles*) y los recorre utilizando un solo hilo. 
+
+Para ejecutar el modo `tiled` con las imágenes corregistradas, desde `sentinel1-SLC/`:
+
+```bash
+./build/interferogram \
+  --a data/coregistered/P09-R2-split/A.tif \
+  --b data/coregistered/P09-R2-split/B.tif \
+  --x 12000 --y 750 --width 16 --height 16 \
+  --mode tiled --tile-width 6 --tile-height 5
+```
+
+En este ejemplo se generan 12 tiles (3 columnas y 4 filas), ajustando los bloques de los bordes al tamaño de la ventana. Los tiles trabajan directamente sobre los datos cargados en memoria, sin crear buffers adicionales.
+
+La medición del tiempo incluye únicamente el recorrido y el cálculo, excluyendo la lectura, la reserva de memoria y la generación de tiles.
+

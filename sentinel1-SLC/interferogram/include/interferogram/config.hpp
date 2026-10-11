@@ -16,6 +16,9 @@ struct Config {
     // Tamaño de la ventana; no modifica las dimensiones de los TIFF originales.
     int width = 512;
     int height = 512;
+    std::string mode = "sequential";
+    int tileWidth = 32;
+    int tileHeight = 32;
     bool help = false;
 };
 /*

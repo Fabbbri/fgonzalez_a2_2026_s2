@@ -1,5 +1,6 @@
 #include "interferogram/interferogram.hpp"
 #include <stdexcept>
+#include <algorithm>
 
 namespace interferogram {
 /*
@@ -40,6 +41,37 @@ void computeInterferogramSequential(const std::vector<Complex>& a,
     for (std::size_t i = 0; i < a.size(); ++i) {
         result[i].real = a[i].real * b[i].real + a[i].imag * b[i].imag;
         result[i].imag = a[i].imag * b[i].real - a[i].real * b[i].imag;
+    }
+}
+std::vector<Tile> makeTiles(int width, int height, int tileWidth, int tileHeight) {
+    if (width <= 0 || height <= 0 || tileWidth <= 0 || tileHeight <= 0)
+        throw std::invalid_argument("Las dimensiones de ventana y tile deben ser positivas.");
+    std::vector<Tile> tiles;
+    for (int y = 0; y < height;) {
+        const int yEnd = y + std::min(tileHeight, height - y);
+        for (int x = 0; x < width;) {
+            const int xEnd = x + std::min(tileWidth, width - x);
+            tiles.push_back({x, y, xEnd, yEnd});
+            x = xEnd;
+        }
+        y = yEnd;
+    }
+    return tiles;
+}
+
+void computeInterferogramTiled(const std::vector<Complex>& a,
+                              const std::vector<Complex>& b,
+                              std::vector<Complex>& result,
+                              int width, const std::vector<Tile>& tiles) {
+    // Cada tile escribe únicamente en su región de la salida.
+    for (const Tile& tile : tiles) {
+        for (int y = tile.yBegin; y < tile.yEnd; ++y) {
+            for (int x = tile.xBegin; x < tile.xEnd; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * width + x;
+                result[i].real = a[i].real * b[i].real + a[i].imag * b[i].imag;
+                result[i].imag = a[i].imag * b[i].real - a[i].real * b[i].imag;
+            }
+        }
     }
 }
 } 

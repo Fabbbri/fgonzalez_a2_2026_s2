@@ -56,7 +56,8 @@ Config parseConfig(int argc, char* argv[]) {
         }
 
         if (option != "--a" && option != "--b" && option != "--width" && option != "--height" &&
-            option != "--x" && option != "--y") {
+            option != "--x" && option != "--y" && option != "--mode" &&
+            option != "--tile-width" && option != "--tile-height") {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
 
@@ -67,7 +68,13 @@ Config parseConfig(int argc, char* argv[]) {
 
         const std::string value = argv[i];
 
-        if (option == "--a")
+        if (option == "--mode")
+            config.mode = value;
+        else if (option == "--tile-width")
+            config.tileWidth = integer(value, option);
+        else if (option == "--tile-height")
+            config.tileHeight = integer(value, option);
+        else if (option == "--a")
             config.a = value;
         else if (option == "--b")
             config.b = value;
@@ -81,8 +88,13 @@ Config parseConfig(int argc, char* argv[]) {
             config.y = integer(value, option);
     }
 
-    if (!config.help)
+    if (!config.help) {
         validateWindow(config.x, config.y, config.width, config.height);
+        if (config.mode != "sequential" && config.mode != "tiled")
+            throw std::invalid_argument("Modo válido: sequential o tiled.");
+        if (config.tileWidth <= 0 || config.tileHeight <= 0)
+            throw std::invalid_argument("El tamaño del tile debe ser positivo.");
+    }
 
     return config;
 }
@@ -105,9 +117,12 @@ void printHelp(std::ostream& out) {
         << "  --height N     Alto de ventana (512)\n"
         << "  --x N          Columna inicial, base cero (0)\n"
         << "  --y N          Fila inicial, base cero (0)\n"
+        << "  --mode MODE    sequential o tiled (sequential)\n"
+        << "  --tile-width N Ancho del tile (32)\n"
+        << "  --tile-height N Alto del tile (32)\n"
         << "  --help         Mostrar ayuda\n"
         << "Misma ventana para A/B, contenida en las dimensiones de cada TIFF.\n"
-        << "Ejecutar desde la raíz del repositorio para usar las rutas predeterminadas.\n";
+        << "Ejecutar desde sentinel1-SLC/ para usar las rutas predeterminadas.\n";
 }
 
 } 
