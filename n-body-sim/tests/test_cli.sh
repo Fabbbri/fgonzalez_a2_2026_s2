@@ -33,6 +33,18 @@ test ! -s "$test_dir/coarse-failed.csv"
 "$binary" --topology > "$test_dir/topology.txt"
 cores=$(sed -n 's/^physical_cores=\([0-9]*\),.*/\1/p' "$test_dir/topology.txt")
 test "$cores" -gt 0
+for threads in 1 "$cores"; do
+    "$binary" "${args[@]}" --model cmp --threads "$threads" --trajectory "$test_dir/cmp.nbody" > "$test_dir/cmp.csv" 2> "$test_dir/cmp.txt"
+    cmp "$test_dir/first.nbody" "$test_dir/cmp.nbody"
+    awk -F, -v threads="$threads" 'NR==2 {if (NF!=8 || $1!="cmp" || $2!=threads || $7!=0 || $8<=0) exit 1}' "$test_dir/cmp.csv"
+done
+"$binary" "${args[@]}" --model cmp --trajectory "$test_dir/cmp.nbody" > "$test_dir/cmp-default.csv" 2> /dev/null
+cmp "$test_dir/first.nbody" "$test_dir/cmp.nbody"
+awk -F, -v threads="$cores" 'NR==2 {if ($2!=threads) exit 1}' "$test_dir/cmp-default.csv"
+if "$binary" --model cmp --threads "$((cores+1))" --no-output > "$test_dir/cmp-invalid.csv" 2> /dev/null; then exit 1; fi
+test ! -s "$test_dir/cmp-invalid.csv"
+if "$binary" --model cmp --no-output --trajectory "$test_dir" > "$test_dir/cmp-failed.csv" 2> /dev/null; then exit 1; fi
+test ! -s "$test_dir/cmp-failed.csv"
 for threads in "$((cores+1))" "$((cores*2))"; do
     "$binary" "${args[@]}" --model smt --threads "$threads" --trajectory "$test_dir/smt.nbody" > "$test_dir/smt.csv" 2> "$test_dir/smt.txt"
     cmp "$test_dir/first.nbody" "$test_dir/smt.nbody"
@@ -48,10 +60,14 @@ if command -v taskset > /dev/null && [[ $(uname -s) == Linux ]]; then
     taskset -c "$cpu" "$binary" "${args[@]}" --model smt --trajectory "$test_dir/restricted.nbody" > "$test_dir/restricted.csv" 2> /dev/null
     cmp "$test_dir/first.nbody" "$test_dir/restricted.nbody"
     awk -F, 'NR==2 {if ($2!=2) exit 1}' "$test_dir/restricted.csv"
+    taskset -c "$cpu" "$binary" "${args[@]}" --model cmp --trajectory "$test_dir/restricted-cmp.nbody" > "$test_dir/restricted-cmp.csv" 2> /dev/null
+    cmp "$test_dir/first.nbody" "$test_dir/restricted-cmp.nbody"
+    awk -F, 'NR==2 {if ($2!=1) exit 1}' "$test_dir/restricted-cmp.csv"
+    if taskset -c "$cpu" "$binary" --model cmp --threads 2 --no-output > /dev/null 2>&1; then exit 1; fi
 fi
 if "$binary" --model smt --threads "$cores" --no-output --steps 0 > "$test_dir/smt-invalid.csv" 2> /dev/null; then exit 1; fi
 test ! -s "$test_dir/smt-invalid.csv"
-for options in '--model unknown' '--model fine-grained --quantum 0' '--quantum 2' '--threads 2' '--model fine-grained --threads 2' '--model coarse-grained --threads 0' '--model coarse-grained --threads -1' '--model coarse-grained --quantum 1' '--model smt --threads 0' '--model smt --quantum 1' '--topology --steps 1'; do
+for options in '--model unknown' '--model fine-grained --quantum 0' '--quantum 2' '--threads 2' '--model fine-grained --threads 2' '--model coarse-grained --threads 0' '--model coarse-grained --threads -1' '--model coarse-grained --quantum 1' '--model smt --threads 0' '--model smt --quantum 1' '--model cmp --threads 0' '--model cmp --quantum 1' '--topology --steps 1'; do
     read -r -a invalid <<< "$options"
     if "$binary" "${invalid[@]}" --no-output --steps 0 > /dev/null 2>&1; then exit 1; fi
 done

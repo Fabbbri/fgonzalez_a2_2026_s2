@@ -3,6 +3,11 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <system_error>
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
 
 namespace nbody {
 namespace {
@@ -53,12 +58,39 @@ class CoarseGrainedModel final : public ExecutionModel {
         }
     }
 public:
-    explicit CoarseGrainedModel(std::size_t workers) {
+    explicit CoarseGrainedModel(std::size_t workers, const std::vector<int>& cpus) {
         if (workers == 0) throw std::invalid_argument("La cantidad de hilos debe ser positiva.");
+        if (!cpus.empty() && cpus.size() != workers) {
+            throw std::invalid_argument("Se requiere una CPU por trabajador.");
+        }
+#if !defined(__linux__)
+        if (!cpus.empty()) throw std::invalid_argument("Afinidad explícita disponible solo en Linux.");
+#endif
         threads_.reserve(workers);
         try {
             for (std::size_t i = 0; i < workers; ++i) {
                 threads_.emplace_back([this, i, workers] { run(i, workers); });
+#if defined(__linux__)
+                if (!cpus.empty()) {
+                    if (cpus[i] < 0 || cpus[i] >= CPU_SETSIZE) {
+                        throw std::invalid_argument("CPU fuera del rango de afinidad.");
+                    }
+                    cpu_set_t mask;
+                    CPU_ZERO(&mask);
+                    CPU_SET(cpus[i], &mask);
+                    const int error = pthread_setaffinity_np(threads_.back().native_handle(),
+                                                            sizeof(mask), &mask);
+                    if (error != 0) throw std::system_error(error, std::generic_category(), "Afinidad CMP");
+                    // Confirmar la máscara efectiva antes de publicar cualquier trabajo.
+                    CPU_ZERO(&mask);
+                    const int read_error = pthread_getaffinity_np(threads_.back().native_handle(),
+                                                                 sizeof(mask), &mask);
+                    if (read_error != 0) throw std::system_error(read_error, std::generic_category(), "Leer afinidad CMP");
+                    if (CPU_COUNT(&mask) != 1 || !CPU_ISSET(cpus[i], &mask)) {
+                        throw std::runtime_error("No se pudo confirmar la afinidad CMP.");
+                    }
+                }
+#endif
             }
         } catch (...) {
             stop();  // Un fallo de creación tampoco deja hilos sin unir.
@@ -92,7 +124,8 @@ public:
 };
 }  // namespace
 
-std::unique_ptr<ExecutionModel> make_coarse_grained_model(std::size_t workers) {
-    return std::make_unique<CoarseGrainedModel>(workers);
+std::unique_ptr<ExecutionModel> make_coarse_grained_model(
+    std::size_t workers, const std::vector<int>& cpus) {
+    return std::make_unique<CoarseGrainedModel>(workers, cpus);
 }
 }  // namespace nbody

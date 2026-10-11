@@ -17,9 +17,9 @@ La base secuencial incluye:
 - condiciones iniciales reproducibles mediante una semilla;
 - pruebas físicas, de interfaz de línea de comandos y de visualización.
 
-Las versiones secuencial, Fine-Grained, Coarse-Grained y SMT están implementadas.
-CMP sigue pendiente; sus diagramas preliminares documentan cómo se dividirá
-y sincronizará el cálculo gravitacional.
+Las cinco estrategias están implementadas: secuencial, Fine-Grained,
+Coarse-Grained, SMT y CMP. Sus diagramas documentan la distribución y
+sincronización del cálculo gravitacional.
 
 ## Fine-Grained: planificación cooperativa simulada
 
@@ -161,6 +161,52 @@ con `smt/control=notsupported` y `smt/active=0`. Aquí se puede evaluar la aprox
 por software con 8 hilos, pero se necesita otro equipo con SMT compatible para
 hacer la comparación de hardware activado/desactivado solicitada.
 
+## CMP: paralelismo entre núcleos físicos
+
+```bash
+make ARGS="--model cmp"
+make benchmark BENCHMARK_ARGS="--model cmp"
+# Para medir escalabilidad, un lote por cantidad de trabajadores:
+make benchmark BENCHMARK_ARGS="--model cmp --threads 2"
+```
+
+Con `C` núcleos físicos disponibles, CMP crea `C` hilos trabajadores persistentes.
+`--threads N` permite seleccionar entre 1 y `C`; se rechaza la sobresuscripción.
+En Linux se elige una CPU lógica permitida por cada par `(socket, núcleo)` y se
+fija cada trabajador a una CPU de un núcleo distinto mediante afinidad. No se
+asignan dos trabajadores a hermanos SMT. La máscara efectiva se comprueba antes
+de empezar el cálculo: si no se puede fijar la afinidad, la ejecución falla,
+cierra los hilos creados y no publica métricas de éxito. Las restricciones de
+`taskset` se respetan y el coordinador conserva su máscara original.
+
+Cada trabajador calcula las aceleraciones de su bloque contiguo de cuerpos.
+Todos leen el mismo estado físico y escriben posiciones distintas del vector de
+aceleraciones. Una barrera de finalización precede la actualización secuencial
+de velocidades y posiciones. Se reutiliza el pool de Coarse-Grained para
+mantener iguales el kernel, la partición y la sincronización: CMP añade la
+selección de núcleos físicos y afinidad, mientras SMT exige más hilos que núcleos.
+La captura y reproducción siguen el mismo flujo en los cinco modelos.
+
+La salida registra `model=cmp`, `workers=N`, `quantum=0` y, en stderr, las CPU
+seleccionadas. `--topology` y `topology.txt` incluyen `core_cpus`, una CPU lógica
+representativa por núcleo físico accesible. Las CPU fijadas son las primeras
+`N` de esa lista, en orden ascendente de identificador lógico. El tiempo total
+incluye creación, fijación de afinidad, sincronización y cierre de trabajadores.
+No se modifica el estado global de SMT ni se reservan núcleos exclusivamente:
+otros procesos y el coordinador pueden competir por ellos. Con un solo núcleo
+permitido, CMP funciona con un trabajador, sin paralelismo entre núcleos.
+
+En macOS se limita la cantidad de trabajadores a `hw.physicalcpu`, pero la
+ubicación de los hilos la administra el SO: no se garantiza afinidad a núcleos
+físicos distintos. Esta limitación se indica en la salida; los experimentos que
+requieren verificar la colocación por núcleo deben ejecutarse en Linux.
+
+Las pruebas verifican fuerzas y trayectorias completas contra el secuencial,
+particiones desiguales, bloques vacíos, reutilización del pool, afinidad inválida,
+restricciones de CPU y cierre ante errores. Las mediciones representativas de
+escalabilidad deben realizarse por separado en hardware físico, variando `N`
+y el tamaño de la entrada bajo las mismas condiciones.
+
 ## Modelo físico
 
 Cada cuerpo almacena masa, posición, velocidad y aceleración en el plano XY.
@@ -279,8 +325,8 @@ liberación de trabajadores y flush/cierre. Excluye inicialización aleatoria,
 impresión y reproducción. `model` y `workers` identifican el esquema de ejecución;
 `bodies`, `steps`, `dt` y `seed` identifican la entrada. Se utiliza `sequential` como referencia y `fine-grained` como planificación
 cooperativa simulada. Ambos tienen `workers=1`, que cuenta hilos reales del SO.
-`coarse-grained` y `smt` registran sus hilos persistentes en `workers`.
-`quantum=0` corresponde al secuencial, Coarse-Grained y SMT; en Fine-Grained es el número máximo de
+`coarse-grained`, `smt` y `cmp` registran sus hilos persistentes en `workers`.
+`quantum=0` corresponde al secuencial, Coarse-Grained, SMT y CMP; en Fine-Grained es el número máximo de
 interacciones entre cuerpos distintos por turno. Cada quantum define una
 configuración diferente. El analizador también acepta los CSV secuenciales
 anteriores que no tenían esta columna.
@@ -305,8 +351,8 @@ El enunciado también exige perfilado con herramientas como perf o VTune
 (ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
 habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
 Las repeticiones, estadísticas del tiempo e histograma están implementados.
-CMP, la comparación de SMT por BIOS/UEFI y el análisis comparativo de speedup/eficiencia todavía
-están pendientes; cada lote actual analiza una sola configuración.
+La comparación de SMT por BIOS/UEFI y el análisis comparativo de speedup/eficiencia
+todavía están pendientes; cada lote actual analiza una sola configuración.
 
 El cierre comprueba los errores de escritura, pero no fuerza persistencia física
 con `fsync`; el sistema operativo puede mantener datos en su caché de archivos.
@@ -397,8 +443,8 @@ incompleto.
 
 | Opción | Descripción | Valor predeterminado |
 |---|---|---:|
-| `--model MODELO` | `sequential`, `fine-grained`, `coarse-grained` o `smt` | `sequential` |
-| `--threads N` | Hilos persistentes Coarse-Grained o SMT | Coarse: `2`; SMT: `2*C` |
+| `--model MODELO` | `sequential`, `fine-grained`, `coarse-grained`, `smt` o `cmp` | `sequential` |
+| `--threads N` | Trabajadores Coarse-Grained, SMT o CMP | Coarse: `2`; SMT: `2*C`; CMP: `C` |
 | `--topology` | Consulta CPU disponibles y estado SMT sin simular | — |
 | `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
 | `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `100` |
@@ -453,7 +499,8 @@ n-body-sim/
 │       ├── sequential.cpp   Estrategia de referencia sin hilos
 │       ├── fine_grained.cpp Planificador cooperativo round-robin
 │       ├── coarse_grained.cpp Hilos persistentes y sincronización por bloques
-│       └── smt.cpp            Topología y sobresuscripción comprobada
+│       ├── smt.cpp            Topología y sobresuscripción comprobada
+│       └── cmp.cpp            Trabajadores sobre núcleos físicos distintos
 ├── scripts/                 Repeticiones Bash y análisis Python
 ├── tests/                   Validación física, archivos, reproductor y estadísticas
 ├── docs/diagrams/            Diseños de los cuatro modelos posteriores
@@ -481,10 +528,9 @@ simulación para reutilizar trabajadores o el estado del planificador.
 | Fine-Grained | `fine_grained.cpp` | Implementado: tareas con progreso y cuantums round-robin |
 | Coarse-Grained | `coarse_grained.cpp` | Implementado: hilos persistentes, bloques completos y espera por fases |
 | SMT | `smt.cpp` | Implementado: sobresuscripción respecto a núcleos físicos disponibles |
-| CMP | `cmp.cpp` | Futuro: bloques distribuidos entre núcleos físicos |
+| CMP | `cmp.cpp` | Implementado: bloques sobre núcleos físicos; afinidad explícita en Linux |
 
-El archivo de CMP se creará al implementar ese modelo. No hay
-implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
+No hay implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
 paralelos. El Makefile incorpora las fuentes de `src/models/` automáticamente;
 la selección y parámetros de los modelos se gestionan en `main.cpp`.
 

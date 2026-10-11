@@ -55,7 +55,7 @@ CpuTopology detect_cpu_topology() {
         if (!(package_file >> package) || !(core_file >> core) || package < 0 || core < 0) {
             throw std::runtime_error("No se pudo identificar el núcleo físico de CPU " + std::to_string(cpu));
         }
-        cores.emplace(package, core);
+        if (cores.emplace(package, core).second) result.core_cpus.push_back(cpu);
         if (!result.allowed_cpus.empty()) result.allowed_cpus += ';';
         result.allowed_cpus += std::to_string(cpu);
         ++result.logical_cpus;
@@ -89,7 +89,13 @@ void print_cpu_topology(std::ostream& output, const CpuTopology& topology) {
     output << "physical_cores=" << topology.physical_cores
            << ",logical_cpus=" << topology.logical_cpus
            << ",allowed_cpus=" << topology.allowed_cpus
-           << ",smt_control=" << topology.smt_control
+           << ",core_cpus=";
+    for (std::size_t i = 0; i < topology.core_cpus.size(); ++i) {
+        if (i != 0) output << ';';
+        output << topology.core_cpus[i];
+    }
+    if (topology.core_cpus.empty()) output << "unknown";
+    output << ",smt_control=" << topology.smt_control
            << ",smt_active=" << topology.smt_active << '\n';
 }
 

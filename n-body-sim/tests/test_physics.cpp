@@ -4,6 +4,9 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#if defined(__linux__)
+#include <sched.h>
+#endif
 
 namespace nbody {
 struct Diagnostics {
@@ -156,6 +159,46 @@ int main() try {
     const auto topology = detect_cpu_topology();
     check(topology.physical_cores > 0 && topology.logical_cpus >= topology.physical_cores,
           "Topología inválida");
+#if defined(__linux__)
+    check(topology.core_cpus.size() == topology.physical_cores,
+          "Falta una CPU representativa por núcleo físico");
+    cpu_set_t original_mask, final_mask;
+    check(sched_getaffinity(0, sizeof(original_mask), &original_mask) == 0,
+          "No se pudo leer afinidad original");
+    bool affinity_rejected = false;
+    try { make_coarse_grained_model(2, {topology.core_cpus.front(), CPU_SETSIZE}); }
+    catch (const std::invalid_argument&) { affinity_rejected = true; }
+    check(affinity_rejected, "Admite CPU inválida o falla al cerrar el pool parcial");
+#endif
+    for (std::size_t workers : {std::size_t{1}, topology.physical_cores}) {
+        auto cmp = make_cmp_model(workers);
+        auto reference = make_sequential_model();
+        check(cmp->workers() == workers, "Cantidad CMP incorrecta");
+        for (std::size_t count : {12, 7, 1, 0, 3}) {
+            auto sample = create_galaxies(6, 19);
+            sample.resize(count);
+            for (int phase = 0; phase < 20; ++phase) {
+                std::vector<Vec2> expected, actual;
+                reference->compute_accelerations(sample, expected, 0.7, 0.03);
+                cmp->compute_accelerations(sample, actual, 0.7, 0.03);
+                check(actual.size() == expected.size(), "CMP pierde cuerpos");
+                for (std::size_t i = 0; i < count; ++i) {
+                    check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
+                          "CMP altera fuerzas respecto al secuencial");
+                    sample[i].position.x += 0.001;
+                }
+            }
+        }
+    }
+    make_cmp_model();  // Destruir sin trabajo también debe unir los hilos fijados.
+    bool cmp_rejected = false;
+    try { make_cmp_model(topology.physical_cores + 1); }
+    catch (const std::invalid_argument&) { cmp_rejected = true; }
+    check(cmp_rejected, "CMP acepta sobresuscripción");
+#if defined(__linux__)
+    check(sched_getaffinity(0, sizeof(final_mask), &final_mask) == 0 &&
+          CPU_EQUAL(&original_mask, &final_mask), "CMP altera afinidad del coordinador");
+#endif
     bool smt_rejected = false;
     try { make_smt_model(topology.physical_cores); }
     catch (const std::invalid_argument&) { smt_rejected = true; }

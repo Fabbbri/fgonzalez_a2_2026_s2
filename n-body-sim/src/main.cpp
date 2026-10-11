@@ -75,16 +75,18 @@ Config parse_arguments(int argc, char* argv[]) {
         throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
     }
     if (config.model != "sequential" && config.model != "fine-grained" &&
-        config.model != "coarse-grained" && config.model != "smt") {
+        config.model != "coarse-grained" && config.model != "smt" && config.model != "cmp") {
         throw std::invalid_argument("Modelo no disponible: " + config.model);
     }
     if (config.quantum == 0 || (quantum_given && config.model != "fine-grained")) {
         throw std::invalid_argument("--quantum debe ser positivo y requiere --model fine-grained.");
     }
-    if (config.threads == 0 || (threads_given && config.model != "coarse-grained" && config.model != "smt")) {
-        throw std::invalid_argument("--threads debe ser positivo y requiere --model coarse-grained o smt.");
+    if (config.threads == 0 || (threads_given && config.model != "coarse-grained" &&
+                              config.model != "smt" && config.model != "cmp")) {
+        throw std::invalid_argument("--threads debe ser positivo y requiere coarse-grained, smt o cmp.");
     }
     if (config.model == "smt" && !threads_given) config.threads = 0;  // Automático: 2*C.
+    if (config.model == "cmp" && !threads_given) config.threads = 0;  // Automático: C.
     if (config.steps == std::numeric_limits<std::size_t>::max()) {
         throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
     }
@@ -101,9 +103,9 @@ Config parse_arguments(int argc, char* argv[]) {
 
 void print_usage(std::ostream& output) {
     output << "Uso: nbody [opciones]\n"
-              "  --model MODELO         sequential (defecto), fine-grained, coarse-grained o smt\n"
+              "  --model MODELO         sequential (defecto), fine-grained, coarse-grained, smt o cmp\n"
               "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
-              "  --threads N            Coarse-Grained: 2; SMT: 2*C (debe superar C)\n"
+              "  --threads N            Coarse: 2; SMT: 2*C (>C); CMP: C (entre 1 y C)\n"
               "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
               "  --bodies-per-galaxy N  Cuerpos por galaxia (100)\n"
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
@@ -140,7 +142,7 @@ int main(int argc, char* argv[]) try {
     auto bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
     std::vector<Vec2> accelerations(bodies.size());
     CpuTopology topology;
-    if (config.model == "smt") topology = detect_cpu_topology();
+    if (config.model == "smt" || config.model == "cmp") topology = detect_cpu_topology();
     // Intervalo total continuo: apertura, cálculo, captura, flush y cierre.
     // La generación aleatoria y la reproducción quedan fuera de este tiempo.
     const auto total_start = Clock::now();
@@ -148,7 +150,8 @@ int main(int argc, char* argv[]) try {
     if (config.model == "sequential") model = make_sequential_model();
     else if (config.model == "fine-grained") model = make_fine_grained_model(config.quantum);
     else if (config.model == "coarse-grained") model = make_coarse_grained_model(config.threads);
-    else model = make_smt_model(config.threads);
+    else if (config.model == "smt") model = make_smt_model(config.threads);
+    else model = make_cmp_model(config.threads);
     const std::string model_name = model->name();
     const std::size_t workers = model->workers();
     TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
@@ -180,6 +183,19 @@ int main(int argc, char* argv[]) try {
                   << scheduling.rounds << " fases de sincronización completadas.\n";
     } else if (config.model == "smt") {
         std::cerr << "SMT aproximado por sobresuscripción: " << workers << " hilos; ";
+        print_cpu_topology(std::cerr, topology);
+    } else if (config.model == "cmp") {
+        std::cerr << "CMP: " << workers << " trabajadores; ";
+#if defined(__linux__)
+        std::cerr << "CPU fijadas por núcleo físico: ";
+        for (std::size_t i = 0; i < workers; ++i) {
+            if (i != 0) std::cerr << ';';
+            std::cerr << topology.core_cpus[i];
+        }
+        std::cerr << "; ";
+#else
+        std::cerr << "afinidad administrada por el SO; ";
+#endif
         print_cpu_topology(std::cerr, topology);
     }
     std::cerr.flush();
