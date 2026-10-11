@@ -1,5 +1,6 @@
 #include "interferogram/interferogram.hpp"
 #include "interferogram/models/fine_grained.hpp"
+#include "interferogram/models/coarse_grained.hpp"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -24,26 +25,32 @@ void testTiles() {
             const int columns = (width + tileWidth - 1) / tileWidth;
             const int rows = (height + tileHeight - 1) / tileHeight;
             const int expectedTileCount = columns * rows;
-            if (tiles.size() != static_cast<std::size_t>(expectedTileCount))
+            if (tiles.size() != static_cast<std::size_t>(expectedTileCount)) {
                 throw std::runtime_error("Cantidad de tiles incorrecta");
+            }
             std::vector<int> visits(width * height, 0);
             for (const auto& tile : tiles) {
                 if (tile.xBegin < 0 || tile.yBegin < 0 || tile.xEnd > width ||
-                    tile.yEnd > height || tile.xEnd <= tile.xBegin || tile.yEnd <= tile.yBegin)
+                    tile.yEnd > height || tile.xEnd <= tile.xBegin || tile.yEnd <= tile.yBegin) {
                     throw std::runtime_error("Tile fuera de límites");
-                for (int y = tile.yBegin; y < tile.yEnd; ++y)
-                    for (int x = tile.xBegin; x < tile.xEnd; ++x)
+                }
+                for (int y = tile.yBegin; y < tile.yEnd; ++y) {
+                    for (int x = tile.xBegin; x < tile.xEnd; ++x) {
                         ++visits[y * width + x];
+                    }
+                }
             }
             // NaN permite detectar si quedó alguna muestra sin escribir.
             const double nan = std::numeric_limits<double>::quiet_NaN();
             std::vector<Complex> result(a.size(), {nan, nan});
             computeInterferogramTiled(a, b, result, width, tiles);
             for (std::size_t i = 0; i < a.size(); ++i) {
-                if (visits[i] != 1)
+                if (visits[i] != 1) {
                     throw std::runtime_error("Cada píxel debe pertenecer a un solo tile");
-                if (result[i].real != expected[i].real || result[i].imag != expected[i].imag)
+                }
+                if (result[i].real != expected[i].real || result[i].imag != expected[i].imag) {
                     throw std::runtime_error("El cálculo por tiles no coincide con el secuencial");
+                }
             }
         }
     }
@@ -60,8 +67,9 @@ void testInvalidTileDimensions() {
             } catch (const std::invalid_argument&) {
                 rejected = true;
             }
-            if (!rejected)
+            if (!rejected) {
                 throw std::runtime_error("Dimensión de tile inválida aceptada");
+            }
         }
     }
 }
@@ -78,8 +86,9 @@ void testConjugateProduct() {
     for (std::size_t i = 0; i < a.size(); ++i) {
         const double realError = std::abs(result[i].real - expected[i].real);
         const double imagError = std::abs(result[i].imag - expected[i].imag);
-        if (!(realError <= 1e-12 && imagError <= 1e-12))
+        if (!(realError <= 1e-12 && imagError <= 1e-12)) {
             throw std::runtime_error("Resultado matemático incorrecto");
+        }
     }
 }
 
@@ -92,8 +101,9 @@ void testInvalidInputs() {
     } catch (const std::invalid_argument&) {
         rejected = true;
     }
-    if (!rejected)
+    if (!rejected) {
         throw std::runtime_error("Se aceptó una segunda entrada vacía");
+    }
 }
 
 void testFineGrained() {
@@ -116,58 +126,120 @@ void testFineGrained() {
                 std::size_t expectedDispatches = 0;
                 std::size_t round = 0;
                 if (scheduler.tasks() != tiles.size() || scheduler.rounds() != 0 ||
-                    scheduler.dispatches() != 0 || scheduler.finished())
+                    scheduler.dispatches() != 0 || scheduler.finished()) {
                     throw std::runtime_error("Estado inicial Fine-Grained incorrecto");
+                }
                 while (!scheduler.finished()) {
-                    if (++round > a.size())
+                    if (++round > a.size()) {
                         throw std::runtime_error("Fine-Grained no termina");
+                    }
                     scheduler.runRound(a, b, result);
                     for (const auto& tile : tiles) {
                         const int count = (tile.xEnd - tile.xBegin) * (tile.yEnd - tile.yBegin);
-                        if ((round - 1) * quantum < static_cast<std::size_t>(count))
+                        if ((round - 1) * quantum < static_cast<std::size_t>(count)) {
                             ++expectedDispatches;
+                        }
                         int local = 0;
                         for (int y = tile.yBegin; y < tile.yEnd; ++y) {
                             for (int x = tile.xBegin; x < tile.xEnd; ++x, ++local) {
                                 const int i = y * width + x;
                                 if (static_cast<std::size_t>(local) < round * quantum) {
-                                    if (result[i].real != expected[i].real || result[i].imag != expected[i].imag)
+                                    if (result[i].real != expected[i].real || result[i].imag != expected[i].imag) {
                                         throw std::runtime_error("Progreso Fine-Grained incorrecto");
+                                    }
                                 } else if (!std::isnan(result[i].real) || !std::isnan(result[i].imag)) {
                                     throw std::runtime_error("Una tarea excedió su quantum");
                                 }
                             }
                         }
                     }
-                    if (scheduler.rounds() != round || scheduler.dispatches() != expectedDispatches)
+                    if (scheduler.rounds() != round || scheduler.dispatches() != expectedDispatches) {
                         throw std::runtime_error("Estadísticas Fine-Grained incorrectas");
+                    }
                 }
                 // Una llamada después del final no debe volver a ejecutar tareas.
                 scheduler.runRound(a, b, result);
-                if (scheduler.rounds() != round || scheduler.dispatches() != expectedDispatches)
+                if (scheduler.rounds() != round || scheduler.dispatches() != expectedDispatches) {
                     throw std::runtime_error("Se ejecutaron tareas ya terminadas");
-                for (std::size_t i = 0; i < a.size(); ++i)
-                    if (result[i].real != expected[i].real || result[i].imag != expected[i].imag)
+                }
+                for (std::size_t i = 0; i < a.size(); ++i) {
+                    if (result[i].real != expected[i].real || result[i].imag != expected[i].imag) {
                         throw std::runtime_error("Fine-Grained difiere del secuencial");
+                    }
+                }
             }
         }
     }
     for (int quantum : {0, -1}) {
         bool rejected = false;
-        try { FineGrained scheduler(7, 5, 3, 2, quantum); }
-        catch (const std::invalid_argument&) { rejected = true; }
-        if (!rejected) throw std::runtime_error("Quantum inválido aceptado");
+        try {
+            FineGrained scheduler(7, 5, 3, 2, quantum);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        if (!rejected) {
+            throw std::runtime_error("Quantum inválido aceptado");
+        }
+    }
+}
+
+void testCoarseGrained() {
+    for (int tileSize : {1, 3, 20}) {
+        for (int workers : {1, 2, 8}) {
+            CoarseGrained pool(7, 5, tileSize, tileSize, workers);
+            std::vector<Complex> a(35), b(35), expected(35), result(35);
+            // Cambiar entradas en cada generación comprueba la reutilización del pool.
+            for (int run = 0; run < 30; ++run) {
+                for (int i = 0; i < 35; ++i) {
+                    a[i] = {i * 0.25 + run, -i * 0.5};
+                    b[i] = {i - 4.0, run * 0.125};
+                    result[i] = {NAN, NAN};
+                }
+                computeInterferogramSequential(a, b, expected);
+                pool.compute(a, b, result);
+                for (int i = 0; i < 35; ++i) {
+                    if (result[i].real != expected[i].real || result[i].imag != expected[i].imag) {
+                        throw std::runtime_error("Coarse-Grained difiere del secuencial");
+                    }
+                }
+            }
+            bool rejected = false;
+            try {
+                pool.compute(a, {}, result);
+            } catch (const std::invalid_argument&) {
+                rejected = true;
+            }
+            if (!rejected) {
+                throw std::runtime_error("Pool aceptó entradas inválidas");
+            }
+            pool.compute(a, b, result);
+        }
+    }
+    {
+        CoarseGrained idle(1, 1, 1, 1, 2);
+    } // Destruir sin publicar trabajo.
+    for (int workers : {0, -1}) {
+        bool rejected = false;
+        try {
+            CoarseGrained pool(7, 5, 3, 3, workers);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        if (!rejected) {
+            throw std::runtime_error("Cantidad de trabajadores inválida aceptada");
+        }
     }
 }
 
 int main() {
     try {
         testFineGrained();
+        testCoarseGrained();
         testConjugateProduct();
         testInvalidInputs();
         testTiles();
         testInvalidTileDimensions();
-        std::cout << "PASS: kernel, tiles, Fine-Grained, cobertura y validación\n";
+        std::cout << "PASS: kernel, tiles, Fine-Grained, Coarse-Grained, cobertura y validación\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

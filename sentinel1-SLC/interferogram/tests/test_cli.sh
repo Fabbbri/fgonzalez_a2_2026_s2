@@ -28,7 +28,7 @@ fails --width 9999999999999999999999
 fails --width 12abc
 fails --width
 fails --a --b
-fails --threads 2
+fails --threads 0
 fails --a /nonexistent/slc.tiff
 fails --b /nonexistent/slc.tiff
 echo 'PASS: CLI válida, límites y errores'
@@ -55,3 +55,10 @@ grep -q 'Rounds: 15' <<< "$fine"
 grep -q 'Dispatches: 128' <<< "$fine"
 [[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$fine") ]]
 echo 'PASS: CLI Fine-Grained y equivalencia'
+
+fails --threads -1
+fails --threads abc
+coarse=$("$exe" --x 12000 --y 750 --width 16 --height 16 --mode coarse-grained --tile-width 6 --tile-height 5 --threads 3)
+grep -q 'Workers: 3' <<< "$coarse"
+[[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$coarse") ]]
+echo 'PASS: CLI Coarse-Grained y equivalencia'

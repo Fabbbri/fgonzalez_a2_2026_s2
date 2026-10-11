@@ -20,13 +20,13 @@ build:
 	mkdir -p build
 
 $(TARGET): interferogram/src/main.cpp $(COMMON) $(HEADERS) Makefile | check-gdal build
-	$(CXX) $(CPPFLAGS) $(GDAL_CFLAGS) $(CXXFLAGS) -std=c++17 interferogram/src/main.cpp $(COMMON) $(LDFLAGS) $(GDAL_LIBS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(GDAL_CFLAGS) $(CXXFLAGS) -pthread -std=c++17 interferogram/src/main.cpp $(COMMON) $(LDFLAGS) $(GDAL_LIBS) $(LDLIBS) -o $@
 
 build/test_interferogram: interferogram/tests/test_interferogram.cpp $(KERNEL) $(HEADERS) Makefile | build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -std=c++17 interferogram/tests/test_interferogram.cpp $(KERNEL) $(LDFLAGS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -pthread -std=c++17 interferogram/tests/test_interferogram.cpp $(KERNEL) $(LDFLAGS) $(LDLIBS) -o $@
 
 build/test_slc_reader: interferogram/tests/test_slc_reader.cpp interferogram/src/slc_reader.cpp $(HEADERS) Makefile | check-gdal build
-	$(CXX) $(CPPFLAGS) $(GDAL_CFLAGS) $(CXXFLAGS) -std=c++17 interferogram/tests/test_slc_reader.cpp interferogram/src/slc_reader.cpp $(LDFLAGS) $(GDAL_LIBS) $(LDLIBS) -o $@
+	$(CXX) $(CPPFLAGS) $(GDAL_CFLAGS) $(CXXFLAGS) -pthread -std=c++17 interferogram/tests/test_slc_reader.cpp interferogram/src/slc_reader.cpp $(LDFLAGS) $(GDAL_LIBS) $(LDLIBS) -o $@
 
 run: $(TARGET)
 	./$(TARGET) $(ARGS)

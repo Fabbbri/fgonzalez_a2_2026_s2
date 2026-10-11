@@ -2,6 +2,7 @@
 #include "interferogram/slc_reader.hpp"
 #include "interferogram/interferogram.hpp"
 #include "interferogram/models/fine_grained.hpp"
+#include "interferogram/models/coarse_grained.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
@@ -40,9 +41,16 @@ int main(int argc, char* argv[]) {
             fineGrained = std::make_unique<FineGrained>(config.width, config.height,
                 config.tileWidth, config.tileHeight, config.quantum);
 
-        // El reloj monótono mide solo el kernel, excluyendo lectura e impresión.
+        std::unique_ptr<CoarseGrained> coarseGrained;
+        if (config.mode == "coarse-grained")
+            coarseGrained = std::make_unique<CoarseGrained>(config.width, config.height,
+                config.tileWidth, config.tileHeight, config.threads);
+
+        // El reloj mide solo el kernel, excluyendo lectura e impresión.
         const auto start = std::chrono::steady_clock::now();
-        if (fineGrained) {
+        if (coarseGrained) {
+            coarseGrained->compute(a, b, result);
+        } else if (fineGrained) {
             while (!fineGrained->finished())
                 fineGrained->runRound(a, b, result);
         } else if (config.mode == "tiled")
@@ -79,6 +87,10 @@ int main(int argc, char* argv[]) {
                       << "\nQuantum (pixels): " << config.quantum
                       << "\nRounds: " << fineGrained->rounds()
                       << "\nDispatches: " << fineGrained->dispatches() << '\n';
+        if (coarseGrained)
+            std::cout << "Execution: persistent OS threads, complete tiles\n"
+                      << "Workers: " << coarseGrained->workers()
+                      << "\nTiles: " << coarseGrained->tasks() << '\n';
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.
     } catch (const std::exception& error) {
