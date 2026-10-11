@@ -37,3 +37,7 @@ test: $(TARGET) build/test_interferogram build/test_slc_reader
 
 clean:
 	rm -rf build
+
+.PHONY: images
+images:
+	python3 scripts/render_results.py $(ARGS)
