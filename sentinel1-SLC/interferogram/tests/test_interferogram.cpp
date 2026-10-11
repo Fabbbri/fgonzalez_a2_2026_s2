@@ -1,6 +1,10 @@
 #include "interferogram/interferogram.hpp"
 #include "interferogram/models/fine_grained.hpp"
 #include "interferogram/models/coarse_grained.hpp"
+#include "interferogram/models/smt.hpp"
+#ifdef __linux__
+#include <sched.h>
+#endif
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -231,15 +235,92 @@ void testCoarseGrained() {
     }
 }
 
+void testSmt() {
+    if (selectSmtWorkers(0, 8) != 16 || selectSmtWorkers(9, 8) != 9) {
+        throw std::runtime_error("Selección de hilos SMT incorrecta");
+    }
+    for (int count : {-1, 1, 8}) {
+        bool rejected = false;
+        try {
+            selectSmtWorkers(count, 8);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        if (!rejected) {
+            throw std::runtime_error("SMT aceptó una cantidad sin sobresuscripción");
+        }
+    }
+    bool rejected = false;
+    try {
+        selectSmtWorkers(0, 0);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    if (!rejected) {
+        throw std::runtime_error("SMT aceptó una topología vacía");
+    }
+#ifdef __linux__
+    // Una CPU permitida basta para probar sobresuscripción sin crear cientos de hilos.
+    struct RestoreAffinity {
+        cpu_set_t original;
+        ~RestoreAffinity() {
+            sched_setaffinity(0, sizeof(original), &original);
+        }
+    } affinity;
+    if (sched_getaffinity(0, sizeof(affinity.original), &affinity.original) != 0) {
+        throw std::runtime_error("No se pudo leer la afinidad de prueba");
+    }
+    const auto originalTopology = detectCpuInfo();
+    cpu_set_t single;
+    CPU_ZERO(&single);
+    CPU_SET(originalTopology.allowedCpus.front(), &single);
+    if (sched_setaffinity(0, sizeof(single), &single) != 0) {
+        throw std::runtime_error("No se pudo restringir la afinidad de prueba");
+    }
+    for (int tileSize : {1, 3, 20}) {
+        Smt model(7, 5, tileSize, tileSize);
+        if (model.workers() != 2 || model.topology().physicalCores != 1 ||
+            model.topology().allowedCpus.size() != 1) {
+            throw std::runtime_error("SMT no respeta los núcleos disponibles");
+        }
+        std::vector<Complex> a(35), b(35), expected(35), result(35);
+        for (int run = 0; run < 10; ++run) {
+            for (int i = 0; i < 35; ++i) {
+                a[i] = {i * 0.25 - run, i * -0.5};
+                b[i] = {run * 0.125, i - 3.0};
+                result[i] = {NAN, NAN};
+            }
+            computeInterferogramSequential(a, b, expected);
+            model.compute(a, b, result);
+            for (int i = 0; i < 35; ++i) {
+                if (result[i].real != expected[i].real || result[i].imag != expected[i].imag) {
+                    throw std::runtime_error("SMT difiere del secuencial");
+                }
+            }
+        }
+    }
+    rejected = false;
+    try {
+        Smt invalid(7, 5, 3, 3, 1);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    if (!rejected) {
+        throw std::runtime_error("SMT permitió un hilo en un núcleo disponible");
+    }
+#endif
+}
+
 int main() {
     try {
         testFineGrained();
         testCoarseGrained();
+        testSmt();
         testConjugateProduct();
         testInvalidInputs();
         testTiles();
         testInvalidTileDimensions();
-        std::cout << "PASS: kernel, tiles, Fine-Grained, Coarse-Grained, cobertura y validación\n";
+        std::cout << "PASS: kernel, tiles, Fine-Grained, Coarse-Grained, SMT, cobertura y validación\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

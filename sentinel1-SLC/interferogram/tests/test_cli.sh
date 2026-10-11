@@ -62,3 +62,27 @@ coarse=$("$exe" --x 12000 --y 750 --width 16 --height 16 --mode coarse-grained -
 grep -q 'Workers: 3' <<< "$coarse"
 [[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$coarse") ]]
 echo 'PASS: CLI Coarse-Grained y equivalencia'
+
+# Restringir solo el proceso de prueba y sus hijos, no la terminal del usuario.
+python3 - "$exe" <<'PYTEST'
+import os
+import subprocess
+import sys
+
+if not hasattr(os, 'sched_getaffinity'):
+    print('SKIP: integración SMT requiere Linux')
+    sys.exit(0)
+os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
+base = [sys.argv[1], '--x', '12000', '--y', '750', '--width', '16', '--height', '16']
+reference = subprocess.check_output(base, text=True)
+expected = next(line for line in reference.splitlines() if line.startswith('Result sum'))
+for extra in ([], ['--threads', '3']):
+    output = subprocess.check_output(base + ['--mode', 'smt'] + extra, text=True)
+    assert expected in output
+    assert 'Available physical cores: 1' in output
+    assert 'Workers: ' + ('3' if extra else '2') in output
+    assert 'SMT approximation' in output
+failed = subprocess.run(base + ['--mode', 'smt', '--threads', '1'], capture_output=True, text=True)
+assert failed.returncode != 0 and 'sobresuscripción' in failed.stderr
+print('PASS: SMT integración y equivalencia')
+PYTEST

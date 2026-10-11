@@ -3,6 +3,7 @@
 #include "interferogram/interferogram.hpp"
 #include "interferogram/models/fine_grained.hpp"
 #include "interferogram/models/coarse_grained.hpp"
+#include "interferogram/models/smt.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
@@ -46,9 +47,18 @@ int main(int argc, char* argv[]) {
             coarseGrained = std::make_unique<CoarseGrained>(config.width, config.height,
                 config.tileWidth, config.tileHeight, config.threads);
 
+        std::unique_ptr<Smt> smt;
+        if (config.mode == "smt") {
+            const int requestedThreads = config.threadsSpecified ? config.threads : 0;
+            smt = std::make_unique<Smt>(config.width, config.height,
+                config.tileWidth, config.tileHeight, requestedThreads);
+        }
+
         // El reloj mide solo el kernel, excluyendo lectura e impresión.
         const auto start = std::chrono::steady_clock::now();
-        if (coarseGrained) {
+        if (smt) {
+            smt->compute(a, b, result);
+        } else if (coarseGrained) {
             coarseGrained->compute(a, b, result);
         } else if (fineGrained) {
             while (!fineGrained->finished())
@@ -91,6 +101,21 @@ int main(int argc, char* argv[]) {
             std::cout << "Execution: persistent OS threads, complete tiles\n"
                       << "Workers: " << coarseGrained->workers()
                       << "\nTiles: " << coarseGrained->tasks() << '\n';
+        if (smt) {
+            const auto& topology = smt->topology();
+            std::cout << "Execution: SMT approximation by thread oversubscription\n"
+                      << "Workers: " << smt->workers()
+                      << "\nTiles: " << smt->tasks()
+                      << "\nAvailable physical cores: " << topology.physicalCores
+                      << "\nAllowed logical CPUs: " << topology.allowedCpus.size()
+                      << "\nHost SMT control: " << topology.smtControl
+                      << "\nHost SMT active: " << topology.smtActive
+                      << "\nAllowed CPU IDs:";
+            for (int cpu : topology.allowedCpus) {
+                std::cout << ' ' << cpu;
+            }
+            std::cout << "\nHardware SMT is not enabled or changed by this program.\n";
+        }
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.
     } catch (const std::exception& error) {
