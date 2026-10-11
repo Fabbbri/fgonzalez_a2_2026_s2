@@ -34,4 +34,25 @@ Metrics summarize(const std::vector<Measurement>& samples, std::size_t workers) 
     }
     return {estimate(total), estimate(sequential), estimate(speedup), estimate(efficiency)};
 }
+Metrics summarize_shared(const std::vector<Measurement>& samples,
+                         const std::vector<double>& baseline, std::size_t workers) {
+    auto result = summarize(samples, workers); // Valida tiempos y P.
+    if (baseline.size() < 2) throw std::invalid_argument("Referencia requiere al menos 2 tiempos");
+    for (double t : baseline) if (!std::isfinite(t) || t <= 0)
+        throw std::invalid_argument("Referencia inválida");
+    result.sequential = estimate(baseline);
+    const auto& b = result.sequential;
+    const auto& t = result.total;
+    const double ratio = b.mean / t.mean;
+    const double vb = std::pow(b.deviation / b.mean, 2);
+    const double vt = std::pow(t.deviation / t.mean, 2);
+    // Método delta para Bmedia/Tmedia; no son pares ni muestras independientes
+    // de speedup. La misma referencia se comparte entre configuraciones.
+    const double deviation = ratio * std::sqrt(vb + vt);
+    const double margin = 1.96 * ratio * std::sqrt(vb / baseline.size() + vt / samples.size());
+    result.speedup = {ratio, deviation, ratio - margin, ratio + margin};
+    result.efficiency = {ratio / workers, deviation / workers,
+                         (ratio - margin) / workers, (ratio + margin) / workers};
+    return result;
+}
 } // namespace rt

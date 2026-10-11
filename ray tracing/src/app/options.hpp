@@ -18,6 +18,7 @@ struct Options {
     int repetitions = 200;
     std::vector<int> thread_counts;
     std::string metrics_output = "results/metrics.csv";
+    std::string baseline_csv; // Referencia sequential compartida, sin volver a renderizarla.
 };
 // Interpreta y valida los argumentos; no inicializa escena ni ventana.
 Options parse_options(int argc, char** argv);

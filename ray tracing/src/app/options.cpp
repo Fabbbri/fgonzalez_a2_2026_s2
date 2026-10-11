@@ -27,7 +27,7 @@ Options parse_options(int argc, char** argv) {
                 flag != "--tile-height" && flag != "--tile-size" && flag != "--output" &&
                 flag != "--samples" && flag != "--bounces" && flag != "--model" &&
                 flag != "--quantum" && flag != "--block-interval-ms" && flag != "--block-duration-ms" &&
-                flag != "--threads" && flag != "--thread-counts" && flag != "--repetitions" && flag != "--metrics-output")
+                flag != "--threads" && flag != "--thread-counts" && flag != "--repetitions" && flag != "--metrics-output" && flag != "--baseline-csv")
                 throw std::invalid_argument("Opción desconocida: " + flag);
             if (++i == argc) throw std::invalid_argument("Falta valor para " + flag);
             const std::string value = argv[i];
@@ -47,6 +47,9 @@ Options parse_options(int argc, char** argv) {
                     if (end == std::string::npos) break;
                     begin = end + 1;
                 } while (true);
+            } else if (flag == "--baseline-csv") {
+                if (value.empty()) throw std::invalid_argument("Ruta de referencia vacía");
+                options.baseline_csv = value;
             } else if (flag == "--metrics-output") {
                 if (value.empty()) throw std::invalid_argument("Ruta CSV vacía");
                 options.metrics_output = value;
@@ -78,6 +81,8 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("--threads y --thread-counts requieren coarse, smt o cmp");
     if (!options.thread_counts.empty() && !options.benchmark)
         throw std::invalid_argument("--thread-counts requiere --benchmark");
+    if (!options.baseline_csv.empty() && (!options.benchmark || options.model == ExecutionModel::sequential))
+        throw std::invalid_argument("--baseline-csv requiere benchmark de un modelo distinto de sequential");
     if (options.benchmark) {
         options.headless = true;
         if (options.repetitions < 2) throw std::invalid_argument("Benchmark requiere al menos 2 repeticiones");

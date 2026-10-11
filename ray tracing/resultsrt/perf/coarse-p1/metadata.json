@@ -1,0 +1,52 @@
+{
+  "fecha_utc": "2026-10-10T01:23:17.263461+00:00",
+  "alcance": "process",
+  "repeticiones": 20,
+  "eventos": "task-clock,context-switches,cpu-migrations,cycles,instructions,cache-misses",
+  "comandos": {
+    "coarse": [
+      "./build/sdl/raytracer",
+      "--samples",
+      "8",
+      "--model",
+      "coarse",
+      "--threads",
+      "1",
+      "--headless"
+    ]
+  },
+  "topologia": "nucleos_fisicos_disponibles=8 cpus_logicas_disponibles=12 smt_activo_linux=1\nnucleo=0 cpus=0;1\nnucleo=1 cpus=2;3\nnucleo=2 cpus=4;5\nnucleo=3 cpus=6;7\nnucleo=4 cpus=8\nnucleo=5 cpus=9\nnucleo=6 cpus=10\nnucleo=7 cpus=11\n",
+  "cpus_observadas": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "sistema": {
+    "sysname": "Linux",
+    "nodename": "jian-Victus",
+    "release": "6.17.0-29-generic",
+    "version": "#29~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Mon May 11 10:30:58 UTC 2",
+    "machine": "x86_64"
+  },
+  "perf_version": "perf version 6.17.13",
+  "carga_argumentos": [
+    "--samples",
+    "8"
+  ],
+  "referencia_compartida": "../sequential",
+  "referencia_topologia": "nucleos_fisicos_disponibles=8 cpus_logicas_disponibles=12 smt_activo_linux=1\nnucleo=0 cpus=0;1\nnucleo=1 cpus=2;3\nnucleo=2 cpus=4;5\nnucleo=3 cpus=6;7\nnucleo=4 cpus=8\nnucleo=5 cpus=9\nnucleo=6 cpus=10\nnucleo=7 cpus=11\n",
+  "referencia_repeticiones": 20,
+  "modelos_cpu": [
+    "12th Gen Intel(R) Core(TM) i5-12450H"
+  ],
+  "perf_event_paranoid": "4"
+}

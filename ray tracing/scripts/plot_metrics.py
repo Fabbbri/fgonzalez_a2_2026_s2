@@ -11,6 +11,25 @@ import statistics
 WORKLOAD = ("ancho", "alto", "tile_ancho", "tile_alto", "muestras", "rebotes", "semilla")
 POLICY = ("modelo", "K", "intervalo_ms", "espera_ms")
 
+class Measurements(list):
+    baseline = None
+
+
+def metric_estimate(rows, index, scale=1):
+    if rows.baseline is None:
+        return estimate([r[index] * scale for r in rows])
+    if index == 1:
+        return estimate([t * scale for t in rows.baseline])
+    if index == 0:
+        return estimate([r[0] * scale for r in rows])
+    bm, bsd, _ = estimate(rows.baseline)
+    tm, tsd, _ = estimate([r[0] for r in rows])
+    ratio = bm / tm
+    factor = scale / (rows.workers if index == 3 else 1)
+    vb, vt = (bsd / bm)**2, (tsd / tm)**2
+    return (ratio * factor, ratio * math.sqrt(vb + vt) * factor,
+            1.96 * ratio * math.sqrt(vb / len(rows.baseline) + vt / len(rows)) * factor)
+
 
 def estimate(values):
     mean = statistics.mean(values)
@@ -23,6 +42,7 @@ def load(patterns):
     if not paths:
         raise ValueError("No hay CSV que coincidan con la ruta indicada")
     groups, workload = {}, None
+    baseline_cache = {}
     for path in paths:
         with path.open(newline="") as stream:
             reader = csv.DictReader(stream)
@@ -51,7 +71,31 @@ def load(patterns):
                     raise ValueError("Speedup incompatible con los tiempos del CSV")
                 if not math.isclose(speedup / workers, float(row["eficiencia_paralela"]), rel_tol=1e-8):
                     raise ValueError("Eficiencia incompatible con los tiempos del CSV")
-                groups.setdefault((policy, workers), []).append((total, base, speedup, speedup / workers))
+                data = groups.setdefault((policy, workers), Measurements())
+                data.workers = workers
+                shared = row.get("referencia_tipo") == "compartida"
+                if data and shared != (data.baseline is not None):
+                    raise ValueError("No mezclar referencias compartidas y pareadas")
+                if shared:
+                    reference_path = (path.parent / row["referencia_csv"]).resolve()
+                    if reference_path not in baseline_cache:
+                        with reference_path.open(newline="") as reference:
+                            baseline_cache[reference_path] = list(csv.DictReader(reference))
+                    baseline_rows = baseline_cache[reference_path]
+                    if len(baseline_rows) < 2 or any(
+                        r["modelo"] != "sequential" or tuple(int(r[k]) for k in WORKLOAD) != current
+                        or r["imagen_hash"] != row["imagen_hash"]
+                        or r["referencia_smt"] != row["referencia_smt"] for r in baseline_rows):
+                        raise ValueError("Referencia compartida incompatible")
+                    baseline = [float(r["tiempo_total_ms"]) for r in baseline_rows]
+                    if not all(math.isfinite(t) and t > 0 for t in baseline):
+                        raise ValueError("Tiempos de referencia inválidos")
+                    if not math.isclose(statistics.mean(baseline), base, rel_tol=1e-8):
+                        raise ValueError("Tiempo secuencial no coincide con la media compartida")
+                    if data.baseline is not None and data.baseline != baseline:
+                        raise ValueError("No mezclar referencias compartidas diferentes")
+                    data.baseline = baseline
+                data.append((total, base, speedup, speedup / workers))
     if not groups or any(len(rows) < 2 for rows in groups.values()):
         raise ValueError("Se necesitan al menos dos iteraciones crudas por configuración")
     return dict(sorted(groups.items())), workload
@@ -109,25 +153,28 @@ def generate(groups, workload, output):
         raise ValueError("Falta Matplotlib. En Ubuntu: sudo apt install python3-matplotlib") from error
     output.mkdir(parents=True, exist_ok=True)
     keys = sorted(groups, key=lambda k: (list(NAMES).index(k[0][0]), k[0], k[1]))
-    captions = [f"{readable(k)} · {len(groups[k])} repeticiones" for k in keys]
+    captions = [f"{readable(k)} · {len(groups[k])} repeticiones" +
+                (f" · referencia n={len(groups[k].baseline)}" if groups[k].baseline is not None else "") for k in keys]
     colors = [COLORS[k[0][0]] for k in keys]
     w, h, tw, th, samples, bounces, seed = workload
     context = f"Imagen {w} × {h} · tiles {tw} × {th} · {samples} muestras/píxel · {bounces} rebotes · semilla {seed}"
-    confidence = "Barras de error: IC95 aproximado de la media. Menos de 200 repeticiones: prueba preliminar."
+    shared = any(rows.baseline is not None for rows in groups.values())
+    confidence = ("IC95 aproximado; speedup compartido = cociente de medias (método delta)." if shared else
+                  "Barras de error: IC95 aproximado de la media.") + " Menos de 200: prueba preliminar."
     metrics = [(0, "Tiempo (segundos)", "tiempo", .001),
                (2, "Aceleración frente a secuencial (×)", "speedup", 1),
                (3, "Eficiencia paralela (%)", "eficiencia", 100)]
 
     for index, title, name, scale in metrics:
         values = [[r[index] * scale for r in groups[k]] for k in keys]
-        estimates = [estimate(v) for v in values]
+        estimates = [metric_estimate(groups[k], index, scale) for k in keys]
         fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .8 + 2)))
         positions = list(range(len(keys)))
         if index == 0:
             # Una referencia por comparación, sin mezclar baselines de campañas distintas.
-            bases = [estimate([r[1] * scale for r in groups[k]]) for k in keys]
+            bases = [metric_estimate(groups[k], 1, scale) for k in keys]
             reference_bars = ax.barh([p-.18 for p in positions], [s[0] for s in bases], height=.32,
-                    xerr=[s[2] for s in bases], color=COLORS["sequential"], capsize=3, label="Referencia secuencial del par")
+                    xerr=[s[2] for s in bases], color=COLORS["sequential"], capsize=3, label="Referencia secuencial compartida" if shared else "Referencia secuencial del par")
             ax.bar_label(reference_bars, labels=[f"{s[0]:.3f} s" for s in bases], label_type="center", color="white", fontsize=9)
             bars = ax.barh([p+.18 for p in positions], [s[0] for s in estimates], height=.32,
                            xerr=[s[2] for s in estimates], color=colors, capsize=3, label="Modelo evaluado")
@@ -161,7 +208,8 @@ def generate(groups, workload, output):
         ax.set_yticks(range(1, len(keys)+1), captions, fontsize=9)
         ax.invert_yaxis()
         decorate(ax, "¿Qué tan constantes son las ejecuciones?", title)
-        save(fig, output / f"boxplot-{name}.png", context + "\nCaja: mitad central · línea: mediana · puntos: valores atípicos (se conservan).")
+        distribution_note = "\nCon referencia compartida, los cocientes por ejecución son descriptivos; el speedup global es el cociente de medias." if shared and index in (2,3) else ""
+        save(fig, output / f"boxplot-{name}.png", context + "\nCaja: mitad central · línea: mediana · puntos: valores atípicos (se conservan)." + distribution_note)
         plt.close(fig)
 
         fig, axes = plt.subplots(len(keys), 1, figsize=(10, 2.7 * len(keys)), squeeze=False)
@@ -171,11 +219,11 @@ def generate(groups, workload, output):
             ax.set_title(readable(key) + f" · {len(data)} repeticiones", fontsize=10)
             ax.set_xlabel(title)
             ax.set_ylabel("Número de ejecuciones")
-        save(fig, output / f"histograma-{name}.png", context)
+        save(fig, output / f"histograma-{name}.png", context + distribution_note)
         plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .65 + 2)))
-    ax.boxplot([[r[1]/1000 for r in groups[k]] for k in keys], vert=False)
+    ax.boxplot([[t/1000 for t in groups[k].baseline] if groups[k].baseline is not None else [r[1]/1000 for r in groups[k]] for k in keys], vert=False)
     ax.set_yticks(range(1, len(keys)+1), captions, fontsize=9)
     ax.invert_yaxis()
     decorate(ax, "Referencia secuencial de cada comparación", "Tiempo (segundos)")
@@ -188,7 +236,7 @@ def generate(groups, workload, output):
         for policy in policies:
             selected = sorted([k for k in keys if k[0] == policy], key=lambda k: k[1])
             ps = [k[1] for k in selected]
-            stats = [estimate([r[index] * scale for r in groups[k]]) for k in selected]
+            stats = [metric_estimate(groups[k], index, scale) for k in selected]
             caption = readable(selected[0]).replace(f" · {ps[0]} trabajadores", "").replace(" · 1 hilo real", "")
             # Un único P se muestra como punto, nunca como una curva de escalabilidad.
             ax.errorbar(ps, [s[0] for s in stats], yerr=[s[2] for s in stats],
@@ -212,16 +260,21 @@ def generate(groups, workload, output):
               "Carga fija: " + ", ".join(f"{k}={v}" for k, v in zip(WORKLOAD, workload)) + ".", "",
               "Gráficas principales: comparacion-tiempo.png (segundos, menos es mejor), "
               "comparacion-speedup.png (1× es la referencia) y escalabilidad.png (variar trabajadores). "
-              "Las barras muestran medias con IC95 aproximado; las referencias secuenciales "
+              "Las barras muestran estimaciones con IC95 aproximado; las referencias secuenciales "
               "de tiempo se conservan por comparación, sin mezclar campañas. "
               "Los boxplots e histogramas muestran variabilidad y todas las repeticiones.", "",
-              "Se incluyen todas las iteraciones, sin eliminar valores atípicos. "
-              "La referencia es sequential, medida en cada par de ejecuciones.", "",
+              "Se incluyen todas las iteraciones, sin eliminar valores atípicos.",
+              ("Sequential se mide una sola vez y se reutiliza. Speedup = media sequential / media modelo. "
+               "Su IC95 usa el método delta y considera la incertidumbre de ambas medias. "
+               "No se interpreta cada cociente por ejecución como una observación independiente de la referencia. "
+               "El boxplot de referencia repite los mismos datos originales, no nuevas mediciones. "
+               "Una referencia única entre estados SMT no aísla el efecto del hardware: registrar su estado y discutir ese sesgo."
+               if shared else "La referencia es sequential, medida en cada par de ejecuciones."), "",
               "| Configuración | n | Referencia 200 | Tiempo medio ± IC95 (ms) | Desviación (ms) | Speedup medio ± IC95 | Desviación speedup |",
               "| --- | ---: | --- | ---: | ---: | ---: | ---: |"]
     for key, rows in groups.items():
-        tm, sd, margin = estimate([r[0] for r in rows])
-        sm, ssd, smargin = estimate([r[2] for r in rows])
+        tm, sd, margin = metric_estimate(rows, 0)
+        sm, ssd, smargin = metric_estimate(rows, 2)
         status = "alcanzada" if len(rows) >= 200 else "prueba corta, pendiente"
         report.append(f"| {label(key).replace(chr(10), ' · ')} | {len(rows)} | {status} | {tm:.4f} ± {margin:.4f} | {sd:.4f} | {sm:.4f} ± {smargin:.4f} | {ssd:.4f} |")
     report += ["", "## Justificación y alcance", "",

@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
                          "                 [--block-interval-ms N] [--block-duration-ms N]\n"
                          "                 [--threads P] [--benchmark] [--repetitions N]\n"
                          "                 [--thread-counts 1,2,4,8] [--metrics-output archivo.csv]\n"
+                         "                 [--baseline-csv referencia-sequential.csv]\n"
                          "                 [--cpu-info]\n"
                          "Por defecto: 640x480, tiles 32x32, 128 muestras, 12 rebotes.\n"
                          "Modelo sequential; fine: K=64; coarse: intervalo=10 ms, espera=1 ms.\n"

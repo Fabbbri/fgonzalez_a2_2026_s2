@@ -297,9 +297,34 @@ ese intervalo, como en la medición sin ventana de la base actual.
 
 ## Métricas y comparación con carga fija
 
+`make run-all` mide primero una única referencia sequential (200 ejecuciones
+por defecto) y guarda sus tiempos en `resultsrt/sequential.csv`. Los modelos
+fine, coarse, CMP y SMT reutilizan ese archivo mediante `--baseline-csv`, sin
+volver a ejecutar sequential ni en el calentamiento de cada modelo. La carga
+se valida al importar y una huella FNV-1a del buffer RGB verifica la imagen;
+esa comprobación queda fuera del tiempo medido y no es una prueba criptográfica.
+
+En este modo se calcula `S = media(Tseq) / media(Tmodelo)` y `E = S / P`.
+El error estándar aproximado del cociente, por método delta, es
+`S × sqrt((sd_seq/media_seq)^2/n_seq + (sd_modelo/media_modelo)^2/n_modelo)`;
+el IC95 es `S ± 1.96 × error_estándar`. Se supone independencia entre campañas
+y estabilidad: la fórmula no corrige deriva térmica, correlación ni cambios de
+frecuencia. Todas las comparaciones comparten la incertidumbre de la referencia.
+El CSV distingue `referencia_tipo=compartida` y conserva la ruta relativa al CSV
+original, la huella de la imagen y el estado SMT de la referencia. Los cocientes
+por fila sirven para describir variabilidad; no se promedian para el speedup global.
+
+Se reutiliza la misma referencia incluso al desactivar SMT, por decisión de
+usar una única base. Con el barrido on/off se mide inicialmente con SMT activado;
+comparar también tiempos absolutos on/off y documentar esta condición. Perf
+mantiene una referencia instrumentada separada, capturada una sola vez, y
+reutiliza sus contadores para los demás perfiles. No se mezclan tiempos con y
+sin instrumentación. `BASELINE_REPETITIONS` permite fijar n de sequential;
+`REPETITIONS` fija n de cada modelo y `PROFILE_REPETITIONS` el del perfilado.
+
 El enunciado está disponible en [proyecto.md](proyecto.md), y la propuesta original
 en [propuesta.tex](propuesta.tex). El modo `--benchmark` repite una comparación
-pareada contra sequential, verifica igualdad de la imagen y exporta CSV por
+pareada contra sequential cuando se ejecuta sin `--baseline-csv`, verifica igualdad de la imagen y exporta CSV por
 repetición y por configuración. Por defecto realiza 200 repeticiones; una prueba
 corta puede reducirlas explícitamente. El calentamiento y la escritura no se miden.
 

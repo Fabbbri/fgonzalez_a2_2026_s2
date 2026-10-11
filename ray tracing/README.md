@@ -10,6 +10,244 @@ frontal. El cálculo se hace en CPU con modelos sequential, fine, coarse, SMT y 
 muestra el buffer RGB completo al terminar y atiende eventos durante el cálculo.
 La imagen permanece visible hasta cerrar la ventana o pulsar Esc.
 
+## Resumen de comandos
+
+Ejecuta los comandos desde la carpeta del proyecto, después de instalar las
+[dependencias](#dependencias-y-compilación):
+
+```sh
+cd "ray tracing"
+```
+
+### Ver la escena con cada modelo
+
+Estos ejemplos abren la ventana y usan la misma calidad: 8 muestras por píxel.
+Para una prueba aún más rápida, agrega `--width 320 --height 240 --bounces 6`
+dentro de `ARGS` en cualquiera de ellos.
+
+```sh
+# Sequential: base sin paralelismo
+make run ARGS="--model sequential --samples 8"
+
+# Fine: un hilo real, turnos de K = 64 píxeles por tile
+make run ARGS="--model fine --quantum 64 --samples 8"
+
+# Coarse: 4 trabajadores con bloqueos simulados predeterminados
+make run ARGS="--model coarse --threads 4 --samples 8"
+
+# CMP: 4 trabajadores en núcleos físicos distintos
+make run ARGS="--model cmp --threads 4 --samples 8"
+
+# SMT con el estado actual del equipo
+make run ARGS="--model smt --threads 12 --samples 8"
+
+# SMT activado desde Linux
+make run SMT=on ARGS="--model smt --threads 12 --samples 8"
+
+# SMT desactivado desde Linux: los 12 trabajadores usan sobresuscripción
+make run SMT=off ARGS="--model smt --threads 12 --samples 8"
+
+# Reactivar SMT sin ejecutar el renderizador
+make smt SMT=on
+```
+
+`SMT=on/off` afecta **a todo el sistema**, puede solicitar `sudo` y permanece
+después de terminar. Si omites la variable, se conserva el estado actual;
+`--model smt` por sí solo no activa el SMT de hardware. Este control no modifica
+BIOS/UEFI; consulta los detalles y el requisito del enunciado en
+[SMT y CMP en Linux](#smt-y-cmp-en-linux).
+
+Las cantidades de trabajadores son ejemplos para el equipo de 8 núcleos físicos
+y 12 CPUs lógicas. Consulta tu topología con `make run ARGS="--cpu-info"`;
+CMP requiere tantos núcleos físicos disponibles como trabajadores.
+
+### Guardar una imagen o ejecutar sin ventana
+
+Agrega `--output nombre.ppm` para guardar y `--headless` para omitir la ventana.
+Puedes combinar estas opciones con cualquiera de los modelos anteriores:
+
+```sh
+# Ver y guardar la imagen al terminar
+make run ARGS="--model cmp --threads 4 --samples 8 --output escena.ppm"
+
+# Calcular y guardar sin ventana
+make run ARGS="--headless --model fine --quantum 64 --samples 8 --output fine.ppm"
+```
+
+### Comparar contra sequential y generar gráficas
+
+Para ejecutar la campaña completa con **un solo comando**:
+
+```sh
+make run-all
+```
+
+Primero ejecuta **sequential 200 veces una sola vez** y guarda sus tiempos en
+`resultsrt/sequential.csv`. Después ejecuta fine, coarse, CMP y SMT on/off;
+todos reutilizan esa misma referencia, sin volver a renderizar sequential por
+cada configuración. Usa 200 repeticiones por configuración y 8 muestras
+por píxel; detecta los núcleos y CPUs lógicas para elegir los barridos de
+trabajadores. Los benchmarks se ejecutan uno después de otro, sin competir
+entre ellos, y generan gráficas individuales y una comparación conjunta.
+También ejecuta `perf` para fine, coarse, CMP y SMT en cada estado y cantidad
+de trabajadores, siempre con referencia sequential. El perfilado usa
+`PROFILE_REPETITIONS=5` por defecto y está separado de los tiempos del benchmark.
+Perf obtiene una referencia instrumentada propia una sola vez en
+`resultsrt/perf/sequential/`; los demás perfiles reutilizan esos contadores.
+Antes de empezar comprueba que perf pueda abrir los contadores solicitados.
+
+El speedup global es `media(sequential) / media(modelo)`, y la eficiencia es
+`speedup / trabajadores`. El IC95 aproximado usa el método delta y considera
+la incertidumbre de ambas medias. Los cocientes de cada fila del CSV son
+descriptivos; su promedio no es el speedup global. Los boxplots de sequential
+usan sus tiempos originales, sin repetir artificialmente una media constante.
+El CSV registra el estado SMT de la referencia: con `SMT_STATES=on,off` se toma
+con SMT activado y se reutiliza también para SMT desactivado. Esta referencia
+común no aísla por sí sola el efecto de SMT; comparar además los tiempos on/off
+con la misma carga y P, y discutir cambios térmicos o de frecuencia entre fases.
+
+El cambio de SMT afecta a todo el sistema y requiere `sudo`. La campaña intenta
+restaurar el estado inicial al terminar, incluso ante un error o Ctrl+C; puede
+volver a pedir la contraseña. Si la restauración falla, muestra el comando para
+recuperarlo. Un cierre forzado del proceso o del equipo puede impedirla.
+
+```sh
+# Campaña de referencia: justificar también convergencia y número de iteraciones
+make run-all REPETITIONS=200
+
+# Si perf requiere permisos de administrador
+make run-all PERF="sudo perf"
+
+# Elegir independientemente las repeticiones de benchmark y de perf
+make run-all PERF="sudo perf" REPETITIONS=200 PROFILE_REPETITIONS=5
+
+# Prueba rápida con menor resolución y menos rebotes
+make run-all REPETITIONS=5 ARGS="--samples 8 --width 320 --height 240 --bounces 6"
+
+# Mantener 200 tiempos sequential, pero probar cada modelo solo 5 veces
+make run-all PERF="sudo perf" BASELINE_REPETITIONS=200 REPETITIONS=5
+
+# Elegir cantidades de trabajadores
+make run-all THREAD_COUNTS=1,2,4 SMT_THREAD_COUNTS=8,12
+
+# Ejecutar todos los modelos sin cambiar el estado SMT ni pedir sudo por SMT
+make run-all SMT_STATES=keep
+```
+
+Los resultados se guardan directamente en **`resultsrt/`**. Cada ejecución
+sobrescribe los CSV, resúmenes, reportes y gráficas correspondientes a los modelos
+ejecutados, sin crear carpetas `campaign-*`. Las gráficas están en `resultsrt/plots/`
+y `benchmark.txt` registra la carga y los barridos. La comparación conjunta solo
+usa los CSV generados en esa ejecución; no mezcla archivos de pruebas anteriores.
+Las capturas, contadores, reportes y gráficas de perf se sobrescriben en carpetas
+fijas dentro de `resultsrt/perf/`, por ejemplo `fine/`, `cmp-p4/` y `smt-off-p12/`.
+Puedes elegir otra carpeta con `RESULTS_DIR=otra-carpeta`. Los archivos de otros
+modelos no ejecutados y las capturas históricas guardadas aparte se conservan.
+No abre ventanas ni guarda imágenes de la escena. Para perfilar una configuración
+individual también puedes usar los comandos de la siguiente sección.
+El nombre del objetivo es **`make run-all`**: `make run all` ejecutaría dos
+objetivos distintos.
+
+Para ejecutar benchmarks individuales:
+
+Cada comando realiza **5 repeticiones por configuración**, incluye su referencia
+sequential con la misma carga y genera CSV, reportes y gráficas automáticamente.
+Son pruebas cortas; para la campaña de referencia cambia `--repetitions 5` por
+`--repetitions 200` y justifica la cantidad final.
+
+```sh
+make benchmark ARGS="--model fine --quantum 64 --samples 8 --repetitions 5 --metrics-output results/fine.csv"
+make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 5 --metrics-output results/coarse.csv"
+make benchmark ARGS="--model cmp --thread-counts 1,2,4,8 --samples 8 --repetitions 5 --metrics-output results/cmp.csv"
+
+# Comparar SMT on/off manteniendo la misma carga y cantidades de trabajadores
+make benchmark SMT=on ARGS="--model smt --thread-counts 8,12 --samples 8 --repetitions 5 --metrics-output results/smt-on.csv"
+make benchmark SMT=off ARGS="--model smt --thread-counts 8,12 --samples 8 --repetitions 5 --metrics-output results/smt-off.csv"
+make smt SMT=on
+
+# Gráficas conjuntas: los CSV deben corresponder a la misma carga
+make plots CSV="results/*.csv"
+```
+
+### Perf con SMT activado y desactivado
+
+Para actualizar todas las gráficas y reportes de perf existentes sin volver a
+renderizar ni ejecutar perf:
+
+```sh
+make profile-plots-all
+```
+
+Para comparar **todos los modelos perfilados** por categoría (IPC, ciclos,
+instrucciones, caché, cambios de contexto, migraciones y tiempo CPU):
+
+```sh
+make profile-compare
+# Para las capturas individuales guardadas en results/perf:
+make profile-compare PROFILE_COMPARE_DIR=results/perf
+```
+
+Las gráficas se guardan en `resultsrt/perf/comparison/`, con un `README.md`
+que enlaza cada categoría. Cada fila distingue modelo, trabajadores y estado
+SMT; P-cores y E-cores aparecen en paneles separados. Se conserva el aviso por
+poco tiempo medido. Solo se comparan capturas con igual carga, CPU, eventos,
+alcance y modo de conteo. `make run-all` genera esta comparación automáticamente
+con las capturas de su ejecución, sin incorporar capturas antiguas ajenas.
+
+Las **nuevas capturas** usan `PROFILE_COUNT_MODE=observed`: `perf --no-scale`
+guarda conteos observados, sin extrapolar el poco tiempo de ejecución en E-cores
+al tiempo completo del proceso. Ciclos, instrucciones y caché se agrupan por
+PMU (`cpu_core` y `cpu_atom` por separado). Un porcentaje bajo puede indicar
+poca residencia en ese tipo de núcleo; no se elimina automáticamente un conteo
+observado por ese motivo. Se conserva el porcentaje en los reportes. Si hay
+multiplexado, los conteos pueden ser parciales: revisa el tiempo de contador y
+la captura cruda, y no los presentes como totales completos garantizados.
+
+Por defecto `PROFILE_LOGS=0` evita crear los archivos `.stdout.txt` y
+`.stderr.txt` por cada ejecución correcta. Solo guarda `.stderr.txt` si hay
+avisos o errores. Se mantienen los CSV crudos de perf, `contadores.csv`,
+`metadata.json`, el reporte y las gráficas. Para conservar todos los logs:
+
+```sh
+make run-all PERF="sudo perf" PROFILE_LOGS=1
+# También funciona con make profile
+```
+
+Los logs existentes no se borran al cambiar esta opción; `run-all` reemplaza
+los archivos propios de cada captura cuando vuelve a ejecutarla.
+
+Para obtener datos nuevos con esta configuración:
+
+```sh
+make run-all PERF="sudo perf" PROFILE_REPETITIONS=20
+# Solo una prueba perfilada, sin repetir los benchmarks
+make profile PERF="sudo perf" ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=20
+```
+
+Regenerar imágenes no corrige los conteos antiguos escalados. El modo anterior
+se puede seleccionar explícitamente con `PROFILE_COUNT_MODE=scaled`.
+Las gráficas conservan **todos los valores numéricos**, también en capturas
+antiguas escaladas. Las barras y cajas llevan un rayado naranja si alguna
+muestra tiene menos del **50 %** de tiempo medido o no informa ese porcentaje.
+Es un aviso, no un filtro: las etiquetas indican el porcentaje y `usadas/capturas`.
+Los conteos escalados desde periodos muy cortos pueden estar muy amplificados;
+sus medias e IC describen los datos guardados, sin corregir esa limitación.
+Solo los casos sin medición (`<not counted>`, por ejemplo) quedan fuera del
+cálculo y nunca se muestran como cero. El IPC usa ciclos e instrucciones de la
+misma repetición, CPU y PMU. Los CSV originales no se modifican.
+
+Estas mediciones son independientes del benchmark. Si `perf` necesita permisos,
+usa `PERF="sudo perf"`. Cada ejecución conserva una captura separada.
+
+```sh
+make profile SMT=on ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
+make profile SMT=off ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
+make smt SMT=on
+```
+
+Para interpretar las mediciones y consultar otras opciones, revisa
+[docs/perfilado.md](docs/perfilado.md).
+
 ## Dependencias y compilación
 
 Desde la raíz del repositorio, entra primero a la carpeta del proyecto. Todos
@@ -160,6 +398,31 @@ make benchmark ARGS="--model smt --samples 8 --repetitions 5 --metrics-output re
 # Barrido CMP: ajustar la lista para que ningún P supere C
 make benchmark ARGS="--model cmp --thread-counts 1,2,4 --samples 8 --repetitions 5 --metrics-output results/cmp.csv"
 ```
+
+Puedes controlar SMT desde Linux con la variable `SMT=off` o `SMT=on` en
+`make run`, `make benchmark` y `make profile`. El valor predeterminado
+`SMT=keep` conserva el estado actual. Esto afecta **a todo el sistema**, requiere
+`sudo` cuando cambia el estado y permanece después de terminar, incluso si el
+renderizado falla. Solo la escritura en sysfs usa privilegios; el renderizador
+se ejecuta con tu usuario. Si no se puede aplicar el estado solicitado, la
+ejecución se detiene.
+
+```sh
+# Renderizar sin SMT de hardware, conservando 12 trabajadores explícitos
+make run SMT=off ARGS="--model smt --threads 12 --samples 8"
+
+# Comparar estados con la misma carga y P; guardar los datos por separado
+make benchmark SMT=off ARGS="--model smt --threads 12 --samples 8 --repetitions 5 --metrics-output results/smt-off.csv"
+make benchmark SMT=on ARGS="--model smt --threads 12 --samples 8 --repetitions 5 --metrics-output results/smt-on.csv"
+
+# Reactivar SMT sin renderizar
+make smt SMT=on
+```
+
+Con SMT desactivado, `--model smt` sigue funcionando mediante sobresuscripción;
+no reactiva el SMT de hardware. Las cinco repeticiones del ejemplo son una
+prueba corta. Este control no modifica BIOS/UEFI y su uso como sustituto del
+procedimiento exigido por el enunciado debe acordarse con el profesor.
 
 La aproximación de SMT desde software no controla la emisión de instrucciones
 dentro de un núcleo. Para aislar el SMT de hardware, el enunciado exige repetir
@@ -389,7 +652,8 @@ Se exportan dos archivos:
 - `results/coarse-summary.csv`: una fila por configuración con medias,
   desviaciones estándar muestrales e intervalos aproximados de confianza del 95 %.
 
-El resumen promedia los speedups calculados en cada par de ejecuciones; no es
+Sin `--baseline-csv`, el benchmark individual conserva la comparación pareada:
+el resumen promedia los speedups calculados en cada par de ejecuciones; no es
 el cociente de las medias de tiempos. Cada configuración tiene un calentamiento
 no exportado y se alterna el orden secuencial/modelo para reducir sesgos de orden.
 El IC de la media usa `media ± 1.96 × desviación / sqrt(n)`; con pocas repeticiones
@@ -397,6 +661,17 @@ es un dato diagnóstico. No describe el rango de todas las ejecuciones. Una
 sola configuración permite calcular speedup y eficiencia, pero no una curva de
 escalabilidad. La eficiencia puede superar 1 por ruido o efectos de caché y no
 se recorta artificialmente; no es el porcentaje de uso de CPU.
+
+`make run-all` usa una **referencia compartida**. También puedes reutilizarla en
+un benchmark individual con `--baseline-csv resultsrt/sequential.csv`, siempre
+que coincidan resolución, tiles, muestras, rebotes, semilla e imagen. En ese modo
+no se ejecuta sequential; se utiliza el cociente de medias y un IC95 por método
+delta que incluye la variación de la referencia y del modelo. Las columnas
+de desviación de speedup usan la aproximación delta, no la desviación muestral
+de los cocientes por fila. Las columnas
+`referencia_tipo`, `referencia_csv`, `imagen_hash` y `referencia_smt` identifican
+el método y la procedencia. Conserva `sequential.csv` junto a los CSV de los
+modelos para poder regenerar las gráficas.
 
 Los intervalos y las esperas de coarse forman parte de su configuración y deben
 mantenerse fijos al comparar P. Las mediciones finales deben hacerse en hardware
