@@ -1,0 +1,212 @@
+#include "nbody.hpp"
+#include <charconv>
+#include <cmath>
+#include <limits>
+#include <ostream>
+#include <chrono>
+#include <exception>
+#include <iomanip>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace nbody {
+std::size_t parse_integer(const std::string& value) {
+    std::size_t result = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result);
+    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) {
+        throw std::invalid_argument("Entero no válido: " + value);
+    }
+    return result;
+}
+
+// Validamos los parámetros antes de reservar memoria o crear archivos.
+Config parse_arguments(int argc, char* argv[]) {
+    Config config;
+    bool quantum_given = false;
+    bool threads_given = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string option = argv[i];
+        if (option == "--no-output") {
+            config.no_output = true;
+            continue;
+        }
+        if (option != "--bodies-per-galaxy" && option != "--steps" &&
+            option != "--dt" && option != "--seed" &&
+            option != "--trajectory" && option != "--replay" &&
+            option != "--model" && option != "--quantum" && option != "--threads") {
+            throw std::invalid_argument("Opción desconocida: " + option);
+        }
+        if (++i == argc) {
+            throw std::invalid_argument("Falta el valor de " + option);
+        }
+        const std::string value = argv[i];
+        if (option == "--model") {
+            config.model = value;
+        } else if (option == "--threads") {
+            config.threads = parse_integer(value);
+            threads_given = true;
+        } else if (option == "--quantum") {
+            config.quantum = parse_integer(value);
+            quantum_given = true;
+        } else if (option == "--trajectory" || option == "--replay") {
+            if (value.empty()) throw std::invalid_argument("La ruta no puede estar vacía.");
+            if (option == "--trajectory") config.trajectory_path = value;
+            else config.replay_path = value;
+        } else if (option == "--bodies-per-galaxy") {
+            config.bodies_per_galaxy = parse_integer(value);
+        } else if (option == "--steps") {
+            config.steps = parse_integer(value);
+        } else if (option == "--seed") {
+            const std::size_t seed = parse_integer(value);
+            if (seed > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument("La semilla debe caber en 32 bits.");
+            }
+            config.seed = static_cast<std::uint32_t>(seed);
+        } else {
+            std::size_t consumed = 0;
+            config.dt = std::stod(value, &consumed);
+            if (consumed != value.size()) {
+                throw std::invalid_argument("dt no válido: " + value);
+            }
+        }
+    }
+    if (!config.replay_path.empty() && argc != 3) {
+        throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
+    }
+    if (config.model != "sequential" && config.model != "fine-grained" &&
+        config.model != "coarse-grained" && config.model != "smt" && config.model != "cmp") {
+        throw std::invalid_argument("Modelo no disponible: " + config.model);
+    }
+    if (config.quantum == 0 || (quantum_given && config.model != "fine-grained")) {
+        throw std::invalid_argument("--quantum debe ser positivo y requiere --model fine-grained.");
+    }
+    if (config.threads == 0 || (threads_given && config.model != "coarse-grained" &&
+                              config.model != "smt" && config.model != "cmp")) {
+        throw std::invalid_argument("--threads debe ser positivo y requiere coarse-grained, smt o cmp.");
+    }
+    if (config.model == "smt" && !threads_given) config.threads = 0;  // Automático: 2*C.
+    if (config.model == "cmp" && !threads_given) config.threads = 0;  // Automático: C.
+    if (config.steps == std::numeric_limits<std::size_t>::max()) {
+        throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
+    }
+    if (config.bodies_per_galaxy == 0) {
+        throw std::invalid_argument("La cantidad de cuerpos debe ser positiva.");
+    }
+    if (!std::isfinite(config.dt) || config.dt <= 0.0 ||
+        !std::isfinite(config.dt * static_cast<double>(config.steps))) {
+        throw std::invalid_argument("dt debe ser positivo y el tiempo final debe ser finito.");
+    }
+    return config;
+}
+
+
+void print_usage(std::ostream& output) {
+    output << "Uso: nbody [opciones]\n"
+              "  --model MODELO         sequential (defecto), fine-grained, coarse-grained, smt o cmp\n"
+              "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
+              "  --threads N            Coarse: 2; SMT: 2*C (>C); CMP: C (entre 1 y C)\n"
+              "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
+              "  --bodies-per-galaxy N  Cuerpos por galaxia (500)\n"
+              "  --steps N              Pasos; 0 = estado inicial (10000)\n"
+              "  --dt X                 Duración de cada paso (0.002)\n"
+              "  --seed N               Semilla de 32 bits (42)\n"
+              "  --trajectory ARCHIVO   Trayectoria (output/trajectory.nbody)\n"
+              "  --no-output            Guardar y medir sin abrir la ventana\n"
+              "  --replay ARCHIVO       Reproducir una trayectoria sin simular\n"
+              "Simula, cierra la trayectoria, imprime métricas CSV y abre el reproductor.\n"
+              "Espacio: pausa; N: un frame; R: volver al inicio; F: encuadrar.\n"
+              "Rueda: zoom; arrastrar: mover cámara; +/-: velocidad; Esc: salir.\n"
+              "T: estelas; G: rejilla; flechas o clic en la barra: buscar y pausar.\n"
+              "Tiempo total y parámetros en CSV por stdout, antes de visualizar.\n";
+}
+}  // namespace nbody
+
+int main(int argc, char* argv[]) try {
+    using namespace nbody;
+    using Clock = std::chrono::steady_clock;
+    if (argc == 2 && std::string(argv[1]) == "--help") {
+        print_usage(std::cout);
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--topology") {
+        print_cpu_topology(std::cout, detect_cpu_topology());
+        return 0;
+    }
+    const Config config = parse_arguments(argc, argv);
+    if (!config.replay_path.empty()) {
+        TrajectoryReader trajectory(config.replay_path);
+        replay_native(trajectory);
+        return 0;
+    }
+    auto bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
+    std::vector<Vec2> accelerations(bodies.size());
+    CpuTopology topology;
+    if (config.model == "smt" || config.model == "cmp") topology = detect_cpu_topology();
+    // Intervalo total continuo: apertura, cálculo, captura, flush y cierre.
+    // La generación aleatoria y la reproducción quedan fuera de este tiempo.
+    const auto total_start = Clock::now();
+    std::unique_ptr<ExecutionModel> model;
+    if (config.model == "sequential") model = make_sequential_model();
+    else if (config.model == "fine-grained") model = make_fine_grained_model(config.quantum);
+    else if (config.model == "coarse-grained") model = make_coarse_grained_model(config.threads);
+    else if (config.model == "smt") model = make_smt_model(config.threads);
+    else model = make_cmp_model(config.threads);
+    const std::string model_name = model->name();
+    const std::size_t workers = model->workers();
+    TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
+    refresh_accelerations(bodies, accelerations, *model);
+    writer.append(bodies);
+    for (std::size_t step = 0; step < config.steps; ++step) {
+        advance_one_step(bodies, accelerations, config.dt, *model);
+        writer.append(bodies);
+    }
+    const SchedulingStats scheduling = model->scheduling_stats();
+    model.reset();  // Incluye el cierre de futuros trabajadores en el tiempo total.
+    writer.finish();
+    const double total_seconds = std::chrono::duration<double>(Clock::now() - total_start).count();
+    // Una cabecera y una fila por ejecución permiten agregación externa con Make/Bash.
+    // Speedup, eficiencia y estadísticas requieren comparar varias muestras/modelos.
+    std::cout << "model,workers,bodies,steps,dt,seed,quantum,total_seconds\n"
+              << std::setprecision(17) << model_name << ',' << workers << ',' << bodies.size() << ',' << config.steps
+              << ',' << config.dt << ',' << config.seed << ','
+              << (config.model == "fine-grained" ? config.quantum : 0) << ',' << total_seconds << '\n';
+    std::cout.flush();
+    if (!std::cout) throw std::runtime_error("No se pudieron imprimir las métricas.");
+    std::cerr << "Trayectoria finalizada: " << config.trajectory_path << '\n';
+    if (config.model == "fine-grained") {
+        std::cerr << "Fine-Grained simulado: 1 hilo real, " << scheduling.tasks
+                  << " tareas, " << scheduling.rounds << " rondas y "
+                  << scheduling.dispatches << " despachos (acumulados).\n";
+    } else if (config.model == "coarse-grained") {
+        std::cerr << "Coarse-Grained: " << workers << " hilos persistentes, "
+                  << scheduling.rounds << " fases de sincronización completadas.\n";
+    } else if (config.model == "smt") {
+        std::cerr << "SMT aproximado por sobresuscripción: " << workers << " hilos; ";
+        print_cpu_topology(std::cerr, topology);
+    } else if (config.model == "cmp") {
+        std::cerr << "CMP: " << workers << " trabajadores; ";
+#if defined(__linux__)
+        std::cerr << "CPU fijadas por núcleo físico: ";
+        for (std::size_t i = 0; i < workers; ++i) {
+            if (i != 0) std::cerr << ';';
+            std::cerr << topology.core_cpus[i];
+        }
+        std::cerr << "; ";
+#else
+        std::cerr << "afinidad administrada por el SO; ";
+#endif
+        print_cpu_topology(std::cerr, topology);
+    }
+    std::cerr.flush();
+
+    // La ventana solo se crea después de cerrar el archivo e imprimir los resultados.
+    if (!config.no_output) {
+        TrajectoryReader trajectory(config.trajectory_path);
+        replay_native(trajectory);
+    }
+    return 0;
+} catch (const std::exception& error) {
+    std::cerr << "Error: " << error.what() << "\nUse --help para ver las opciones.\n";
+    return 1;
+}
