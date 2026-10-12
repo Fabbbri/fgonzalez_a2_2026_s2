@@ -24,13 +24,11 @@ SDL_LIBS := -l:libSDL2-2.0.so.0
 endif
 endif
 
-.PHONY: run build benchmark report profile test clean
+.PHONY: run build benchmark profile test clean
 
 REPETITIONS ?= 200
 BENCHMARK_MODELS ?= sequential fine-grained coarse-grained smt cmp
 BENCHMARK_ARGS ?=
-REPORT_INPUT ?= output
-REPORT_OUTPUT ?= output/benchmark-report.html
 PROFILE_MODELS ?= sequential fine-grained coarse-grained smt cmp
 PROFILE_REPETITIONS ?= 3
 PROFILE_ARGS ?=
@@ -52,17 +50,10 @@ profile: $(TARGET)
 	done
 
 benchmark: $(TARGET)
-	@set -e; mkdir -p output; \
-		suite=$$(mktemp -d "output/benchmark-suite-$$(date +%Y%m%d-%H%M%S)-XXXXXX"); \
-		printf 'Sesión de benchmark: %s\n' "$$suite"; \
-		for model in $(BENCHMARK_MODELS); do \
+	@set -e; for model in $(BENCHMARK_MODELS); do \
 		printf '\nBenchmark: %s (%s repeticiones)\n' "$$model" "$(REPETITIONS)"; \
-		BENCHMARK_OUTPUT_ROOT="$$suite" bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" --model "$$model" $(BENCHMARK_ARGS); \
-	done; \
-	$(PYTHON) scripts/report.py "$$suite" --output "$$suite/report.html"
-
-report:
-	$(PYTHON) scripts/report.py "$(REPORT_INPUT)" --output "$(REPORT_OUTPUT)"
+		bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" --model "$$model" $(BENCHMARK_ARGS); \
+	done
 
 $(TARGET): $(SOURCES) $(HEADER)
 	@test -n "$(SDL_LIBS)" || { printf 'Falta SDL2: instale libsdl2-dev y pkg-config (Linux), o sdl2 y pkg-config con Homebrew (macOS).\n'; exit 1; }
@@ -84,7 +75,6 @@ test: $(TARGET) build/test_physics build/test_native
 	bash tests/test_cli.sh ./$(TARGET)
 	bash tests/test_profile.sh
 	$(PYTHON) tests/test_analysis.py
-	$(PYTHON) tests/test_report.py
 
 clean:
 	rm -f $(TARGET) build/test_physics build/test_native

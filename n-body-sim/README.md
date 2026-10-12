@@ -357,9 +357,8 @@ El enunciado también exige perfilado con herramientas como perf o VTune
 (ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
 habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
 Las repeticiones, estadísticas del tiempo e histograma están implementados.
-El reporte conjunto calcula speedup, eficiencia e intervalos de confianza y
-permite comparar configuraciones. La comparación de SMT por BIOS/UEFI sigue
-pendiente de recolectar ambos estados en hardware compatible.
+La comparación de SMT por BIOS/UEFI y el análisis comparativo de speedup/eficiencia
+todavía están pendientes; cada lote actual analiza una sola configuración.
 
 El cierre comprueba los errores de escritura, pero no fuerza persistencia física
 con `fsync`; el sistema operativo puede mantener datos en su caché de archivos.
@@ -453,10 +452,8 @@ make benchmark
 
 Ejecuta los cinco modelos en orden: secuencial, Fine-Grained, Coarse-Grained,
 SMT y CMP, con **200 repeticiones por modelo (1000 ejecuciones en total)**.
-Cada invocación crea una sesión `output/benchmark-suite-FECHA-HORA-ID/`.
-Dentro, cada modelo conserva su propio lote `benchmark-FECHA-HORA-ID/`, con
-estadísticas e histograma independientes. Al terminar todos los modelos se
-genera `report.html`, que los reúne. Los modelos y sus repeticiones se
+Cada modelo genera su propio lote en `output/benchmark-FECHA-HORA-ID/`, con
+estadísticas e histograma independientes. Los modelos y sus repeticiones se
 ejecutan consecutivamente, sin ventana. Conserva el mismo estado inicial y
 la misma captura por paso en todas las repeticiones. Se sobrescribe la trayectoria
 del lote para conservar únicamente la última; las muestras y lotes anteriores
@@ -491,80 +488,6 @@ Puede recalcular el análisis sin repetir simulaciones:
 
 ```bash
 python3 scripts/analyze.py output/benchmark-FECHA-HORA-ID/samples.csv
-```
-
-### Reporte conjunto interactivo
-
-```bash
-# Reúne los lotes existentes, sin ejecutar nuevas simulaciones:
-make report
-xdg-open output/benchmark-report.html
-
-# Analiza únicamente una sesión elegida:
-make report REPORT_INPUT=output/benchmark-suite-FECHA-HORA-ID \
-  REPORT_OUTPUT=output/comparacion.html
-```
-
-El reporte HTML es autónomo: funciona sin servidor, conexión ni paquetes Python
-externos. Python calcula métricas, distribuciones y gráficas SVG; JavaScript
-permite cambiar grupo experimental, métrica y configuración. Se incluyen:
-
-- tiempo medio, desviación estándar muestral e IC 95 % de la media;
-- speedup frente a la referencia secuencial y eficiencia `speedup / workers`;
-- IC 95 % del speedup mediante bootstrap independiente del cociente de medias
-  (2000 remuestreos, semilla 42, percentiles 2.5 y 97.5); el IC de eficiencia
-  divide esos límites entre el número de trabajadores;
-- histogramas con todas las ejecuciones y curvas de convergencia de media e IC;
-- curvas de tiempo, speedup y eficiencia según trabajadores, cuando existan al
-  menos dos cantidades de hilos para un mismo modelo y entrada;
-- parámetros, fuentes, topología y advertencias sobre evidencia faltante.
-
-Los IC suponen observaciones suficientemente independientes. El bootstrap no
-elimina sesgos de carga, deriva temporal ni diferencias de compilación. La
-referencia comparada consigo misma tiene speedup 1 e IC `[1, 1]`. Las gráficas
-recortan a cero límites inferiores negativos del tiempo; las tablas y CSV
-conservan los límites estadísticos originales.
-
-El selector separa entradas diferentes (cuerpos, pasos, dt, semilla), CPU,
-sistema y topología/estado SMT registrados. Si están presentes, también separa
-los metadatos de compilación. La ausencia de metadatos aparece como `unknown`
-y requiere verificar manualmente comparabilidad. No se afirma que compartir
-entrada y topología garantice igualdad de compilación o política de captura.
-Los lotes con menos de 200 ejecuciones se identifican explícitamente.
-
-Solo se usan lotes con `samples.csv` válido y `summary.csv` final. Un lote
-interrumpido queda excluido. Para cada configuración dentro de un grupo se
-selecciona el lote más reciente por nombre cronológico; no se fusionan muestras
-de sesiones distintas. Los grupos completos con al menos 200 muestras y mayor
-carga de cálculo aparecen primero. Si falta referencia secuencial compatible,
-se conservan los tiempos pero no se calculan speedup ni eficiencia.
-
-Junto al HTML se generan `benchmark-report.csv` con todas las métricas y
-`benchmark-report-samples.csv` con las muestras y sus fuentes (los nombres
-siguen el nombre de salida elegido). La vista también permite descargar la
-tabla del grupo seleccionado e imprimirla o guardarla como PDF desde el navegador.
-
-Para recolectar escalabilidad, ejecute lotes manteniendo la misma entrada y
-variando trabajadores, y luego regenere la comparación. Por ejemplo, en un
-equipo de al menos cuatro núcleos físicos:
-
-```bash
-for p in 1 2 4; do
-  make benchmark BENCHMARK_MODELS=cmp \
-    BENCHMARK_ARGS="--threads $p --bodies-per-galaxy 500 --steps 1000"
-done
-make report
-```
-
-La referencia secuencial debe existir para esa misma entrada y entorno.
-Fine-Grained utiliza un único hilo real: variar su quantum no equivale a variar
-núcleos o hilos. La eficiencia SMT usa trabajadores de software y no prueba
-beneficio de SMT por hardware. El reporte no incorpora datos de `perf`.
-
-El generador también puede invocarse directamente:
-
-```bash
-python3 scripts/report.py output --output output/benchmark-report.html --bootstrap 2000
 ```
 
 La desviación estándar utiliza el denominador `n-1`. El intervalo de confianza
@@ -647,7 +570,6 @@ La ayuda integrada muestra las opciones disponibles:
 | `make ARGS="--model fine-grained --quantum 1"` | Ejecuta el flujo completo con Fine-Grained |
 | `make build` | Solo compila `build/nbody` |
 | `make benchmark` | Ejecuta los 5 modelos, 200 repeticiones por modelo, con estadísticas e histogramas |
-| `make report` | Reúne lotes existentes en un HTML interactivo, métricas y muestras CSV |
 | `make test` | Compila y ejecuta todas las pruebas |
 | `make clean` | Elimina los ejecutables generados en `build/` |
 
