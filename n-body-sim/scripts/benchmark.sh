@@ -25,8 +25,9 @@ for arg in "$@"; do
     esac
 done
 "$python" -c 'import sys; assert sys.version_info >= (3, 8), "Se requiere Python 3.8 o posterior"'
-mkdir -p output
-result_dir=$(mktemp -d "output/benchmark-$(date +%Y%m%d-%H%M%S)-XXXXXX")
+result_root=${BENCHMARK_OUTPUT_ROOT:-output}
+mkdir -p "$result_root"
+result_dir=$(mktemp -d "$result_root/benchmark-$(date +%Y%m%d-%H%M%S)-XXXXXX")
 printf 'Resultados: %s\n' "$result_dir"
 printf 'command:' > "$result_dir/command.txt"
 printf ' %q' "$binary" "$@" --no-output --trajectory "$result_dir/trajectory.nbody" >> "$result_dir/command.txt"

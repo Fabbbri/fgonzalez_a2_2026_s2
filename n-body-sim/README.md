@@ -357,12 +357,90 @@ El enunciado también exige perfilado con herramientas como perf o VTune
 (ciclos, instrucciones, uso de CPU por hilo lógico, stalls) y comparación de SMT
 habilitado/deshabilitado. Estos datos se recolectan con el perfilador.
 Las repeticiones, estadísticas del tiempo e histograma están implementados.
-La comparación de SMT por BIOS/UEFI y el análisis comparativo de speedup/eficiencia
-todavía están pendientes; cada lote actual analiza una sola configuración.
+El reporte conjunto calcula speedup, eficiencia e intervalos de confianza y
+permite comparar configuraciones. La comparación de SMT por BIOS/UEFI sigue
+pendiente de recolectar ambos estados en hardware compatible.
 
 El cierre comprueba los errores de escritura, pero no fuerza persistencia física
 con `fsync`; el sistema operativo puede mantener datos en su caché de archivos.
 Todos los modelos futuros deberán conservar estas mismas condiciones.
+
+### Perfilado con perf (Linux)
+
+`make profile` ejecuta `perf stat` sobre los cinco modelos, con tres repeticiones
+por modelo por defecto, sin ventana y con la misma captura de trayectoria.
+Requiere `perf` compatible con el kernel y permisos para acceder a los eventos.
+Las repeticiones de perfilado son diagnósticas; no sustituyen las 200 muestras
+por configuración del benchmark sin instrumentación.
+
+```bash
+make profile
+# Prueba pequeña de integración:
+make profile PROFILE_MODELS=sequential PROFILE_REPETITIONS=1 \
+  PROFILE_ARGS="--bodies-per-galaxy 10 --steps 20"
+# Un perfil con cantidad de trabajadores explícita:
+make profile PROFILE_MODELS=cmp PROFILE_REPETITIONS=3 \
+  PROFILE_ARGS="--threads 4 --bodies-per-galaxy 500 --steps 1000"
+```
+
+Cada modelo crea un directorio independiente `output/profile-FECHA-HORA-ID/`:
+
+| Archivo | Contenido |
+|---|---|
+| `perf-N.csv` | Contadores originales de la repetición N, separados por `;` |
+| `metrics-N.csv` | CSV de la simulación instrumentada |
+| `run-N.log` | Diagnósticos de la simulación y errores de perf |
+| `environment.txt` | SO, CPU, versión de perf, permisos, commit, estado Git y SHA-256 del ejecutable |
+| `topology.txt` | Núcleos, CPU permitidas y estado SMT |
+| `command.txt` | Eventos, repeticiones y comandos exactos |
+| `preflight.csv`, `preflight.log` | Comprobación previa de acceso a los eventos |
+| `status.txt` | `complete` solo si todas las repeticiones terminaron con contadores disponibles |
+| `trajectory.nbody` | Trayectoria de la última ejecución |
+
+Make añade el compilador, su versión y las banderas solicitadas al entorno.
+Estas banderas describen la invocación actual de Make; si se reutiliza un binario
+anterior, no certifican cómo fue compilado. Para un experimento final, reconstruya
+con `make -B build` usando las mismas banderas antes de perfilar.
+
+Se miden `task-clock`, `context-switches`, `cpu-migrations`, `page-faults`,
+`cycles`, `instructions`, `cache-references` y `cache-misses`. Los contadores
+incluyen el proceso y sus hilos heredados, agregados; no son mediciones por CPU
+lógica ni del sistema completo. El alcance es toda la ejecución sin ventana,
+incluyendo inicialización, cálculo y E/S, por lo que difiere del intervalo
+interno `total_seconds`. Ningún contador se interpreta como cero si no está
+soportado o no pudo medirse: el lote queda incompleto y conserva sus archivos.
+La topología se compara antes y después de cada repetición.
+
+Para el análisis, compare instrucciones/ciclos (IPC), fallos/referencias de caché
+y cambios de contexto entre configuraciones con la misma entrada. `task-clock`
+es tiempo de CPU acumulado y puede superar el tiempo de pared al usar varios
+hilos. Los cambios de contexto corresponden al SO, no a los despachos simulados
+de Fine-Grained. Conserve las columnas de tiempo activo y porcentaje de ejecución
+de perf: si hay multiplexación, los conteos pueden estar escalados y deben
+interpretarse considerando ese porcentaje.
+
+Los eventos específicos de stalls y recursos compartidos dependen de la PMU.
+Consulte `perf list` y seleccione eventos compatibles mediante `PERF_EVENTS`:
+
+```bash
+perf list
+make profile PROFILE_MODELS=smt \
+  PERF_EVENTS="cycles,instructions,stalled-cycles-backend"
+```
+
+El ejemplo requiere que la CPU soporte `stalled-cycles-backend`; no se añade a
+los eventos predeterminados. Los contadores genéricos ayudan a comparar las
+condiciones SMT, pero no identifican por sí solos contención entre hermanos SMT.
+Repita perfiles con SMT habilitado/deshabilitado por BIOS/UEFI en hardware
+compatible, manteniendo entrada, trabajadores y compilación; documente el
+firmware y analice los lotes por separado.
+
+Si aparece un error de permisos, consulte `preflight.log` y
+`cat /proc/sys/kernel/perf_event_paranoid`. El script no usa sudo ni modifica
+permisos. Un administrador debe habilitar el acceso adecuado al equipo de
+pruebas; cambiar esta configuración es independiente de integrar el perfilador.
+Véanse la [documentación de seguridad de perf del kernel](https://www.kernel.org/doc/html/latest/admin-guide/perf-security.html)
+y el manual local `man perf-stat` para permisos, herencia y formato de salida.
 
 ### Repeticiones y análisis estadístico
 
@@ -375,8 +453,10 @@ make benchmark
 
 Ejecuta los cinco modelos en orden: secuencial, Fine-Grained, Coarse-Grained,
 SMT y CMP, con **200 repeticiones por modelo (1000 ejecuciones en total)**.
-Cada modelo genera su propio lote en `output/benchmark-FECHA-HORA-ID/`, con
-estadísticas e histograma independientes. Los modelos y sus repeticiones se
+Cada invocación crea una sesión `output/benchmark-suite-FECHA-HORA-ID/`.
+Dentro, cada modelo conserva su propio lote `benchmark-FECHA-HORA-ID/`, con
+estadísticas e histograma independientes. Al terminar todos los modelos se
+genera `report.html`, que los reúne. Los modelos y sus repeticiones se
 ejecutan consecutivamente, sin ventana. Conserva el mismo estado inicial y
 la misma captura por paso en todas las repeticiones. Se sobrescribe la trayectoria
 del lote para conservar únicamente la última; las muestras y lotes anteriores
@@ -411,6 +491,80 @@ Puede recalcular el análisis sin repetir simulaciones:
 
 ```bash
 python3 scripts/analyze.py output/benchmark-FECHA-HORA-ID/samples.csv
+```
+
+### Reporte conjunto interactivo
+
+```bash
+# Reúne los lotes existentes, sin ejecutar nuevas simulaciones:
+make report
+xdg-open output/benchmark-report.html
+
+# Analiza únicamente una sesión elegida:
+make report REPORT_INPUT=output/benchmark-suite-FECHA-HORA-ID \
+  REPORT_OUTPUT=output/comparacion.html
+```
+
+El reporte HTML es autónomo: funciona sin servidor, conexión ni paquetes Python
+externos. Python calcula métricas, distribuciones y gráficas SVG; JavaScript
+permite cambiar grupo experimental, métrica y configuración. Se incluyen:
+
+- tiempo medio, desviación estándar muestral e IC 95 % de la media;
+- speedup frente a la referencia secuencial y eficiencia `speedup / workers`;
+- IC 95 % del speedup mediante bootstrap independiente del cociente de medias
+  (2000 remuestreos, semilla 42, percentiles 2.5 y 97.5); el IC de eficiencia
+  divide esos límites entre el número de trabajadores;
+- histogramas con todas las ejecuciones y curvas de convergencia de media e IC;
+- curvas de tiempo, speedup y eficiencia según trabajadores, cuando existan al
+  menos dos cantidades de hilos para un mismo modelo y entrada;
+- parámetros, fuentes, topología y advertencias sobre evidencia faltante.
+
+Los IC suponen observaciones suficientemente independientes. El bootstrap no
+elimina sesgos de carga, deriva temporal ni diferencias de compilación. La
+referencia comparada consigo misma tiene speedup 1 e IC `[1, 1]`. Las gráficas
+recortan a cero límites inferiores negativos del tiempo; las tablas y CSV
+conservan los límites estadísticos originales.
+
+El selector separa entradas diferentes (cuerpos, pasos, dt, semilla), CPU,
+sistema y topología/estado SMT registrados. Si están presentes, también separa
+los metadatos de compilación. La ausencia de metadatos aparece como `unknown`
+y requiere verificar manualmente comparabilidad. No se afirma que compartir
+entrada y topología garantice igualdad de compilación o política de captura.
+Los lotes con menos de 200 ejecuciones se identifican explícitamente.
+
+Solo se usan lotes con `samples.csv` válido y `summary.csv` final. Un lote
+interrumpido queda excluido. Para cada configuración dentro de un grupo se
+selecciona el lote más reciente por nombre cronológico; no se fusionan muestras
+de sesiones distintas. Los grupos completos con al menos 200 muestras y mayor
+carga de cálculo aparecen primero. Si falta referencia secuencial compatible,
+se conservan los tiempos pero no se calculan speedup ni eficiencia.
+
+Junto al HTML se generan `benchmark-report.csv` con todas las métricas y
+`benchmark-report-samples.csv` con las muestras y sus fuentes (los nombres
+siguen el nombre de salida elegido). La vista también permite descargar la
+tabla del grupo seleccionado e imprimirla o guardarla como PDF desde el navegador.
+
+Para recolectar escalabilidad, ejecute lotes manteniendo la misma entrada y
+variando trabajadores, y luego regenere la comparación. Por ejemplo, en un
+equipo de al menos cuatro núcleos físicos:
+
+```bash
+for p in 1 2 4; do
+  make benchmark BENCHMARK_MODELS=cmp \
+    BENCHMARK_ARGS="--threads $p --bodies-per-galaxy 500 --steps 1000"
+done
+make report
+```
+
+La referencia secuencial debe existir para esa misma entrada y entorno.
+Fine-Grained utiliza un único hilo real: variar su quantum no equivale a variar
+núcleos o hilos. La eficiencia SMT usa trabajadores de software y no prueba
+beneficio de SMT por hardware. El reporte no incorpora datos de `perf`.
+
+El generador también puede invocarse directamente:
+
+```bash
+python3 scripts/report.py output --output output/benchmark-report.html --bootstrap 2000
 ```
 
 La desviación estándar utiliza el denominador `n-1`. El intervalo de confianza
@@ -493,6 +647,7 @@ La ayuda integrada muestra las opciones disponibles:
 | `make ARGS="--model fine-grained --quantum 1"` | Ejecuta el flujo completo con Fine-Grained |
 | `make build` | Solo compila `build/nbody` |
 | `make benchmark` | Ejecuta los 5 modelos, 200 repeticiones por modelo, con estadísticas e histogramas |
+| `make report` | Reúne lotes existentes en un HTML interactivo, métricas y muestras CSV |
 | `make test` | Compila y ejecuta todas las pruebas |
 | `make clean` | Elimina los ejecutables generados en `build/` |
 
