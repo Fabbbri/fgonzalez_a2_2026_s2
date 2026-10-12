@@ -21,6 +21,12 @@ Las cinco estrategias están implementadas: secuencial, Fine-Grained,
 Coarse-Grained, SMT y CMP. Sus diagramas documentan la distribución y
 sincronización del cálculo gravitacional.
 
+La entrada predeterminada es de **500 cuerpos por galaxia (1000 en total)**.
+Respecto a los 200 cuerpos totales anteriores, el trabajo de fuerzas por paso
+crece aproximadamente 25 veces y la captura 5 veces. Esto permite evaluar mejor
+el beneficio del paralelismo frente al costo de sincronización, sin garantizar
+una aceleración para todas las configuraciones. Se mantienen los 10000 pasos.
+
 ## Fine-Grained: planificación cooperativa simulada
 
 Para ejecutar y visualizar:
@@ -32,7 +38,7 @@ make ARGS="--model fine-grained --quantum 1"
 Para generar 200 muestras con la misma política de captura:
 
 ```bash
-make benchmark BENCHMARK_ARGS="--model fine-grained --quantum 1"
+make benchmark BENCHMARK_MODELS=fine-grained BENCHMARK_ARGS="--quantum 1"
 ```
 
 El modelo crea una tarea por cuerpo. Cada tarea conserva el índice de la próxima
@@ -64,7 +70,7 @@ y quantum se registran en el CSV y el comando del lote, no en la trayectoria.
 
 ```bash
 make ARGS="--model coarse-grained --threads 4"
-make benchmark BENCHMARK_ARGS="--model coarse-grained --threads 4"
+make benchmark BENCHMARK_MODELS=coarse-grained BENCHMARK_ARGS="--threads 4"
 ```
 
 Se crean `--threads` hilos de C++ (2 por defecto) una sola vez. Cada hilo
@@ -93,7 +99,7 @@ varias cantidades de hilos, incluidos bloques vacíos y particiones desiguales.
 
 ```bash
 make ARGS="--model smt"
-make benchmark BENCHMARK_ARGS="--model smt"
+make benchmark BENCHMARK_MODELS=smt
 ```
 
 Con `C` núcleos físicos disponibles, el modelo crea `2*C` hilos persistentes.
@@ -165,9 +171,9 @@ hacer la comparación de hardware activado/desactivado solicitada.
 
 ```bash
 make ARGS="--model cmp"
-make benchmark BENCHMARK_ARGS="--model cmp"
+make benchmark BENCHMARK_MODELS=cmp
 # Para medir escalabilidad, un lote por cantidad de trabajadores:
-make benchmark BENCHMARK_ARGS="--model cmp --threads 2"
+make benchmark BENCHMARK_MODELS=cmp BENCHMARK_ARGS="--threads 2"
 ```
 
 Con `C` núcleos físicos disponibles, CMP crea `C` hilos trabajadores persistentes.
@@ -367,12 +373,15 @@ simulación, Bash controla las repeticiones y Python analiza los tiempos.
 make benchmark
 ```
 
-Ejecuta 200 simulaciones completas consecutivas, sin ventana, y genera un lote
-nuevo en `output/benchmark-FECHA-HORA-ID/`. Conserva el mismo estado inicial y
+Ejecuta los cinco modelos en orden: secuencial, Fine-Grained, Coarse-Grained,
+SMT y CMP, con **200 repeticiones por modelo (1000 ejecuciones en total)**.
+Cada modelo genera su propio lote en `output/benchmark-FECHA-HORA-ID/`, con
+estadísticas e histograma independientes. Los modelos y sus repeticiones se
+ejecutan consecutivamente, sin ventana. Conserva el mismo estado inicial y
 la misma captura por paso en todas las repeticiones. Se sobrescribe la trayectoria
 del lote para conservar únicamente la última; las muestras y lotes anteriores
 se mantienen. No ejecuta simulaciones en paralelo, ni descarta warmups u outliers.
-Un proceso fallido detiene el lote y conserva las muestras ya completadas.
+Un proceso fallido detiene el benchmark completo y conserva las muestras ya completadas.
 
 Para cambiar la entrada o la cantidad de repeticiones:
 
@@ -383,7 +392,10 @@ make benchmark REPETITIONS=200 BENCHMARK_ARGS="--bodies-per-galaxy 200 --steps 1
 `REPETITIONS` permite valores desde 2 para pruebas rápidas; usar menos de 200
 se indica explícitamente en el reporte y requiere justificación experimental.
 `BENCHMARK_ARGS` acepta opciones físicas; el script controla la ruta de captura
-y la ejecución sin ventana. Cada lote incluye:
+y la ejecución sin ventana. `BENCHMARK_MODELS` permite seleccionar uno o varios
+modelos, por ejemplo `BENCHMARK_MODELS="sequential cmp"`. No incluya `--model`
+en `BENCHMARK_ARGS`. Opciones específicas como `--threads` o `--quantum` deben
+usarse seleccionando los modelos compatibles. Cada lote incluye:
 
 | Archivo | Contenido |
 |---|---|
@@ -419,8 +431,9 @@ regla de Sturges para la cantidad de intervalos e incluye todas las muestras.
 
 Las mediciones principales deben ejecutarse sobre hardware físico, como exige
 el enunciado. Registre además compilador, banderas y estado de SMT para cada
-experimento. La configuración predeterminada escribe unos 24 GB acumulados
-en 200 ejecuciones, aunque solo conserva una trayectoria de unos 120 MB.
+experimento. Cada modelo escribe unos 120 GB acumulados en 200 ejecuciones; el benchmark
+completo escribe unos 600 GB acumulados. Solo conserva la última trayectoria
+de cada modelo: unos 600 MB por lote, aproximadamente 3 GB entre los cinco.
 
 ### Archivo de trayectoria
 
@@ -433,7 +446,7 @@ sin volcar estructuras C++ ni su padding. Se rechaza otro orden de bytes.
 El modelo v1 utiliza las constantes físicas documentadas arriba.
 
 Tamaño: `40 + (steps + 1) * cuerpos * 60` bytes. La configuración predeterminada
-ocupa aproximadamente 120 MB. Se escribe y reproduce un frame a la vez, con
+ocupa aproximadamente 600 MB. Se escribe y reproduce un frame a la vez, con
 memoria O(N). El lector verifica versión, dimensiones y tamaño exacto, y valida
 los valores de cada frame al leerlo. Si la generación falla, puede quedar un
 archivo parcial; no se publican métricas exitosas y el lector rechaza su tamaño
@@ -447,7 +460,7 @@ incompleto.
 | `--threads N` | Trabajadores Coarse-Grained, SMT o CMP | Coarse: `2`; SMT: `2*C`; CMP: `C` |
 | `--topology` | Consulta CPU disponibles y estado SMT sin simular | — |
 | `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
-| `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `100` |
+| `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `500` |
 | `--steps N` | Cantidad de pasos temporales | `10000` |
 | `--dt X` | Duración de cada paso | `0.002` |
 | `--seed N` | Semilla de 32 bits para la inicialización | `42` |
@@ -479,7 +492,7 @@ La ayuda integrada muestra las opciones disponibles:
 | `make` | Compila si es necesario, simula, guarda, imprime métricas y reproduce |
 | `make ARGS="--model fine-grained --quantum 1"` | Ejecuta el flujo completo con Fine-Grained |
 | `make build` | Solo compila `build/nbody` |
-| `make benchmark` | Ejecuta 200 repeticiones y genera estadísticas e histograma |
+| `make benchmark` | Ejecuta los 5 modelos, 200 repeticiones por modelo, con estadísticas e histogramas |
 | `make test` | Compila y ejecuta todas las pruebas |
 | `make clean` | Elimina los ejecutables generados en `build/` |
 

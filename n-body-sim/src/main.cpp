@@ -107,7 +107,7 @@ void print_usage(std::ostream& output) {
               "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
               "  --threads N            Coarse: 2; SMT: 2*C (>C); CMP: C (entre 1 y C)\n"
               "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
-              "  --bodies-per-galaxy N  Cuerpos por galaxia (100)\n"
+              "  --bodies-per-galaxy N  Cuerpos por galaxia (500)\n"
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
               "  --dt X                 Duración de cada paso (0.002)\n"
               "  --seed N               Semilla de 32 bits (42)\n"

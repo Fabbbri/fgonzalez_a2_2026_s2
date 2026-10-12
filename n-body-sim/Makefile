@@ -27,6 +27,7 @@ endif
 .PHONY: run build benchmark test clean
 
 REPETITIONS ?= 200
+BENCHMARK_MODELS ?= sequential fine-grained coarse-grained smt cmp
 BENCHMARK_ARGS ?=
 PYTHON ?= python3
 ARGS ?=
@@ -37,7 +38,10 @@ run: $(TARGET)
 build: $(TARGET)
 
 benchmark: $(TARGET)
-	bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" $(BENCHMARK_ARGS)
+	@set -e; for model in $(BENCHMARK_MODELS); do \
+		printf '\nBenchmark: %s (%s repeticiones)\n' "$$model" "$(REPETITIONS)"; \
+		bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" --model "$$model" $(BENCHMARK_ARGS); \
+	done
 
 $(TARGET): $(SOURCES) $(HEADER)
 	@test -n "$(SDL_LIBS)" || { printf 'Falta SDL2: instale libsdl2-dev y pkg-config (Linux), o sdl2 y pkg-config con Homebrew (macOS).\n'; exit 1; }

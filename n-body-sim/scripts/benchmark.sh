@@ -10,8 +10,15 @@ if [[ ! $repetitions =~ ^[1-9][0-9]*$ ]] || (( repetitions < 2 )); then
     printf 'Se requieren al menos 2 repeticiones.\n' >&2
     exit 1
 fi
+model_options=0
 for arg in "$@"; do
     case "$arg" in
+        --model)
+            model_options=$((model_options+1))
+            if (( model_options > 1 )); then
+                printf 'Seleccione modelos con BENCHMARK_MODELS; no incluya --model en BENCHMARK_ARGS.\n' >&2
+                exit 1
+            fi ;;
         --replay|--trajectory|--no-output|--topology)
             printf 'El benchmark controla --trajectory y --no-output; no admite --replay ni --topology.\n' >&2
             exit 1 ;;

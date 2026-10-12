@@ -10,8 +10,8 @@
 namespace nbody {
 // Parámetros compartidos por simulación, captura y reproducción.
 struct Config {
-    std::size_t bodies_per_galaxy = 100;
-    std::size_t steps = 10000;
+    std::size_t bodies_per_galaxy = 500;
+    std::size_t steps = 1000;
     double dt = 0.002;
     std::uint32_t seed = 42;
     std::string model = "sequential";
