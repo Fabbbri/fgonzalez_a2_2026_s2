@@ -27,11 +27,21 @@ for threads in 1 2 3 12; do
 done
 "$binary" --model coarse-grained --steps 0 --no-output --trajectory "$test_dir/default-coarse.nbody" > "$test_dir/default-coarse.csv" 2> /dev/null
 awk -F, 'NR==2 {if ($2!=2 || $4!=0) exit 1}' "$test_dir/default-coarse.csv"
+"$binary" "${args[@]}" --model coarse-grained --block-interval-ms 0 --block-duration-ms 0 --trajectory "$test_dir/no-blocks.nbody" > /dev/null 2> "$test_dir/no-blocks.txt"
+cmp "$test_dir/first.nbody" "$test_dir/no-blocks.nbody"
+grep -q 'Intervalo de bloqueo: 0 ms; espera: 0 ms; bloqueos temporales: 0.' "$test_dir/no-blocks.txt"
+for options in '--model coarse-grained --block-interval-ms -1' '--model coarse-grained --block-duration-ms -1' '--model coarse-grained --block-interval-ms 2147483648' '--model smt --block-interval-ms 1' '--model cmp --block-duration-ms 1' '--block-interval-ms 1'; do
+    read -r -a invalid <<< "$options"
+    if "$binary" "${invalid[@]}" --no-output --steps 0 > /dev/null 2>&1; then exit 1; fi
+done
 # Un error de archivo debe cerrar el pool y no publicar métricas.
 if "$binary" --model coarse-grained --no-output --trajectory "$test_dir" > "$test_dir/coarse-failed.csv" 2> /dev/null; then exit 1; fi
 test ! -s "$test_dir/coarse-failed.csv"
 "$binary" --topology > "$test_dir/topology.txt"
 cores=$(sed -n 's/^physical_cores=\([0-9]*\),.*/\1/p' "$test_dir/topology.txt")
+logical=$(sed -n 's/.*logical_cpus=\([0-9]*\),.*/\1/p' "$test_dir/topology.txt")
+smt_default=$logical
+if (( logical == cores )); then smt_default=$((cores*2)); fi
 test "$cores" -gt 0
 for threads in 1 "$cores"; do
     "$binary" "${args[@]}" --model cmp --threads "$threads" --trajectory "$test_dir/cmp.nbody" > "$test_dir/cmp.csv" 2> "$test_dir/cmp.txt"
@@ -45,14 +55,15 @@ if "$binary" --model cmp --threads "$((cores+1))" --no-output > "$test_dir/cmp-i
 test ! -s "$test_dir/cmp-invalid.csv"
 if "$binary" --model cmp --no-output --trajectory "$test_dir" > "$test_dir/cmp-failed.csv" 2> /dev/null; then exit 1; fi
 test ! -s "$test_dir/cmp-failed.csv"
-for threads in "$((cores+1))" "$((cores*2))"; do
+for threads in 1 "$cores" "$((cores+1))" "$((logical+1))"; do
     "$binary" "${args[@]}" --model smt --threads "$threads" --trajectory "$test_dir/smt.nbody" > "$test_dir/smt.csv" 2> "$test_dir/smt.txt"
     cmp "$test_dir/first.nbody" "$test_dir/smt.nbody"
     awk -F, -v threads="$threads" 'NR==2 {if (NF!=8 || $1!="smt" || $2!=threads || $7!=0 || $8<=0) exit 1}' "$test_dir/smt.csv"
 done
 "$binary" "${args[@]}" --model smt --trajectory "$test_dir/smt.nbody" > "$test_dir/smt-default.csv" 2> /dev/null
 cmp "$test_dir/first.nbody" "$test_dir/smt.nbody"
-awk -F, -v threads="$((cores*2))" 'NR==2 {if ($2!=threads) exit 1}' "$test_dir/smt-default.csv"
+awk -F, -v threads="$smt_default" 'NR==2 {if ($2!=threads) exit 1}' "$test_dir/smt-default.csv"
+grep -q 'CPU fijadas y verificadas:' "$test_dir/smt.txt"
 if command -v taskset > /dev/null && [[ $(uname -s) == Linux ]]; then
     cpu=$(sed -n 's/.*allowed_cpus=\([0-9]*\).*/\1/p' "$test_dir/topology.txt")
     taskset -c "$cpu" "$binary" --topology > "$test_dir/restricted-topology.txt"
@@ -65,8 +76,6 @@ if command -v taskset > /dev/null && [[ $(uname -s) == Linux ]]; then
     awk -F, 'NR==2 {if ($2!=1) exit 1}' "$test_dir/restricted-cmp.csv"
     if taskset -c "$cpu" "$binary" --model cmp --threads 2 --no-output > /dev/null 2>&1; then exit 1; fi
 fi
-if "$binary" --model smt --threads "$cores" --no-output --steps 0 > "$test_dir/smt-invalid.csv" 2> /dev/null; then exit 1; fi
-test ! -s "$test_dir/smt-invalid.csv"
 for options in '--model unknown' '--model fine-grained --quantum 0' '--quantum 2' '--threads 2' '--model fine-grained --threads 2' '--model coarse-grained --threads 0' '--model coarse-grained --threads -1' '--model coarse-grained --quantum 1' '--model smt --threads 0' '--model smt --quantum 1' '--model cmp --threads 0' '--model cmp --quantum 1' '--topology --steps 1'; do
     read -r -a invalid <<< "$options"
     if "$binary" "${invalid[@]}" --no-output --steps 0 > /dev/null 2>&1; then exit 1; fi

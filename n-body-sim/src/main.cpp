@@ -25,6 +25,7 @@ Config parse_arguments(int argc, char* argv[]) {
     Config config;
     bool quantum_given = false;
     bool threads_given = false;
+    bool block_time_given = false;
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
         if (option == "--no-output") {
@@ -34,7 +35,8 @@ Config parse_arguments(int argc, char* argv[]) {
         if (option != "--bodies-per-galaxy" && option != "--steps" &&
             option != "--dt" && option != "--seed" &&
             option != "--trajectory" && option != "--replay" &&
-            option != "--model" && option != "--quantum" && option != "--threads") {
+            option != "--model" && option != "--quantum" && option != "--threads" &&
+            option != "--block-interval-ms" && option != "--block-duration-ms") {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
         if (++i == argc) {
@@ -43,6 +45,14 @@ Config parse_arguments(int argc, char* argv[]) {
         const std::string value = argv[i];
         if (option == "--model") {
             config.model = value;
+        } else if (option == "--block-interval-ms" || option == "--block-duration-ms") {
+            const auto milliseconds = parse_integer(value);
+            if (milliseconds > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+                throw std::invalid_argument("Tiempo de bloqueo fuera de rango.");
+            }
+            if (option == "--block-interval-ms") config.block_interval_ms = static_cast<int>(milliseconds);
+            else config.block_duration_ms = static_cast<int>(milliseconds);
+            block_time_given = true;
         } else if (option == "--threads") {
             config.threads = parse_integer(value);
             threads_given = true;
@@ -85,7 +95,10 @@ Config parse_arguments(int argc, char* argv[]) {
                               config.model != "smt" && config.model != "cmp")) {
         throw std::invalid_argument("--threads debe ser positivo y requiere coarse-grained, smt o cmp.");
     }
-    if (config.model == "smt" && !threads_given) config.threads = 0;  // Automático: 2*C.
+    if (config.model == "smt" && !threads_given) config.threads = 0;  // Automático: L o 2*C sin siblings.
+    if (block_time_given && config.model != "coarse-grained") {
+        throw std::invalid_argument("Los tiempos de bloqueo requieren --model coarse-grained.");
+    }
     if (config.model == "cmp" && !threads_given) config.threads = 0;  // Automático: C.
     if (config.steps == std::numeric_limits<std::size_t>::max()) {
         throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
@@ -105,7 +118,9 @@ void print_usage(std::ostream& output) {
     output << "Uso: nbody [opciones]\n"
               "  --model MODELO         sequential (defecto), fine-grained, coarse-grained, smt o cmp\n"
               "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
-              "  --threads N            Coarse: 2; SMT: 2*C (>C); CMP: C (entre 1 y C)\n"
+              "  --threads N            Coarse: 2; SMT: L (o 2*C sin siblings); CMP: C\n"
+              "  --block-interval-ms N  Coarse: intervalo entre bloqueos (10); 0 los desactiva\n"
+              "  --block-duration-ms N  Coarse: duración de cada espera (1)\n"
               "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
               "  --bodies-per-galaxy N  Cuerpos por galaxia (500)\n"
               "  --steps N              Pasos; 0 = estado inicial (10000)\n"
@@ -149,11 +164,13 @@ int main(int argc, char* argv[]) try {
     std::unique_ptr<ExecutionModel> model;
     if (config.model == "sequential") model = make_sequential_model();
     else if (config.model == "fine-grained") model = make_fine_grained_model(config.quantum);
-    else if (config.model == "coarse-grained") model = make_coarse_grained_model(config.threads);
+    else if (config.model == "coarse-grained") model = make_coarse_grained_model(
+        config.threads, {}, config.block_interval_ms, config.block_duration_ms);
     else if (config.model == "smt") model = make_smt_model(config.threads);
     else model = make_cmp_model(config.threads);
     const std::string model_name = model->name();
     const std::size_t workers = model->workers();
+    const auto assigned_cpus = model->assigned_cpus();
     TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
     refresh_accelerations(bodies, accelerations, *model);
     writer.append(bodies);
@@ -180,10 +197,27 @@ int main(int argc, char* argv[]) try {
                   << scheduling.dispatches << " despachos (acumulados).\n";
     } else if (config.model == "coarse-grained") {
         std::cerr << "Coarse-Grained: " << workers << " hilos persistentes, "
-                  << scheduling.rounds << " fases de sincronización completadas.\n";
+                  << scheduling.rounds << " fases de sincronización completadas.\n"
+                  << "Intervalo de bloqueo: " << config.block_interval_ms << " ms; espera: "
+                  << config.block_duration_ms << " ms; bloqueos temporales: " << scheduling.blocks << ".\n";
     } else if (config.model == "smt") {
-        std::cerr << "SMT aproximado por sobresuscripción: " << workers << " hilos; ";
+        std::cerr << "SMT: " << workers << " trabajadores; CPU fijadas y verificadas: ";
+        for (std::size_t i = 0; i < assigned_cpus.size(); ++i) {
+            if (i != 0) std::cerr << ';';
+            std::cerr << assigned_cpus[i];
+        }
+        std::cerr << "; ";
         print_cpu_topology(std::cerr, topology);
+        if (workers > topology.logical_cpus) {
+            std::cerr << "P > L: hay sobresuscripción del SO; no añade unidades SMT.\n";
+        }
+        if (topology.logical_cpus == topology.physical_cores) {
+            std::cerr << "Sin siblings permitidos: esta ejecución no demuestra SMT de hardware.\n";
+        } else if (workers <= topology.physical_cores) {
+            std::cerr << "P <= C: se asigna una CPU por núcleo, sin ocupar siblings del mismo núcleo.\n";
+        } else {
+            std::cerr << "Se asignan CPUs hermanas del mismo núcleo; con varios núcleos se combina CMP + SMT.\n";
+        }
     } else if (config.model == "cmp") {
         std::cerr << "CMP: " << workers << " trabajadores; ";
 #if defined(__linux__)

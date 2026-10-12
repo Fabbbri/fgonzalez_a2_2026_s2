@@ -17,6 +17,8 @@ struct Config {
     std::string model = "sequential";
     std::size_t quantum = 1;
     std::size_t threads = 2;
+    int block_interval_ms = 10;
+    int block_duration_ms = 1;
     bool no_output = false;
     std::string trajectory_path = "output/trajectory.nbody";
     std::string replay_path;
@@ -42,6 +44,7 @@ struct SchedulingStats {
     std::size_t tasks = 0;
     std::uint64_t rounds = 0;
     std::uint64_t dispatches = 0;
+    std::uint64_t blocks = 0;  // Esperas temporales coarse, acumuladas entre fases.
 };
 class ExecutionModel {
 public:
@@ -49,6 +52,7 @@ public:
     virtual const char* name() const = 0;
     virtual std::size_t workers() const = 0;
     virtual SchedulingStats scheduling_stats() const { return {}; }
+    virtual std::vector<int> assigned_cpus() const { return {}; }
     virtual void compute_accelerations(const std::vector<Body>& bodies,
                                       std::vector<Vec2>& accelerations,
                                       double gravity, double epsilon) = 0;
@@ -57,16 +61,20 @@ std::unique_ptr<ExecutionModel> make_sequential_model();
 std::unique_ptr<ExecutionModel> make_fine_grained_model(std::size_t quantum);
 // Pool compartido por Coarse/SMT/CMP. CPU opcionales: una por trabajador en Linux.
 std::unique_ptr<ExecutionModel> make_coarse_grained_model(
-    std::size_t workers, const std::vector<int>& cpus = {});
+    std::size_t workers, const std::vector<int>& cpus = {},
+    int block_interval_ms = 10, int block_duration_ms = 1);
 struct CpuTopology {
     std::size_t physical_cores = 0, logical_cpus = 0;
     std::string allowed_cpus;
     std::string smt_control = "unknown", smt_active = "unknown";
     std::vector<int> core_cpus;  // Una CPU lógica permitida por núcleo físico (Linux).
+    std::vector<std::vector<int>> cores;  // CPUs permitidas agrupadas por socket y núcleo.
 };
 CpuTopology detect_cpu_topology();
 void print_cpu_topology(std::ostream& output, const CpuTopology& topology);
-// Cero selecciona 2*C; un valor explícito debe superar C núcleos disponibles.
+// Primero una CPU por núcleo, después sus siblings; si P > L reutiliza CPUs.
+std::vector<int> smt_cpus(const CpuTopology& topology, std::size_t workers = 0);
+// Cero selecciona L si hay siblings disponibles, o 2*C por sobresuscripción.
 std::unique_ptr<ExecutionModel> make_smt_model(std::size_t workers = 0);
 // Cero selecciona todos los núcleos físicos disponibles; no sobresuscribe.
 std::unique_ptr<ExecutionModel> make_cmp_model(std::size_t workers = 0);

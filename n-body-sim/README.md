@@ -66,7 +66,7 @@ quantums, además del reinicio de contextos y los conteos de planificación.
 El formato de trayectoria v1 y `viewer.cpp` se comparten sin cambios; el modelo
 y quantum se registran en el CSV y el comando del lote, no en la trayectoria.
 
-## Coarse-Grained: hilos persistentes y bloques completos
+## Coarse-Grained: hilos persistentes y bloqueo periódico por tiempo
 
 ```bash
 make ARGS="--model coarse-grained --threads 4"
@@ -83,89 +83,119 @@ número de hilos trabajadores creados, sin contar el hilo coordinador.
 Al completar un bloque, el hilo espera trabajo mediante una variable de
 condición. El coordinador espera que todos los bloques estén listos antes de
 actualizar posiciones, guardar el estado y publicar la siguiente fase. Estas
-esperas son el evento de bloqueo explícito de la aproximación Coarse-Grained;
-no se simulan fallos de caché ni se fuerzan pausas artificiales. El SO puede
-interrumpir hilos en otros momentos: `std::thread` no controla la política de
-cambios de contexto del hardware. No se fija afinidad a núcleos físicos.
+esperas sincronizan fases y son independientes de los bloqueos temporales.
+
+Como en el coarse de ray tracing, cada trabajador mide con `steady_clock` el
+tiempo desde que comenzó o reanudó su bloque. Antes de calcular el siguiente
+cuerpo comprueba si venció `--block-interval-ms` (10 ms por defecto). Si venció,
+se bloquea con `condition_variable::wait_for` durante `--block-duration-ms`
+(1 ms por defecto), liberando el mutex para que otros hilos puedan avanzar.
+Al despertar reinicia el intervalo y continúa con el mismo índice de cuerpo;
+las aceleraciones ya calculadas se conservan. No se divide la suma de un cuerpo
+ni se cambia su orden. La comprobación ocurre entre cuerpos, de modo que el
+intervalo puede excederse por el cálculo de un cuerpo y por la planificación del SO.
+Cada trabajador tiene su propio reloj; no se impone una pausa colectiva.
+
+El intervalo 0 desactiva las pausas temporales. Una duración 0 no introduce una
+espera positiva. Si un bloque termina antes del intervalo, no registra bloqueos.
+Los tiempos deben ser enteros no negativos y las opciones requieren coarse-grained.
+SMT y CMP reutilizan el pool con los bloqueos temporales desactivados.
+
+```bash
+make ARGS="--model coarse-grained --threads 2 --block-interval-ms 10 --block-duration-ms 1"
+# Sustituya 0 por una CPU lógica permitida según ./build/nbody --topology.
+taskset -c 0 ./build/nbody --model coarse-grained --threads 2 --no-output
+```
+
+En una misma CPU lógica, un trabajador bloqueado deja disponible el recurso
+para otro hilo listo. Sin esa restricción, pueden combinarse ejecución multinúcleo
+y bloqueos temporales. Es una adaptación didáctica: el programa no fuerza fallos
+de caché ni controla cambios por ciclo del procesador. No se fija afinidad en coarse.
 
 La salida informa las fases de sincronización completadas (`steps + 1`,
-incluyendo las fuerzas iniciales), sin presentarlas como un conteo de cambios
-de contexto o de esperas efectivas. El tiempo total incluye crear y unir los
-hilos. La actualización del integrador y la escritura permanecen secuenciales.
+incluyendo las fuerzas iniciales), junto al intervalo, duración y número acumulado
+de bloqueos temporales por stderr. Las fases y bloqueos no cuentan cambios de
+contexto del SO. El tiempo total incluye crear y unir los hilos, así como las pausas
+artificiales. El CSV conserva su esquema; para comparar políticas temporales,
+consulte también los argumentos en `command.txt` y `last-run.log` de cada lote.
+La actualización del integrador y la escritura permanecen secuenciales.
 Las pruebas comparan fuerzas y trayectorias completas con el secuencial para
 varias cantidades de hilos, incluidos bloques vacíos y particiones desiguales.
 
-## SMT: aproximación por sobresuscripción
+## SMT: afinidad a CPUs lógicas y control on/off en Linux
 
-```bash
-make ARGS="--model smt"
-make benchmark BENCHMARK_MODELS=smt
-```
+Se usa la misma política de ray tracing: agrupar las CPUs permitidas por
+`(physical_package_id, core_id)`, asignar primero una CPU por núcleo físico y
+luego sus hermanos SMT. No se supone que IDs consecutivos sean siblings.
+Cada trabajador queda fijado a una CPU lógica y se verifica su máscara efectiva
+antes de publicar trabajo. El pool conserva el cálculo por bloques y la barrera
+entre pasos, sin pausas artificiales coarse.
 
-Con `C` núcleos físicos disponibles, el modelo crea `2*C` hilos persistentes.
-También acepta `--threads N`, pero rechaza `N <= C`: la sobresuscripción respecto
-a núcleos físicos es obligatoria, incluso si SMT del hardware está desactivado
-o no existe. En un equipo con 4 núcleos, el valor automático es 8 trabajadores.
-No se usa `hardware_concurrency()` como conteo físico, porque representa
-procesadores lógicos y cambia al activar/desactivar SMT.
-
-En Linux se cuentan pares únicos `(physical_package_id, core_id)` entre las CPU
-permitidas por `sched_getaffinity`, respetando restricciones como `taskset`.
-La detección falla explícitamente si no puede determinar la topología; no
-sustituye núcleos físicos por procesadores lógicos. En macOS se consultan
-`hw.physicalcpu` y `hw.logicalcpu`; el alcance es el sistema, sin máscara de
-afinidad equivalente. El estado de hardware que no puede verificarse se
-registra como `unknown`, sin deducir soporte a partir de una razón 1:1.
+Con `C` núcleos físicos y `L` CPUs lógicas permitidas, el valor automático es
+`L` cuando existen siblings (`L > C`), o `2*C` cuando no hay siblings accesibles.
+`--threads P` acepta cualquier cantidad positiva, incluso `P <= C`, para poder
+comparar la misma cantidad de trabajadores con el hardware activado o desactivado.
+Si `P > L`, las CPUs se reutilizan cíclicamente: eso es sobresuscripción del SO,
+no hardware SMT adicional. Si `P <= C`, la política usa un trabajador por núcleo
+y no ocupa siblings del mismo núcleo. Con varios núcleos y sus siblings se
+combina CMP + SMT. Si hay menos cuerpos que trabajadores, algunos bloques quedan
+vacíos; aumentar trabajadores no crea trabajo independiente adicional.
 
 ```bash
 ./build/nbody --topology
+make run ARGS="--model smt --threads 12 --no-output"
 ```
 
-SMT reutiliza el pool de bloques y sincronización de Coarse-Grained. Su condición
-experimental adicional es la sobresuscripción comprobada; no es un simulador de
-unidades funcionales ni reproduce la emisión de instrucciones del hardware.
-El SO decide dónde ejecutar los hilos, sin afinidad impuesta. Los hilos adicionales
-pueden competir por CPU, caché y ancho de banda; no se garantiza una aceleración.
-Si hay menos cuerpos que trabajadores, algunos bloques quedan vacíos.
+`--topology` muestra `sibling_groups`, separados por `|`, además de núcleos físicos,
+CPUs lógicas, CPUs permitidas y el estado global `smt/control` y `smt/active`.
+La salida de SMT registra la CPU asignada a cada trabajador y distingue uso de
+siblings, ausencia de siblings permitidos y sobresuscripción. `taskset` se respeta:
+una sola CPU lógica con varios trabajadores no demuestra SMT de hardware, aunque
+el estado global `smt/active` sea 1. SMT con afinidad requiere Linux; en otras
+plataformas falla explícitamente. La consulta general de topología sigue
+estando disponible en macOS, sin grupos de afinidad verificables.
 
-Cada lote conserva `topology.txt` y añade la topología a `environment.txt`, con
-núcleos físicos accesibles, CPU lógicas accesibles, máscara de CPU y los estados
-Linux `smt/control` y `smt/active` (estos últimos tienen alcance del sistema).
-Se compara la topología antes y después de cada ejecución y se interrumpe el
-lote si cambia, antes de incorporar la muestra afectada. Estas comprobaciones
-están fuera del tiempo medido; detectan diferencias entre instantáneas, no
-cambios transitorios que se reviertan entre ellas. El CSV mantiene el esquema
-común: `model=smt`, `workers=N`, `quantum=0`. Los lotes se analizan por separado.
+### Activar y desactivar SMT como en ray tracing
 
-### Comparación con SMT de hardware
-
-El enunciado §4.1.c exige repetir las mediciones con SMT **habilitado y deshabilitado
-desde BIOS/UEFI**, manteniendo iguales entrada, número de hilos, compilación y
-política de captura. Ejecutar un lote de al menos 200 repeticiones por condición,
-conservar sus directorios separados y documentar la configuración de firmware
-usada (el estado de sysfs por sí solo no prueba cómo se configuró). Repetir también
-la referencia secuencial bajo ambas condiciones. La implementación no modifica
-BIOS/UEFI ni el estado global de SMT; la comparación experimental queda pendiente
-hasta ejecutar ambos lotes en hardware compatible.
-
-Linux permite consultar y, en equipos compatibles, cambiar SMT desde terminal:
+`SMT=keep` es el valor predeterminado y conserva el estado actual. `SMT=on/off`
+controla `/sys/devices/system/cpu/smt/control` antes de ejecutar `run`, `benchmark`
+o `profile`; también se puede usar el objetivo `smt` por separado:
 
 ```bash
-cat /sys/devices/system/cpu/smt/control
-cat /sys/devices/system/cpu/smt/active
-# Solo para equipos compatibles; cambia la configuración global de Linux:
-echo off | sudo tee /sys/devices/system/cpu/smt/control
-echo on  | sudo tee /sys/devices/system/cpu/smt/control
+# Cambiar el estado sin ejecutar la simulación.
+make smt SMT=off
+make smt SMT=on
+
+# Misma cantidad de trabajadores con hardware activado y desactivado.
+make run SMT=on ARGS="--model smt --threads 12 --no-output"
+make run SMT=off ARGS="--model smt --threads 12 --no-output"
+
+# Conservar lotes separados con la misma entrada y cantidad de trabajadores.
+make benchmark SMT=on BENCHMARK_MODELS=smt BENCHMARK_ARGS="--threads 12"
+make benchmark SMT=off BENCHMARK_MODELS=smt BENCHMARK_ARGS="--threads 12"
+make smt SMT=on
 ```
 
-Estos comandos no sustituyen el procedimiento BIOS/UEFI exigido por el enunciado.
-`notsupported` indica que SMT no está disponible para el kernel; `forceoff` impide
-reactivarlo mediante esta interfaz. Véase la [documentación del kernel Linux](https://www.kernel.org/doc/html/v6.8/admin-guide/hw-vuln/l1tf.html#smt-control).
+El cambio afecta **a todo el sistema**, puede solicitar `sudo` y permanece tras
+terminar, incluso si la simulación falla. El ejecutable corre sin sudo. Se verifica
+`smt/active` después del cambio; si el kernel no expone el control, informa un
+estado no compatible o no alcanza el estado solicitado, Make falla y no ejecuta
+la simulación. `--model smt` por sí solo no activa el hardware. No se modifica
+BIOS/UEFI; si el curso exige cambiarlo desde firmware, este control de Linux no
+sustituye ese procedimiento.
 
-En el equipo revisado, Linux identifica un AMD Ryzen 3 3200G, 4 núcleos / 4 hilos,
-con `smt/control=notsupported` y `smt/active=0`. Aquí se puede evaluar la aproximación
-por software con 8 hilos, pero se necesita otro equipo con SMT compatible para
-hacer la comparación de hardware activado/desactivado solicitada.
+Cada lote conserva `topology.txt` y la topología en `environment.txt`. Se compara
+antes y después de cada ejecución; si cambia, el lote se interrumpe antes de
+incorporar la muestra afectada. `last-run.log` conserva las CPUs asignadas.
+El CSV mantiene `model=smt`, `workers=P`, `quantum=0`; los lotes on/off se analizan
+por separado. Para aislar el efecto del hardware, mantener entrada, trabajadores,
+compilación y captura iguales, y repetir también la referencia secuencial en
+ambas condiciones. El speedup no demuestra por sí solo SMT ni garantiza una mejora.
+
+Las pruebas verifican selección con IDs no consecutivos y topologías mixtas,
+sobresuscripción sin siblings, conservación de fuerzas y trayectorias, afinidad
+del coordinador y control Make on/off con sysfs y sudo simulados. Las pruebas
+no cambian el estado SMT de la máquina.
 
 ## CMP: paralelismo entre núcleos físicos
 
@@ -190,7 +220,8 @@ Todos leen el mismo estado físico y escriben posiciones distintas del vector de
 aceleraciones. Una barrera de finalización precede la actualización secuencial
 de velocidades y posiciones. Se reutiliza el pool de Coarse-Grained para
 mantener iguales el kernel, la partición y la sincronización: CMP añade la
-selección de núcleos físicos y afinidad, mientras SMT exige más hilos que núcleos.
+selección de núcleos físicos y afinidad, mientras SMT incorpora CPUs hermanas
+cuando hay suficientes trabajadores y siblings disponibles.
 La captura y reproducción siguen el mismo flujo en los cinco modelos.
 
 La salida registra `model=cmp`, `workers=N`, `quantum=0` y, en stderr, las CPU
@@ -198,7 +229,8 @@ seleccionadas. `--topology` y `topology.txt` incluyen `core_cpus`, una CPU lógi
 representativa por núcleo físico accesible. Las CPU fijadas son las primeras
 `N` de esa lista, en orden ascendente de identificador lógico. El tiempo total
 incluye creación, fijación de afinidad, sincronización y cierre de trabajadores.
-No se modifica el estado global de SMT ni se reservan núcleos exclusivamente:
+El ejecutable no modifica el estado global de SMT (`SMT=on/off` en Make sí lo
+controla) ni reserva núcleos exclusivamente:
 otros procesos y el coordinador pueden competir por ellos. Con un solo núcleo
 permitido, CMP funciona con un trabajador, sin paralelismo entre núcleos.
 
@@ -534,7 +566,7 @@ incompleto.
 | Opción | Descripción | Valor predeterminado |
 |---|---|---:|
 | `--model MODELO` | `sequential`, `fine-grained`, `coarse-grained`, `smt` o `cmp` | `sequential` |
-| `--threads N` | Trabajadores Coarse-Grained, SMT o CMP | Coarse: `2`; SMT: `2*C`; CMP: `C` |
+| `--threads N` | Trabajadores Coarse-Grained, SMT o CMP | Coarse: `2`; SMT: `L` o `2*C` sin siblings; CMP: `C` |
 | `--topology` | Consulta CPU disponibles y estado SMT sin simular | — |
 | `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
 | `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `500` |
@@ -589,7 +621,7 @@ n-body-sim/
 │       ├── sequential.cpp   Estrategia de referencia sin hilos
 │       ├── fine_grained.cpp Planificador cooperativo round-robin
 │       ├── coarse_grained.cpp Hilos persistentes y sincronización por bloques
-│       ├── smt.cpp            Topología y sobresuscripción comprobada
+│       ├── smt.cpp            Topología, siblings y afinidad SMT
 │       └── cmp.cpp            Trabajadores sobre núcleos físicos distintos
 ├── scripts/                 Repeticiones Bash y análisis Python
 ├── tests/                   Validación física, archivos, reproductor y estadísticas
@@ -616,8 +648,8 @@ simulación para reutilizar trabajadores o el estado del planificador.
 |---|---|---|
 | Secuencial | `sequential.cpp` | Implementado: recorre los cuerpos en un único hilo |
 | Fine-Grained | `fine_grained.cpp` | Implementado: tareas con progreso y cuantums round-robin |
-| Coarse-Grained | `coarse_grained.cpp` | Implementado: hilos persistentes, bloques completos y espera por fases |
-| SMT | `smt.cpp` | Implementado: sobresuscripción respecto a núcleos físicos disponibles |
+| Coarse-Grained | `coarse_grained.cpp` | Implementado: hilos persistentes, bloqueos temporales individuales y barrera por fases |
+| SMT | `smt.cpp` | Implementado: afinidad a CPUs lógicas y siblings; sobresuscripción opcional |
 | CMP | `cmp.cpp` | Implementado: bloques sobre núcleos físicos; afinidad explícita en Linux |
 
 No hay implementaciones vacías ni modos que ejecuten secuencial haciéndose pasar por
@@ -697,16 +729,19 @@ de comenzar el siguiente paso temporal.
 
 Las $N$ partículas se dividen en $M$ bloques grandes y cada bloque $B_i$ se
 asigna a un hilo. Cada hilo calcula todas las interacciones de las partículas de
-su bloque antes de alcanzar la barrera. La barrera es el punto de sincronización
-costoso del diagrama: solo después de que todos los hilos terminan se actualizan
+su bloque antes de alcanzar la barrera. El diagrama muestra la partición y la
+barrera; el código añade bloqueos periódicos individuales por tiempo durante
+cada bloque. La barrera sincroniza las fases: solo después de que todos los
+hilos terminan se actualizan
 velocidades y posiciones y comienza el siguiente paso temporal.
 
 ![Diagrama de Coarse-Grained Multithreading](docs/diagrams/coarse-grained.png)
 
 ### SMT — Simultaneous Multithreading
 
-Con $C$ núcleos físicos, las partículas se dividen en $2C$ bloques para ejecutar
-dos hilos lógicos por núcleo. Los dos hilos lógicos de cada núcleo comparten sus
+El diagrama representa dos hilos lógicos por núcleo. El código usa $P$ bloques
+y la topología real: primero una CPU por núcleo y después sus siblings; no todos
+los núcleos tienen necesariamente dos CPUs lógicas. Los dos hilos lógicos de cada núcleo comparten sus
 recursos de ejecución, tal como indica el diagrama. Todos los hilos se reúnen en
 una barrera después de calcular las fuerzas. La evaluación deberá comparar el
 mismo trabajo con SMT habilitado y deshabilitado en el hardware.

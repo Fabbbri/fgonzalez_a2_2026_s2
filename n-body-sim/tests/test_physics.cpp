@@ -153,9 +153,65 @@ void test_coarse_grained() {
     check(rejected, "Admite cero hilos");
 }
 
+void test_coarse_timed_blocks() {
+    auto reference = make_sequential_model();
+    auto bodies = create_galaxies(2048, 19);
+    std::vector<Vec2> expected, actual;
+    reference->compute_accelerations(bodies, expected, 0.7, 0.03);
+    auto coarse = make_coarse_grained_model(2, {}, 1, 1);
+    for (int phase = 0; phase < 2; ++phase) {
+        const auto before = coarse->scheduling_stats();
+        coarse->compute_accelerations(bodies, actual, 0.7, 0.03);
+        check(coarse->scheduling_stats().blocks > before.blocks,
+              "Coarse no bloquea periódicamente durante el cálculo");
+        for (std::size_t i = 0; i < bodies.size(); ++i) {
+            check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
+                  "Coarse pierde progreso después de un bloqueo temporal");
+        }
+    }
+    auto disabled = make_coarse_grained_model(2, {}, 0, 1);
+    disabled->compute_accelerations(bodies, actual, 0.7, 0.03);
+    check(disabled->scheduling_stats().blocks == 0, "Intervalo cero no desactiva bloqueos");
+    auto zero_wait = make_coarse_grained_model(2, {}, 1, 0);
+    zero_wait->compute_accelerations(bodies, actual, 0.7, 0.03);
+    for (std::size_t i = 0; i < bodies.size(); ++i) {
+        check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
+              "Espera cero altera fuerzas");
+    }
+    for (bool negative_interval : {false, true}) {
+        bool rejected = false;
+        try { make_coarse_grained_model(2, {}, negative_interval ? -1 : 1,
+                                       negative_interval ? 1 : -1); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        check(rejected, "Admite tiempos de bloqueo negativos");
+    }
+}
+
+void test_smt_cpu_selection() {
+    CpuTopology mixed;
+    // IDs no consecutivos, núcleos con y sin siblings (como una CPU híbrida).
+    mixed.cores = {{2, 18}, {7, 23}, {9}};
+    check(smt_cpus(mixed) == std::vector<int>({2, 7, 9, 18, 23}),
+          "SMT no selecciona primero núcleos y después siblings");
+    check(smt_cpus(mixed, 2) == std::vector<int>({2, 7}), "SMT rechaza P <= C");
+    check(smt_cpus(mixed, 7) == std::vector<int>({2, 7, 9, 18, 23, 2, 7}),
+          "SMT no conserva asignación con sobresuscripción");
+    CpuTopology off;
+    off.cores = {{2}, {7}, {9}};
+    check(smt_cpus(off) == std::vector<int>({2, 7, 9, 2, 7, 9}),
+          "SMT desactivado no permite comparar con sobresuscripción");
+    for (const auto& invalid : {CpuTopology{}, CpuTopology{0, 0, "", "unknown", "unknown", {}, {{}}}}) {
+        bool rejected = false;
+        try { smt_cpus(invalid); } catch (const std::exception&) { rejected = true; }
+        check(rejected, "SMT acepta topología vacía");
+    }
+}
+
 int main() try {
     test_fine_grained();
     test_coarse_grained();
+    test_coarse_timed_blocks();
+    test_smt_cpu_selection();
     const auto topology = detect_cpu_topology();
     check(topology.physical_cores > 0 && topology.logical_cpus >= topology.physical_cores,
           "Topología inválida");
@@ -181,6 +237,7 @@ int main() try {
                 std::vector<Vec2> expected, actual;
                 reference->compute_accelerations(sample, expected, 0.7, 0.03);
                 cmp->compute_accelerations(sample, actual, 0.7, 0.03);
+                check(cmp->scheduling_stats().blocks == 0, "CMP hereda pausas artificiales");
                 check(actual.size() == expected.size(), "CMP pierde cuerpos");
                 for (std::size_t i = 0; i < count; ++i) {
                     check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
@@ -199,12 +256,11 @@ int main() try {
     check(sched_getaffinity(0, sizeof(final_mask), &final_mask) == 0 &&
           CPU_EQUAL(&original_mask, &final_mask), "CMP altera afinidad del coordinador");
 #endif
-    bool smt_rejected = false;
-    try { make_smt_model(topology.physical_cores); }
-    catch (const std::invalid_argument&) { smt_rejected = true; }
-    check(smt_rejected, "SMT acepta hilos sin sobresuscripción");
+    make_smt_model(1);  // P <= C también es una configuración experimental válida.
     {
         auto smt = make_smt_model(topology.physical_cores + 1);
+        check(smt->assigned_cpus() == smt_cpus(topology, topology.physical_cores + 1),
+              "SMT no conserva la afinidad seleccionada");
         auto reference = make_sequential_model();
         for (std::size_t count : {12, 7, 1, 0, 3}) {
             auto sample = create_galaxies(6, 19);
@@ -212,6 +268,7 @@ int main() try {
             std::vector<Vec2> expected, actual;
             reference->compute_accelerations(sample, expected, 0.7, 0.03);
             smt->compute_accelerations(sample, actual, 0.7, 0.03);
+            check(smt->scheduling_stats().blocks == 0, "SMT hereda pausas artificiales");
             check(actual.size() == expected.size(), "SMT pierde cuerpos");
             for (std::size_t i = 0; i < count; ++i) {
                 check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
@@ -219,6 +276,10 @@ int main() try {
             }
         }
     }
+#if defined(__linux__)
+    check(sched_getaffinity(0, sizeof(final_mask), &final_mask) == 0 &&
+          CPU_EQUAL(&original_mask, &final_mask), "SMT altera afinidad del coordinador");
+#endif
     auto model = make_sequential_model();
     // Dos masas con energía, momento y centro de masa calculables a mano.
     std::vector<Body> bodies{{2, {0, 0}, {1, -2}, {}, 0}, {3, {3, 4}, {0, 1}, {}, 1}};

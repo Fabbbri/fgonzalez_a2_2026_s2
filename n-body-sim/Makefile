@@ -24,7 +24,7 @@ SDL_LIBS := -l:libSDL2-2.0.so.0
 endif
 endif
 
-.PHONY: run build benchmark profile test clean
+.PHONY: run build smt benchmark profile test clean
 
 REPETITIONS ?= 200
 BENCHMARK_MODELS ?= sequential fine-grained coarse-grained smt cmp
@@ -36,20 +36,52 @@ PERF ?= perf
 PERF_EVENTS ?= task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,cache-references,cache-misses
 PYTHON ?= python3
 ARGS ?=
+# Control global de Linux; keep no modifica el estado del equipo.
+SMT ?= keep
 
-run: $(TARGET)
+run: $(TARGET) smt
 	./$(TARGET) $(ARGS)
 
 build: $(TARGET)
 
-profile: $(TARGET)
+# No restaura el estado automáticamente: permite medir varios modelos con
+# la misma configuración. El ejecutable sigue corriendo sin sudo.
+smt:
+	@set -eu; \
+	case '$(SMT)' in \
+	    keep) exit 0 ;; \
+	    on|off) ;; \
+	    *) echo 'SMT debe ser keep, on u off' >&2; exit 1 ;; \
+	esac; \
+	control=/sys/devices/system/cpu/smt/control; \
+	active=/sys/devices/system/cpu/smt/active; \
+	if [ ! -r "$$control" ] || [ ! -r "$$active" ]; then \
+	    echo 'Este sistema no expone el control SMT de Linux' >&2; exit 1; \
+	fi; \
+	current=$$(cat "$$control"); \
+	if [ "$$current" != '$(SMT)' ]; then \
+	    case "$$current" in \
+	        forceoff|notsupported|notimplemented) \
+	            echo "No se puede cambiar SMT: $$current" >&2; exit 1 ;; \
+	    esac; \
+	    printf '%s\n' '$(SMT)' | sudo tee "$$control" >/dev/null; \
+	fi; \
+	state=$$(cat "$$active"); \
+	expected=0; [ '$(SMT)' != on ] || expected=1; \
+	if [ "$$state" != "$$expected" ]; then \
+	    echo "No se alcanzó SMT=$(SMT): smt/active=$$state" >&2; exit 1; \
+	fi; \
+	echo "SMT=$(SMT), active=$$state (estado global; permanece después de ejecutar)"
+
+
+profile: $(TARGET) smt
 	@set -e; for model in $(PROFILE_MODELS); do \
 		PERF="$(PERF)" PERF_EVENTS="$(PERF_EVENTS)" \
 		PROFILE_COMPILER="$(CXX)" PROFILE_FLAGS="$(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(LDFLAGS)" \
 		bash scripts/profile.sh ./$(TARGET) "$(PROFILE_REPETITIONS)" --model "$$model" $(PROFILE_ARGS); \
 	done
 
-benchmark: $(TARGET)
+benchmark: $(TARGET) smt
 	@set -e; for model in $(BENCHMARK_MODELS); do \
 		printf '\nBenchmark: %s (%s repeticiones)\n' "$$model" "$(REPETITIONS)"; \
 		bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" --model "$$model" $(BENCHMARK_ARGS); \
@@ -75,6 +107,7 @@ test: $(TARGET) build/test_physics build/test_native
 	bash tests/test_cli.sh ./$(TARGET)
 	bash tests/test_profile.sh
 	$(PYTHON) tests/test_analysis.py
+	$(PYTHON) tests/test_smt_control.py
 
 clean:
 	rm -f $(TARGET) build/test_physics build/test_native

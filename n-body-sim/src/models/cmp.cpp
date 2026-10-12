@@ -11,7 +11,7 @@ public:
     CmpModel(std::size_t workers, const CpuTopology& topology) {
         auto cpus = topology.core_cpus;
         if (!cpus.empty()) cpus.resize(workers);
-        pool_ = make_coarse_grained_model(workers, cpus);
+        pool_ = make_coarse_grained_model(workers, cpus, 0, 0);
     }
     const char* name() const override { return "cmp"; }
     std::size_t workers() const override { return pool_->workers(); }

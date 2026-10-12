@@ -1,4 +1,5 @@
 #include "nbody.hpp"
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <stdexcept>
@@ -11,9 +12,11 @@
 
 namespace nbody {
 namespace {
-// Bloques completos, sin cesiones por quantum. El bloqueo explícito ocurre
-// entre fases mediante variables de condición; el SO decide la planificación.
+// Bloques persistentes: el reloj provoca esperas individuales entre cuerpos,
+// conservando el progreso. El SO decide qué hilo listo ejecuta durante la pausa.
 class CoarseGrainedModel final : public ExecutionModel {
+    using Clock = std::chrono::steady_clock;
+    const std::chrono::milliseconds block_interval_, block_duration_;
     std::vector<std::thread> threads_;
     std::mutex mutex_;
     std::condition_variable work_ready_, phase_done_;
@@ -49,16 +52,33 @@ class CoarseGrainedModel final : public ExecutionModel {
             const std::size_t begin = worker * base + (worker < extra ? worker : extra);
             const std::size_t end = begin + base + (worker < extra ? 1 : 0);
             lock.unlock();
+            auto last_resume = Clock::now();
+            std::uint64_t blocks = 0;
             for (std::size_t i = begin; i < end; ++i) {
+                if (block_interval_.count() > 0 && Clock::now() - last_resume >= block_interval_) {
+                    ++blocks;
+                    lock.lock();
+                    // wait_for libera el mutex: otros trabajadores pueden avanzar.
+                    // El índice i y las salidas ya calculadas conservan el progreso.
+                    if (work_ready_.wait_for(lock, block_duration_, [&] { return stopping_; })) return;
+                    lock.unlock();
+                    last_resume = Clock::now();
+                }
                 accelerations[i] = acceleration_for_body(bodies, i, gravity, epsilon);
             }
             lock.lock();
+            stats_.blocks += blocks;
             if (--remaining_ == 0) phase_done_.notify_one();
             // Esperar otra generación bloquea el hilo, sin espera activa.
         }
     }
 public:
-    explicit CoarseGrainedModel(std::size_t workers, const std::vector<int>& cpus) {
+    explicit CoarseGrainedModel(std::size_t workers, const std::vector<int>& cpus,
+                               int block_interval_ms, int block_duration_ms)
+        : block_interval_(block_interval_ms), block_duration_(block_duration_ms) {
+        if (block_interval_ms < 0 || block_duration_ms < 0) {
+            throw std::invalid_argument("Los tiempos de bloqueo no pueden ser negativos.");
+        }
         if (workers == 0) throw std::invalid_argument("La cantidad de hilos debe ser positiva.");
         if (!cpus.empty() && cpus.size() != workers) {
             throw std::invalid_argument("Se requiere una CPU por trabajador.");
@@ -80,14 +100,14 @@ public:
                     CPU_SET(cpus[i], &mask);
                     const int error = pthread_setaffinity_np(threads_.back().native_handle(),
                                                             sizeof(mask), &mask);
-                    if (error != 0) throw std::system_error(error, std::generic_category(), "Afinidad CMP");
+                    if (error != 0) throw std::system_error(error, std::generic_category(), "Afinidad de trabajador");
                     // Confirmar la máscara efectiva antes de publicar cualquier trabajo.
                     CPU_ZERO(&mask);
                     const int read_error = pthread_getaffinity_np(threads_.back().native_handle(),
                                                                  sizeof(mask), &mask);
-                    if (read_error != 0) throw std::system_error(read_error, std::generic_category(), "Leer afinidad CMP");
+                    if (read_error != 0) throw std::system_error(read_error, std::generic_category(), "Leer afinidad de trabajador");
                     if (CPU_COUNT(&mask) != 1 || !CPU_ISSET(cpus[i], &mask)) {
-                        throw std::runtime_error("No se pudo confirmar la afinidad CMP.");
+                        throw std::runtime_error("No se pudo confirmar la afinidad del trabajador.");
                     }
                 }
 #endif
@@ -125,7 +145,8 @@ public:
 }  // namespace
 
 std::unique_ptr<ExecutionModel> make_coarse_grained_model(
-    std::size_t workers, const std::vector<int>& cpus) {
-    return std::make_unique<CoarseGrainedModel>(workers, cpus);
+    std::size_t workers, const std::vector<int>& cpus,
+    int block_interval_ms, int block_duration_ms) {
+    return std::make_unique<CoarseGrainedModel>(workers, cpus, block_interval_ms, block_duration_ms);
 }
 }  // namespace nbody
