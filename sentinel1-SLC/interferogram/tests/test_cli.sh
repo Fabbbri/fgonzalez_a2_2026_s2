@@ -85,4 +85,12 @@ for extra in ([], ['--threads', '3']):
 failed = subprocess.run(base + ['--mode', 'smt', '--threads', '1'], capture_output=True, text=True)
 assert failed.returncode != 0 and 'sobresuscripción' in failed.stderr
 print('PASS: SMT integración y equivalencia')
+for extra in ([], ['--threads', '1']):
+    output = subprocess.check_output(base + ['--mode', 'cmp'] + extra, text=True)
+    assert expected in output
+    assert 'Workers: 1' in output
+    assert 'Pinned CPU IDs: ' + str(min(os.sched_getaffinity(0))) in output
+failed = subprocess.run(base + ['--mode', 'cmp', '--threads', '2'], capture_output=True, text=True)
+assert failed.returncode != 0 and 'CMP requiere' in failed.stderr
+print('PASS: CMP automático, afinidad restringida y equivalencia')
 PYTEST

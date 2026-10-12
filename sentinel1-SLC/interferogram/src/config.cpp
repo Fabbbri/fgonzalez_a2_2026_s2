@@ -95,8 +95,8 @@ Config parseConfig(int argc, char* argv[]) {
 
     if (!config.help) {
         validateWindow(config.x, config.y, config.width, config.height);
-        if (config.mode != "sequential" && config.mode != "tiled" && config.mode != "fine-grained" && config.mode != "coarse-grained" && config.mode != "smt")
-            throw std::invalid_argument("Modo válido: sequential, tiled, fine-grained, coarse-grained o smt.");
+        if (config.mode != "sequential" && config.mode != "tiled" && config.mode != "fine-grained" && config.mode != "coarse-grained" && config.mode != "smt" && config.mode != "cmp")
+            throw std::invalid_argument("Modo válido: sequential, tiled, fine-grained, coarse-grained, smt o cmp.");
         if (config.threads <= 0)
             throw std::invalid_argument("La cantidad de hilos debe ser positiva.");
         if (config.quantum <= 0)
@@ -126,11 +126,11 @@ void printHelp(std::ostream& out) {
         << "  --height N     Alto de ventana (512)\n"
         << "  --x N          Columna inicial, base cero (0)\n"
         << "  --y N          Fila inicial, base cero (0)\n"
-        << "  --mode MODE    sequential, tiled, fine-grained, coarse-grained o smt (sequential)\n"
+        << "  --mode MODE    sequential, tiled, fine-grained, coarse-grained, smt o cmp (sequential)\n"
         << "  --tile-width N Ancho del tile (32)\n"
         << "  --tile-height N Alto del tile (32)\n"
         << "  --quantum N    Píxeles por turno en fine-grained (1)\n"
-        << "  --threads N    Trabajadores: coarse-grained (2), smt (2*C automático)\n"
+        << "  --threads N    Trabajadores: coarse-grained (2), smt (2*C automático), cmp (núcleos disponibles)\n"
         << "  --help         Mostrar ayuda\n"
         << "Misma ventana para A/B, contenida en las dimensiones de cada TIFF.\n"
         << "Ejecutar desde sentinel1-SLC/ para usar las rutas predeterminadas.\n";

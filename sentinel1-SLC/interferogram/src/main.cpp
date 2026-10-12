@@ -4,6 +4,7 @@
 #include "interferogram/models/fine_grained.hpp"
 #include "interferogram/models/coarse_grained.hpp"
 #include "interferogram/models/smt.hpp"
+#include "interferogram/models/cmp.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
@@ -38,14 +39,16 @@ int main(int argc, char* argv[]) {
             : std::vector<Tile>{};
 
         std::unique_ptr<FineGrained> fineGrained;
-        if (config.mode == "fine-grained")
+        if (config.mode == "fine-grained") {
             fineGrained = std::make_unique<FineGrained>(config.width, config.height,
                 config.tileWidth, config.tileHeight, config.quantum);
+        }
 
         std::unique_ptr<CoarseGrained> coarseGrained;
-        if (config.mode == "coarse-grained")
+        if (config.mode == "coarse-grained") {
             coarseGrained = std::make_unique<CoarseGrained>(config.width, config.height,
                 config.tileWidth, config.tileHeight, config.threads);
+        }
 
         std::unique_ptr<Smt> smt;
         if (config.mode == "smt") {
@@ -54,19 +57,29 @@ int main(int argc, char* argv[]) {
                 config.tileWidth, config.tileHeight, requestedThreads);
         }
 
+        std::unique_ptr<Cmp> cmp;
+        if (config.mode == "cmp") {
+            cmp = std::make_unique<Cmp>(config.width, config.height,
+                config.threadsSpecified ? config.threads : 0);
+        }
+
         // El reloj mide solo el kernel, excluyendo lectura e impresión.
         const auto start = std::chrono::steady_clock::now();
-        if (smt) {
+        if (cmp) {
+            cmp->compute(a, b, result);
+        } else if (smt) {
             smt->compute(a, b, result);
         } else if (coarseGrained) {
             coarseGrained->compute(a, b, result);
         } else if (fineGrained) {
-            while (!fineGrained->finished())
+            while (!fineGrained->finished()) {
                 fineGrained->runRound(a, b, result);
-        } else if (config.mode == "tiled")
+            }
+        } else if (config.mode == "tiled") {
             computeInterferogramTiled(a, b, result, config.width, tiles);
-        else
+        } else {
             computeInterferogramSequential(a, b, result);
+        }
         const auto stop = std::chrono::steady_clock::now();
         const double milliseconds =
             std::chrono::duration<double, std::milli>(stop - start).count();
@@ -87,20 +100,23 @@ int main(int argc, char* argv[]) {
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
                   << "Computational kernel; coregistration quality is not verified by this executable.\n";
-        if (config.mode == "tiled")
+        if (config.mode == "tiled") {
             std::cout << "Tile size: " << config.tileWidth << " x " << config.tileHeight
                       << "\nTiles: " << tiles.size() << '\n';
-        if (fineGrained)
+        }
+        if (fineGrained) {
             std::cout << "Execution: cooperative round-robin (1 OS thread)\n"
                       << "Tile size: " << config.tileWidth << " x " << config.tileHeight
                       << "\nTasks: " << fineGrained->tasks()
                       << "\nQuantum (pixels): " << config.quantum
                       << "\nRounds: " << fineGrained->rounds()
                       << "\nDispatches: " << fineGrained->dispatches() << '\n';
-        if (coarseGrained)
+        }
+        if (coarseGrained) {
             std::cout << "Execution: persistent OS threads, complete tiles\n"
                       << "Workers: " << coarseGrained->workers()
                       << "\nTiles: " << coarseGrained->tasks() << '\n';
+        }
         if (smt) {
             const auto& topology = smt->topology();
             std::cout << "Execution: SMT approximation by thread oversubscription\n"
@@ -115,6 +131,14 @@ int main(int argc, char* argv[]) {
                 std::cout << ' ' << cpu;
             }
             std::cout << "\nHardware SMT is not enabled or changed by this program.\n";
+        }
+        if (cmp) {
+            std::cout << "Execution: CMP, one worker per physical core\n"
+                      << "Workers: " << cmp->workers() << "\nPinned CPU IDs:";
+            for (int cpu : cmp->cpus()) {
+                std::cout << ' ' << cpu;
+            }
+            std::cout << '\n';
         }
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.

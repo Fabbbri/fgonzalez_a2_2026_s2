@@ -2,6 +2,7 @@
 #include "interferogram/models/fine_grained.hpp"
 #include "interferogram/models/coarse_grained.hpp"
 #include "interferogram/models/smt.hpp"
+#include "interferogram/models/cmp.hpp"
 #ifdef __linux__
 #include <sched.h>
 #endif
@@ -311,16 +312,75 @@ void testSmt() {
 #endif
 }
 
+// Ventana no divisible entre los trabajadores y reutilización del mismo pool.
+void testCmp() {
+#ifdef __linux__
+    const auto info = detectCpuInfo();
+    for (int workers : {1, static_cast<int>(std::min<std::size_t>(3, info.physicalCores))}) {
+        Cmp model(7, 5, workers);
+        if (model.workers() != static_cast<std::size_t>(workers)) {
+            throw std::runtime_error("Cantidad incorrecta de trabajadores CMP");
+        }
+        for (int worker = 0; worker < workers; ++worker) {
+            if (model.cpus()[worker] != info.coreCpus[worker]) {
+                throw std::runtime_error("CMP no seleccionó núcleos distintos");
+            }
+        }
+        std::vector<Complex> a(35), b(35), expected(35), result(35);
+        for (int run = 0; run < 10; ++run) {
+            for (int i = 0; i < 35; ++i) {
+                a[i] = {i * 0.25 - run, i * -0.5};
+                b[i] = {run * 0.125, i - 3.0};
+                result[i] = {NAN, NAN};
+            }
+            computeInterferogramSequential(a, b, expected);
+            model.compute(a, b, result);
+            for (int i = 0; i < 35; ++i) {
+                if (result[i].real != expected[i].real || result[i].imag != expected[i].imag) {
+                    throw std::runtime_error("CMP difiere del secuencial");
+                }
+            }
+        }
+        bool rejected = false;
+        try {
+            std::vector<Complex> small(1);
+            model.compute(small, small, small);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        if (!rejected) {
+            throw std::runtime_error("CMP aceptó una ventana diferente");
+        }
+    }
+    Cmp automatic(1, 1);
+    if (automatic.workers() != 1) {
+        throw std::runtime_error("CMP creó trabajadores sin muestras");
+    }
+    for (int count : {-1, static_cast<int>(info.physicalCores + 1)}) {
+        bool rejected = false;
+        try {
+            Cmp invalid(7, 5, count);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        if (!rejected) {
+            throw std::runtime_error("CMP aceptó hilos inválidos");
+        }
+    }
+#endif
+}
+
 int main() {
     try {
         testFineGrained();
         testCoarseGrained();
         testSmt();
+        testCmp();
         testConjugateProduct();
         testInvalidInputs();
         testTiles();
         testInvalidTileDimensions();
-        std::cout << "PASS: kernel, tiles, Fine-Grained, Coarse-Grained, SMT, cobertura y validación\n";
+        std::cout << "PASS: kernel, tiles, Fine-Grained, Coarse-Grained, SMT, CMP, cobertura y validación\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

@@ -8,6 +8,7 @@
 #endif
 
 namespace interferogram {
+
 CpuInfo detectCpuInfo() {
 #ifndef __linux__
     throw std::runtime_error("La detección de topología SMT requiere Linux.");
@@ -35,10 +36,14 @@ CpuInfo detectCpuInfo() {
         if (!(socketFile >> socket) || !(coreFile >> core) || socket < 0 || core < 0) {
             throw std::runtime_error("No se pudo identificar el núcleo de CPU " + std::to_string(cpu));
         }
+
         topology.allowedCpus.push_back(cpu);
         // Los hilos lógicos del mismo núcleo añaden el mismo par al conjunto.
-        cores.emplace(socket, core);
+        if (cores.emplace(socket, core).second) {
+            topology.coreCpus.push_back(cpu);
+        }
     }
+
     topology.physicalCores = cores.size();
     if (topology.physicalCores == 0) {
         throw std::runtime_error("No hay núcleos físicos disponibles para SMT.");
@@ -54,6 +59,7 @@ CpuInfo detectCpuInfo() {
     if (active >> value) {
         topology.smtActive = value;
     }
+
     return topology;
 #endif
 }
