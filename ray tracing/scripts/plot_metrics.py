@@ -144,6 +144,90 @@ def save(fig, path, note):
     fig.savefig(path, dpi=170, facecolor="white")
 
 
+def fit_amdahl(points):
+    """Ajuste descriptivo de T(P)/Tseq = f + (1-f)/P, sin intercepto libre.
+
+    Cada configuración P pesa lo mismo. f también absorbe sobrecarga: no es
+    una medición directa del porcentaje de instrucciones secuenciales.
+    """
+    if len({p for p, _ in points}) < 2:
+        return None
+    if any(p < 1 or not math.isfinite(s) or s <= 0 for p, s in points):
+        raise ValueError("P y speedup deben ser positivos para Amdahl")
+    denominator = sum((1-1/p)**2 for p, _ in points)
+    if not denominator:
+        return None
+    raw = sum((1-1/p)*(1/s-1/p) for p, s in points) / denominator
+    fraction = min(1.0, max(0.0, raw))
+    rmse = math.sqrt(sum((1/s-(fraction+(1-fraction)/p))**2 for p, s in points)/len(points))
+    return fraction, raw, rmse
+
+
+def generate_amdahl(groups, workload, output):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    output.mkdir(parents=True, exist_ok=True)
+    policies = sorted({k[0] for k in groups if k[0][0] != "sequential"})
+    report = ["# Ley de Amdahl", "",
+              "Carga: " + ", ".join(f"{k}={v}" for k,v in zip(WORKLOAD,workload)) + ".", "",
+              "S(P) = 1 / [f + (1-f)/P]. P es el número de trabajadores; f es una fracción secuencial efectiva.",
+              "El ajuste minimiza la suma de errores cuadrados de 1/S(P) = f + (1-f)/P, "
+              "con igual peso por configuración y f restringida a [0,1]. No impone que el modelo con P=1 tenga speedup 1.",
+              "No mide directamente código secuencial: puede absorber creación de hilos, esperas, contención, "
+              "carga desigual y efectos de hardware. SMT comparte recursos y coarse añade bloqueos; "
+              "Amdahl es una referencia idealizada, no una validación de esos modelos ni una predicción garantizada.",
+              "Las barras negras son IC95 del speedup medido; la curva ajustada no incluye un intervalo de confianza. "
+              "El límite 1/f es teórico y no implica que el equipo disponga de suficientes núcleos.", "",
+              "| Política | P medidos | f efectiva | Límite teórico 1/f | RMSE en tiempo relativo | Nota |",
+              "| --- | --- | ---: | ---: | ---: | --- |"]
+    if not policies:
+        report += ["", "Solo hay referencia sequential: faltan modelos para comparar."]
+        (output/"amdahl.md").write_text("\n".join(report)+"\n",encoding="utf-8")
+        return
+    columns = min(2, len(policies))
+    fig, axes = plt.subplots(math.ceil(len(policies)/columns), columns,
+                             figsize=(8*columns,5*math.ceil(len(policies)/columns)+1), squeeze=False)
+    for ax, policy in zip(axes.flat, policies):
+        keys = sorted((k for k in groups if k[0] == policy), key=lambda k:k[1])
+        ps = [k[1] for k in keys]
+        stats = [metric_estimate(groups[k],2) for k in keys]
+        points = list(zip(ps,[s[0] for s in stats]))
+        worker_word = "trabajador" if ps[0] == 1 else "trabajadores"
+        caption = readable(keys[0]).replace(f" · {ps[0]} {worker_word}", "").replace(" · 1 hilo real", "")
+        fit = fit_amdahl(points)
+        max_p = max(2,max(ps))
+        curve = [1+(max_p-1)*i/200 for i in range(201)]
+        ax.plot(curve,curve,"--",color="#94a3b8",label="Ideal lineal: S = P")
+        ax.axhline(1,color="#64748b",linestyle=":",label="Sequential = 1×")
+        ax.errorbar(ps,[s[0] for s in stats],yerr=[s[2] for s in stats],fmt="o",
+                    color=COLORS[policy[0]],capsize=4,label="Medido ± IC95")
+        if fit is not None:
+            f, raw, rmse = fit
+            limit = f"{1/f:.2f}×" if f else "sin cota finita en este modelo"
+            ax.plot(curve,[1/(f+(1-f)/p) for p in curve],color=COLORS[policy[0]],
+                    label=f"Amdahl ajustado: f = {f:.1%}\nLímite teórico: {limit}")
+            note = "Ajuste restringido; f sin restringir fuera de [0,1]" if not 0 <= raw <= 1 else "Ajuste descriptivo"
+            report.append(f"| {caption.replace(chr(10),' · ')} | {ps} | {f:.4%} | {limit} | {rmse:.5f} | {note} |")
+        else:
+            ax.text(.03,.25,"Un solo P: no se estima f.\nFine usa un único ejecutor real." if policy[0]=="fine" else "Un solo P: faltan puntos para ajustar f.",
+                    transform=ax.transAxes,fontsize=10)
+            report.append(f"| {caption.replace(chr(10),' · ')} | {ps} | — | — | — | Falta barrido de P |")
+        decorate(ax,caption,"Trabajadores P")
+        ax.set_ylabel("Speedup frente a sequential (×)")
+        ax.set_xticks(sorted(set([1]+ps)))
+        ax.set_ylim(bottom=0)
+        ax.legend(fontsize=9,loc="upper left")
+    for ax in list(axes.flat)[len(policies):]:
+        ax.set_visible(False)
+    save(fig,output/"amdahl.png","Amdahl: S(P) = 1 / [f + (1-f)/P]. Misma carga por comparación.\n"
+         "f es un ajuste efectivo, no una fracción de código medida. Curva sin IC; puntos con IC95 aproximado.\n"
+         "No se extrapola la curva fuera del rango de P mostrado. Revisar limitaciones en amdahl.md.")
+    plt.close(fig)
+    report += ["", "![Comparación con Amdahl](amdahl.png)"]
+    (output/"amdahl.md").write_text("\n".join(report)+"\n",encoding="utf-8")
+
+
 def generate(groups, workload, output):
     try:
         import matplotlib
@@ -290,6 +374,8 @@ def generate(groups, workload, output):
                "rebotes y política constantes durante cada barrido. El calentamiento no se cuenta. "
                "Las ejecuciones consecutivas pueden presentar correlación o cambios térmicos: el IC "
                "aproximado no corrige esos sesgos. Las mediciones principales deben hacerse en hardware físico."]
+    generate_amdahl(groups, workload, output)
+    report += ["", "La comparación con la ley de Amdahl está en [amdahl.md](amdahl.md)."]
     (output / "reporte.md").write_text("\n".join(report) + "\n", encoding="utf-8")
     print(f"Gráficas y reporte: {output}")
 
@@ -298,10 +384,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv", nargs="+", help="CSV crudos o patrones; los resúmenes se omiten")
     parser.add_argument("--output-dir", type=Path, default=Path("results/plots"))
+    parser.add_argument("--amdahl-only", action="store_true", help="Generar solo amdahl.png y su explicación")
     args = parser.parse_args()
     try:
         groups, workload = load(args.csv)
-        generate(groups, workload, args.output_dir)
+        if args.amdahl_only:
+            generate_amdahl(groups, workload, args.output_dir)
+            print(f"Amdahl: {args.output_dir}")
+        else:
+            generate(groups, workload, args.output_dir)
     except (ValueError, KeyError, OSError) as error:
         parser.exit(1, f"Error: {error}\n")
 

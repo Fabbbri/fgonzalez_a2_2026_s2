@@ -12,6 +12,24 @@ spec.loader.exec_module(plots)
 
 
 class PlotDataTests(unittest.TestCase):
+    def test_amdahl_recovers_known_fraction(self):
+        f = .2
+        points = [(p, 1/(f+(1-f)/p)) for p in (1,2,4,8)]
+        fitted, raw, error = plots.fit_amdahl(points)
+        self.assertAlmostEqual(fitted,f)
+        self.assertAlmostEqual(raw,f)
+        self.assertAlmostEqual(error,0)
+        self.assertIsNone(plots.fit_amdahl([(1,1)]))
+
+    def test_amdahl_does_not_invent_negative_serial_fraction(self):
+        fitted, raw, error = plots.fit_amdahl([(2,4),(4,8)])
+        self.assertEqual(fitted,0)
+        self.assertLess(raw,0)
+        self.assertGreater(error,0)
+        fitted,raw,_ = plots.fit_amdahl([(2,.5),(4,.5)])
+        self.assertEqual(fitted,1)
+        self.assertGreater(raw,1)
+
     def test_shared_ratio_of_means_and_uncertainty(self):
         rows = plots.Measurements([(50,100,2,1), (25,100,4,2)])
         rows.baseline = [80,120]

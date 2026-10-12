@@ -36,13 +36,14 @@ THREAD_COUNTS ?= auto
 SMT_THREAD_COUNTS ?= auto
 SMT_STATES ?= on,off
 RESULTS_DIR ?= resultsrt
+AMDAHL_CSV ?= $(RESULTS_DIR)/*.csv
 
 ifeq ($(WITH_SDL),1)
 CPPFLAGS += -DRT_WITH_SDL $(SDL_CFLAGS)
 LDLIBS += $(SDL_LIBS)
 endif
 
-.PHONY: all build run run-all smt benchmark plots benchmark-plots profile profile-plots profile-plots-all profile-compare test test-plots test-profile test-display clean
+.PHONY: all build run run-all smt benchmark plots amdahl benchmark-plots profile profile-plots profile-plots-all profile-compare test test-plots test-profile test-display clean
 all: $(BUILD)/raytracer
 
 build: all
@@ -90,6 +91,9 @@ benchmark: $(BUILD)/raytracer smt
 
 plots:
 	$(PYTHON) scripts/plot_metrics.py "$(CSV)" --output-dir "$(PLOT_DIR)"
+
+amdahl:
+	$(PYTHON) scripts/plot_metrics.py "$(AMDAHL_CSV)" --output-dir "$(RESULTS_DIR)/plots/comparison" --amdahl-only
 
 test-plots:
 	$(PYTHON) tests/test_plot_metrics.py

@@ -76,6 +76,21 @@ make run ARGS="--headless --model fine --quantum 64 --samples 8 --output fine.pp
 
 ### Comparar contra sequential y generar gráficas
 
+Para comparar los speedups guardados con la **ley de Amdahl**, sin ejecutar
+renders nuevos:
+
+```sh
+make amdahl
+```
+
+Genera `resultsrt/plots/comparison/amdahl.png` y `amdahl.md`. Cada panel mantiene
+una política y estado SMT: muestra los puntos medidos con IC95, la referencia
+lineal ideal y una curva de Amdahl ajustada. La fracción secuencial **efectiva**
+estimada no es una medición del código: también puede reflejar sobrecarga,
+esperas y contención. Con un solo P, como fine, no se estima esa fracción.
+`make benchmark`, `make plots` y `make run-all` también la generan al graficar.
+Puedes seleccionar archivos con `AMDAHL_CSV="resultsrt/cmp.csv"`.
+
 Para ejecutar la campaña completa con **un solo comando**:
 
 ```sh
