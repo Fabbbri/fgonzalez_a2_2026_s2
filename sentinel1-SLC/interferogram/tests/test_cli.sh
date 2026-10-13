@@ -82,8 +82,9 @@ for extra in ([], ['--threads', '3']):
     assert 'Available physical cores: 1' in output
     assert 'Workers: ' + ('3' if extra else '2') in output
     assert 'SMT approximation' in output
-failed = subprocess.run(base + ['--mode', 'smt', '--threads', '1'], capture_output=True, text=True)
-assert failed.returncode != 0 and 'sobresuscripción' in failed.stderr
+control = subprocess.check_output(base + ['--mode', 'smt', '--threads', '1'], text=True)
+assert expected in control and 'Workers: 1' in control
+assert 'control without oversubscription' in control
 print('PASS: SMT integración y equivalencia')
 for extra in ([], ['--threads', '1']):
     output = subprocess.check_output(base + ['--mode', 'cmp'] + extra, text=True)

@@ -10,6 +10,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <memory>
+#include <cmath>
 
 /*
  * Coordina la configuración, la lectura de las adquisiciones y el cálculo.
@@ -27,8 +28,8 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         // Usar las mismas coordenadas en A y B; esto no realiza corregistro.
-        const auto a = readSlcWindow(config.a, config.x, config.y, config.width, config.height);
-        const auto b = readSlcWindow(config.b, config.x, config.y, config.width, config.height);
+        const auto a = readSlcWindow(config.a, config.x, config.y, config.width, config.height, config.allowNoData);
+        const auto b = readSlcWindow(config.b, config.x, config.y, config.width, config.height, config.allowNoData);
         // Preparar y validar la salida antes de iniciar el cronómetro.
         std::vector<Complex> result(a.size());
         validateInterferogramInputs(a, b, result);
@@ -86,7 +87,12 @@ int main(int argc, char* argv[]) {
 
         // Resumen numérico para comparar ejecuciones, no una medida de calidad física.
         Complex sum{0, 0};
+        std::size_t validSamples = 0;
         for (const auto& value : result) {
+            if (!std::isfinite(value.real) || !std::isfinite(value.imag)) {
+                continue;
+            }
+            ++validSamples;
             sum.real += value.real;
             sum.imag += value.imag;
         }
@@ -100,6 +106,9 @@ int main(int argc, char* argv[]) {
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
                   << "Computational kernel; coregistration quality is not verified by this executable.\n";
+        std::cout << "Valid result samples: " << validSamples
+                  << "\nInvalid result samples: " << result.size() - validSamples
+                  << "\nNoData policy: " << (config.allowNoData ? "preserve; exclude nonfinite results from sum" : "reject") << '\n';
         if (config.mode == "tiled") {
             std::cout << "Tile size: " << config.tileWidth << " x " << config.tileHeight
                       << "\nTiles: " << tiles.size() << '\n';
@@ -119,7 +128,9 @@ int main(int argc, char* argv[]) {
         }
         if (smt) {
             const auto& topology = smt->topology();
-            std::cout << "Execution: SMT approximation by thread oversubscription\n"
+            std::cout << "Execution: " << (smt->workers() > topology.physicalCores
+                          ? "SMT approximation by thread oversubscription\n"
+                          : "SMT control without oversubscription\n")
                       << "Workers: " << smt->workers()
                       << "\nTiles: " << smt->tasks()
                       << "\nAvailable physical cores: " << topology.physicalCores

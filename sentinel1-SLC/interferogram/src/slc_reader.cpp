@@ -40,7 +40,7 @@ void validateWindow(int x, int y, int width, int height) {
  *         tiene dimensiones, cantidad de bandas o tipo de dato incompatibles.
  */
 std::vector<Complex> readSlcWindow(const std::string& path,
-                                 int x, int y, int width, int height) {
+                                 int x, int y, int width, int height, bool allowNoData) {
     validateWindow(x, y, width, height);
     // Registrar los controladores de formatos antes de intentar abrir el TIFF.
     GDALAllRegister();
@@ -73,7 +73,7 @@ std::vector<Complex> readSlcWindow(const std::string& path,
             throw std::runtime_error("Error de lectura en " + path + ": " + CPLGetLastErrorMsg());
         // Convertir la posición local (j, i) al índice lineal j * width + i.
         for (int i = 0; i < width; ++i) {
-            if (!std::isfinite(row[2 * i]) || !std::isfinite(row[2 * i + 1]))
+            if (!allowNoData && (!std::isfinite(row[2 * i]) || !std::isfinite(row[2 * i + 1])))
                 throw std::runtime_error("Ventana con NoData/no finitos; selecciona una región común válida: " + path);
             result[static_cast<std::size_t>(j) * width + i] =
                 {row[2 * i], row[2 * i + 1]};

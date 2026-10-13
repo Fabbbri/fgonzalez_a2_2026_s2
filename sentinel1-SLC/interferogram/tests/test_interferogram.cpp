@@ -237,10 +237,10 @@ void testCoarseGrained() {
 }
 
 void testSmt() {
-    if (selectSmtWorkers(0, 8) != 16 || selectSmtWorkers(9, 8) != 9) {
+    if (selectSmtWorkers(0, 8) != 16 || selectSmtWorkers(9, 8) != 9 || selectSmtWorkers(8, 8) != 8) {
         throw std::runtime_error("Selección de hilos SMT incorrecta");
     }
-    for (int count : {-1, 1, 8}) {
+    for (int count : {-1, 1, 7}) {
         bool rejected = false;
         try {
             selectSmtWorkers(count, 8);
@@ -248,7 +248,7 @@ void testSmt() {
             rejected = true;
         }
         if (!rejected) {
-            throw std::runtime_error("SMT aceptó una cantidad sin sobresuscripción");
+            throw std::runtime_error("SMT aceptó menos trabajadores que núcleos");
         }
     }
     bool rejected = false;
@@ -300,14 +300,9 @@ void testSmt() {
             }
         }
     }
-    rejected = false;
-    try {
-        Smt invalid(7, 5, 3, 3, 1);
-    } catch (const std::invalid_argument&) {
-        rejected = true;
-    }
-    if (!rejected) {
-        throw std::runtime_error("SMT permitió un hilo en un núcleo disponible");
+    Smt control(7, 5, 3, 3, 1);
+    if (control.workers() != 1) {
+        throw std::runtime_error("Control SMT de un trabajador incorrecto");
     }
 #endif
 }

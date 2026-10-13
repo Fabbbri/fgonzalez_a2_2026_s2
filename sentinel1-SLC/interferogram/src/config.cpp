@@ -50,6 +50,11 @@ Config parseConfig(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
 
+        if (option == "--allow-nodata") {
+            config.allowNoData = true;
+            continue;
+        }
+
         if (option == "--help") {
             config.help = true;
             continue;
@@ -122,8 +127,8 @@ void printHelp(std::ostream& out) {
         << "Kernel secuencial A * conjugate(B) sobre SLC complejos P09-R2.\n"
         << "  --a PATH       TIFF A (predeterminado: 2025-01-10, burst 179298)\n"
         << "  --b PATH       TIFF B (predeterminado: 2025-01-22, burst 179298)\n"
-        << "  --width N      Ancho de ventana (512)\n"
-        << "  --height N     Alto de ventana (512)\n"
+        << "  --width N      Ancho de ventana (24445)\n"
+        << "  --height N     Alto de ventana (1500)\n"
         << "  --x N          Columna inicial, base cero (0)\n"
         << "  --y N          Fila inicial, base cero (0)\n"
         << "  --mode MODE    sequential, tiled, fine-grained, coarse-grained, smt o cmp (sequential)\n"
@@ -131,6 +136,7 @@ void printHelp(std::ostream& out) {
         << "  --tile-height N Alto del tile (32)\n"
         << "  --quantum N    Píxeles por turno en fine-grained (1)\n"
         << "  --threads N    Trabajadores: coarse-grained (2), smt (2*C automático), cmp (núcleos disponibles)\n"
+        << "  --allow-nodata Conservar NoData y excluir resultados no finitos del resumen\n"
         << "  --help         Mostrar ayuda\n"
         << "Misma ventana para A/B, contenida en las dimensiones de cada TIFF.\n"
         << "Ejecutar desde sentinel1-SLC/ para usar las rutas predeterminadas.\n";

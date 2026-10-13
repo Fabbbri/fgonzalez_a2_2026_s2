@@ -15,9 +15,9 @@ int selectSmtWorkers(int requested, std::size_t physicalCores) {
         }
         requested = static_cast<int>(physicalCores * 2);
     }
-    // Para esta aproximación necesitamos más trabajadores que núcleos físicos.
-    if (static_cast<std::size_t>(requested) <= physicalCores) {
-        throw std::invalid_argument("SMT por sobresuscripción requiere --threads mayor que " +
+    // Un valor igual a los núcleos físicos sirve como control.
+    if (static_cast<std::size_t>(requested) < physicalCores) {
+        throw std::invalid_argument("SMT requiere --threads al menos igual a " +
                                     std::to_string(physicalCores) + " núcleos físicos disponibles.");
     }
     return requested;

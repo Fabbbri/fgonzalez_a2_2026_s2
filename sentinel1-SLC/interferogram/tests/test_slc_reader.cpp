@@ -5,6 +5,7 @@
 #include <cpl_error.h>
 #include <iostream>
 #include <limits>
+#include <cmath>
 #include <stdexcept>
 
 using namespace interferogram;
@@ -94,6 +95,9 @@ int main() {
                 GDT_CFloat64,0,0,nullptr)==CE_None, "Escritura NoData");
         GDALClose(floating);
         rejects([&]{readSlcWindow(path,3,4,1,1);});
+        const auto noData = readSlcWindow(path,3,4,1,1,true);
+        require(std::isnan(noData[0].real) && noData[0].imag == -2.75,
+                "NoData no conservado en lectura permisiva");
         VSIUnlink(path);
         // Suprimir el mensaje esperado de GDAL al intentar abrir un archivo inexistente.
         CPLPushErrorHandler(CPLQuietErrorHandler);
