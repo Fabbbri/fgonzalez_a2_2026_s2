@@ -122,8 +122,9 @@ void print_usage(std::ostream& output) {
               "  --block-interval-ms N  Coarse: intervalo entre bloqueos (10); 0 los desactiva\n"
               "  --block-duration-ms N  Coarse: duración de cada espera (1)\n"
               "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
+              "  --defaults             Consultar los valores de Config en JSON, sin simular\n"
               "  --bodies-per-galaxy N  Cuerpos por galaxia (500)\n"
-              "  --steps N              Pasos; 0 = estado inicial (10000)\n"
+              "  --steps N              Pasos; 0 = estado inicial (1000)\n"
               "  --dt X                 Duración de cada paso (0.002)\n"
               "  --seed N               Semilla de 32 bits (42)\n"
               "  --trajectory ARCHIVO   Trayectoria (output/trajectory.nbody)\n"
@@ -146,6 +147,19 @@ int main(int argc, char* argv[]) try {
     }
     if (argc == 2 && std::string(argv[1]) == "--topology") {
         print_cpu_topology(std::cout, detect_cpu_topology());
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--defaults") {
+        const Config defaults;
+        std::cout << std::setprecision(17)
+                  << "{\"bodies_per_galaxy\":" << defaults.bodies_per_galaxy
+                  << ",\"steps\":" << defaults.steps
+                  << ",\"dt\":" << defaults.dt
+                  << ",\"seed\":" << defaults.seed
+                  << ",\"quantum\":" << defaults.quantum
+                  << ",\"threads\":" << defaults.threads
+                  << ",\"block_interval_ms\":" << defaults.block_interval_ms
+                  << ",\"block_duration_ms\":" << defaults.block_duration_ms << "}\n";
         return 0;
     }
     const Config config = parse_arguments(argc, argv);

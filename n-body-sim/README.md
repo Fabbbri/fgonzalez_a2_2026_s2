@@ -25,7 +25,7 @@ La entrada predeterminada es de **500 cuerpos por galaxia (1000 en total)**.
 Respecto a los 200 cuerpos totales anteriores, el trabajo de fuerzas por paso
 crece aproximadamente 25 veces y la captura 5 veces. Esto permite evaluar mejor
 el beneficio del paralelismo frente al costo de sincronización, sin garantizar
-una aceleración para todas las configuraciones. Se mantienen los 10000 pasos.
+una aceleración para todas las configuraciones. El valor predeterminado actual es de 1000 pasos.
 
 ## Fine-Grained: planificación cooperativa simulada
 
@@ -171,13 +171,15 @@ make run SMT=on ARGS="--model smt --threads 12 --no-output"
 make run SMT=off ARGS="--model smt --threads 12 --no-output"
 
 # Conservar lotes separados con la misma entrada y cantidad de trabajadores.
-make benchmark SMT=on BENCHMARK_MODELS=smt BENCHMARK_ARGS="--threads 12"
-make benchmark SMT=off BENCHMARK_MODELS=smt BENCHMARK_ARGS="--threads 12"
-make smt SMT=on
+make benchmark BENCHMARK_MODELS=smt SMT_THREAD_COUNTS=12
+# El benchmark mide on/off y restaura automáticamente el estado original.
 ```
 
-El cambio afecta **a todo el sistema**, puede solicitar `sudo` y permanece tras
-terminar, incluso si la simulación falla. El ejecutable corre sin sudo. Se verifica
+El cambio explícito con `make smt` o `make run SMT=on/off` afecta **a todo el
+sistema**, puede solicitar `sudo` y permanece tras terminar. El benchmark que
+alterna estados restaura automáticamente el estado original, también si falla
+o se interrumpe con Ctrl+C/SIGTERM; un cierre forzado como SIGKILL impide ejecutar
+la restauración. El ejecutable corre sin sudo. Se verifica
 `smt/active` después del cambio; si el kernel no expone el control, informa un
 estado no compatible o no alcanza el estado solicitado, Make falla y no ejecuta
 la simulación. `--model smt` por sí solo no activa el hardware. No se modifica
@@ -473,76 +475,192 @@ pruebas; cambiar esta configuración es independiente de integrar el perfilador.
 Véanse la [documentación de seguridad de perf del kernel](https://www.kernel.org/doc/html/latest/admin-guide/perf-security.html)
 y el manual local `man perf-stat` para permisos, herencia y formato de salida.
 
-### Repeticiones y análisis estadístico
+### Benchmark: CSV y gráficas como ray tracing
 
-Se requiere Python 3.8 o posterior, sin paquetes externos. C++ ejecuta la
-simulación, Bash controla las repeticiones y Python analiza los tiempos.
+Se requieren Python 3.8+ y Matplotlib (`python3-matplotlib` en Ubuntu).
+C++ conserva la simulación original; Python coordina las repeticiones, valida
+las trayectorias, calcula métricas y genera las mismas familias de gráficas
+que ray tracing, adaptadas a nbody.
+
+Los parámetros omitidos de cuerpos por galaxia, pasos, dt, semilla, quantum e
+intervalo/duración de bloqueo se toman directamente de `Config` en `src/nbody.hpp`.
+El coordinador consulta `./build/nbody --defaults` y no mantiene copias de esos
+valores en Python. `make benchmark` recompila si cambia el header. Los valores
+explícitos en `BENCHMARK_ARGS` tienen precedencia. La selección de modelos,
+repeticiones, barridos de trabajadores y estados SMT sigue controlada por las
+variables de benchmark de Make, para conservar la comparación on/off.
 
 ```bash
 make benchmark
 ```
 
-Ejecuta los cinco modelos en orden: secuencial, Fine-Grained, Coarse-Grained,
-SMT y CMP, con **200 repeticiones por modelo (1000 ejecuciones en total)**.
-Cada modelo genera su propio lote en `output/benchmark-FECHA-HORA-ID/`, con
-estadísticas e histograma independientes. Los modelos y sus repeticiones se
-ejecutan consecutivamente, sin ventana. Conserva el mismo estado inicial y
-la misma captura por paso en todas las repeticiones. Se sobrescribe la trayectoria
-del lote para conservar únicamente la última; las muestras y lotes anteriores
-se mantienen. No ejecuta simulaciones en paralelo, ni descarta warmups u outliers.
-Un proceso fallido detiene el benchmark completo y conserva las muestras ya completadas.
+La salida está en **`resultnbody/`**, con una organización equivalente a
+`resultsrt/`. Se mide una referencia secuencial compartida y luego los modelos
+seleccionados. Cada configuración tiene **200 repeticiones medidas** por defecto
+y una ejecución previa de calentamiento que no se exporta. Las simulaciones
+se ejecutan consecutivamente y sin ventana. No se eliminan valores atípicos.
 
-Para cambiar la entrada o la cantidad de repeticiones:
+`THREAD_COUNTS=auto` selecciona 1, 2, 4, 8 y el total de núcleos físicos,
+omitiendo valores superiores a ese total y duplicados, para coarse.
+`CMP_THREAD_COUNTS=1,2,4,8` mide CMP con 1, 2, 4 y 8 trabajadores por defecto.
+Se puede cambiar esa variable respetando el límite de núcleos físicos disponibles.
+`SMT_THREAD_COUNTS=auto` selecciona C y L, o C y 2*C si no hay siblings accesibles.
+Una campaña exclusiva de SMT guarda su nueva referencia en `sequential-on.csv`
+o `sequential-off.csv`, conservando `sequential.csv`. Para medir solo SMT off
+reutilizando la referencia existente, sin repetir secuencial:
 
 ```bash
-make benchmark REPETITIONS=200 BENCHMARK_ARGS="--bodies-per-galaxy 200 --steps 15000 --dt 0.002 --seed 42"
+make benchmark BENCHMARK_MODELS=smt SMT_STATES=off SMT_THREAD_COUNTS=8,12 BASELINE_CSV=resultnbody/sequential.csv
 ```
 
-`REPETITIONS` permite valores desde 2 para pruebas rápidas; usar menos de 200
-se indica explícitamente en el reporte y requiere justificación experimental.
-`BENCHMARK_ARGS` acepta opciones físicas; el script controla la ruta de captura
-y la ejecución sin ventana. `BENCHMARK_MODELS` permite seleccionar uno o varios
-modelos, por ejemplo `BENCHMARK_MODELS="sequential cmp"`. No incluya `--model`
-en `BENCHMARK_ARGS`. Opciones específicas como `--threads` o `--quantum` deben
-usarse seleccionando los modelos compatibles. Cada lote incluye:
+En ese caso el CSV identifica el estado SMT de la referencia reutilizada,
+que puede diferir del estado de la medición.
 
-| Archivo | Contenido |
+Fine-grained usa un único ejecutor real. En el equipo con C=8 y L=12 hay
+15 configuraciones contando las referencias on/off: 3000 ejecuciones medidas
+más 15 calentamientos. El número de simulaciones depende del barrido elegido.
+
+```text
+resultnbody/
+├── sequential.csv
+├── sequential-summary.csv
+├── sequential-off.csv          # referencia del segundo estado
+├── sequential-off-summary.csv
+├── fine.csv
+├── fine-summary.csv
+├── coarse.csv
+├── coarse-summary.csv
+├── cmp.csv
+├── cmp-summary.csv
+├── smt-on.csv
+├── smt-on-summary.csv
+├── smt-off.csv
+├── smt-off-summary.csv
+├── benchmark.txt               # configuración y estado de la última campaña
+├── references/                 # referencias secuenciales inmutables
+├── logs/FECHA-ID/
+│   ├── topology.txt
+│   ├── environment.json        # SO, flags solicitadas, hash del binario y alcance
+│   ├── commands.jsonl          # comandos exactos, incluidos calentamientos
+│   ├── status.txt              # incomplete, measured o complete
+│   ├── sequential.log          # un log por modelo
+│   └── trajectory.nbody        # última trayectoria de esta campaña
+└── plots/
+    ├── sequential/
+    ├── fine/
+    ├── coarse/
+    ├── cmp/
+    ├── smt-on/
+    ├── smt-off/
+    └── comparison/
+```
+
+`SMT_STATES=on,off` es el valor predeterminado de `make benchmark`. Si se incluye
+el modelo SMT, solicita las credenciales `sudo` al inicio, activa SMT para
+descubrir la topología completa y fija el mismo barrido de trabajadores para
+ambos estados. Ejecuta los demás modelos bajo el primer estado, luego SMT on y
+SMT off, con una referencia secuencial por estado. Restaura el estado original
+antes de generar las gráficas individuales y la comparación conjunta.
+
+También acepta `SMT_STATES=off,on`, `on`, `off` o `keep`. `keep` no cambia el
+hardware; si SMT no forma parte de `BENCHMARK_MODELS`, tampoco se alterna.
+El objetivo `smt` valida el estado efectivo del kernel después de cada cambio.
+Si no puede alternarse SMT, la campaña falla al inicio; se puede ejecutar con
+`SMT_STATES=keep` en equipos sin soporte. Si falla la restauración, muestra el
+comando necesario para restaurarlo manualmente y no marca la campaña completa.
+`SMT=on/off` sigue siendo un cambio explícito previo a la campaña; para elegir
+qué estados mide el benchmark, use `SMT_STATES`.
+
+Los CSV principales se reemplazan al repetir el mismo modelo/estado, como en
+ray tracing. Las referencias y logs anteriores se conservan: una nueva campaña
+no invalida las referencias de CSV existentes. `RESULTS_DIR` permite elegir otra
+carpeta para una carga distinta. No mezcle cargas distintas en un mismo conjunto
+de gráficas. Una campaña fallida conserva sus filas completadas y queda marcada
+`incomplete`; sus resultados parciales no constituyen una campaña terminada.
+
+Los campos generales usan los mismos nombres que ray tracing:
+
+| Columnas | Información |
 |---|---|
-| `samples.csv` | Número de repetición, configuración y tiempo individual |
-| `summary.csv` | n, media, desviación estándar muestral e IC 95 % de la media |
-| `histogram.svg` | Histograma de todos los tiempos, con frecuencias absolutas |
-| `convergence.csv` | Media, desviación e IC para cada prefijo desde n=2 |
-| `trajectory.nbody` | Trayectoria de la última repetición, lista para reproducir |
-| `command.txt`, `environment.txt` | Comando, repeticiones, SO y topología de CPU si hay lscpu |
-| `last-run.log` | Mensajes de la última simulación |
+| `modelo`, `hilos`, `repeticion` | Modelo, trabajadores reales y repetición por configuración |
+| `K`, `intervalo_ms`, `espera_ms` | Quantum fine y política temporal coarse; 0 cuando no aplica |
+| `tiempo_total_ms`, `tiempo_secuencial_ms` | Tiempo medido y referencia secuencial |
+| `speedup`, `eficiencia_paralela` | Tiempo secuencial/tiempo modelo y speedup/P |
+| `nucleos_fisicos_disponibles`, `cpus_logicas_disponibles`, `smt_activo_linux` | Topología y estado del hardware |
+| `afinidad_cpus`, `cpus_permitidas`, `sibling_groups` | Afinidad informada por el ejecutable y CPUs accesibles |
+| `referencia_tipo`, `referencia_csv`, `referencia_smt` | Origen de la referencia y estado SMT bajo el que fue medida |
+| `trayectoria_hash`, `alcance_tiempo` | SHA-256 de toda la trayectoria y región cronometrada |
 
-Puede recalcular el análisis sin repetir simulaciones:
+No se agregan campos de imagen, resolución, tiles ni rebotes. Se conservan solo
+`cuerpos`, `pasos`, `dt` y `semilla` para identificar la carga y rechazar
+comparaciones incompatibles. Antes de incorporar una muestra se comprueban la
+topología, los parámetros y la igualdad de la trayectoria respecto a la referencia.
+El hash se calcula fuera del tiempo medido. Las CPUs de SMT/CMP se toman de la
+afinidad informada por el ejecutable; coarse/fine/sequential usan `no_aplica`
+porque no imponen afinidad propia.
+
+Cada `*-summary.csv` contiene media, desviación muestral e IC95 normal aproximado
+para el tiempo, speedup y eficiencia, usando el mismo método que ray tracing.
+Con referencia compartida, el speedup global es el **cociente de medias**, no la
+media de los cocientes por fila. El IC de ese cociente usa el método delta e
+incluye la incertidumbre de ambas medias. Los cocientes individuales se conservan
+para histogramas y boxplots descriptivos. Los IC no son rangos que contengan el
+95 % de las ejecuciones ni corrigen sesgos térmicos o correlación entre mediciones.
+Menos de 200 repeticiones se identifica como prueba preliminar.
+
+Cada carpeta de gráficas contiene comparaciones de tiempo, speedup y eficiencia;
+boxplots e histogramas de esas métricas; distribuciones de la referencia;
+escalabilidad en tiempo, speedup y eficiencia; `amdahl.png`, `amdahl.md` y
+`reporte.md`. El ajuste de Amdahl requiere al menos dos cantidades de trabajadores
+por política. Con un solo P se muestra un punto y no se estima una fracción
+secuencial. El ajuste es descriptivo y puede absorber sobrecarga y contención.
 
 ```bash
-python3 scripts/analyze.py output/benchmark-FECHA-HORA-ID/samples.csv
+# Prueba rápida de funcionamiento; no es una campaña estadística final.
+make benchmark REPETITIONS=3 THREAD_COUNTS=1,2 SMT_THREAD_COUNTS=2,12 \
+  BENCHMARK_ARGS="--bodies-per-galaxy 20 --steps 10"
+
+# Seleccionar modelos y trabajadores.
+make benchmark BENCHMARK_MODELS="coarse-grained cmp" THREAD_COUNTS=1,2,4,8
+make benchmark BENCHMARK_MODELS=smt SMT_THREAD_COUNTS=8,12
+
+# Por defecto incluye los dos estados y restaura el estado original.
+make benchmark BENCHMARK_MODELS=smt SMT_THREAD_COUNTS=8,12
+
+# Mantener el estado actual sin cambiar hardware ni pedir sudo por SMT.
+make benchmark SMT_STATES=keep
+
+# Regenerar gráficas desde CSV existentes, sin repetir simulaciones.
+make plots
+make amdahl
+make plots CSV="resultnbody/smt-*.csv" PLOT_DIR=resultnbody/plots/smt-comparison
 ```
 
-La desviación estándar utiliza el denominador `n-1`. El intervalo de confianza
-bilateral para la media es `media ± t(0.975, n-1) * s / sqrt(n)`; no es un rango
-que contenga el 95 % de las ejecuciones. El cuantil Student t se calcula por
-integración numérica y bisección, con pruebas contra casos analíticos y la
-[tabla de NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda3672.htm).
-La fórmula sigue los [límites de confianza para la media de NIST](https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm).
+`BENCHMARK_ARGS` acepta cuerpos por galaxia, pasos, dt, semilla, quantum y tiempos
+de bloqueo. `--threads N` permite fijar un único P para coarse, CMP y SMT, pero
+para barridos se recomiendan `THREAD_COUNTS` y `SMT_THREAD_COUNTS`.
+`BENCHMARK_MODELS` acepta los nombres habituales `fine-grained`/`coarse-grained`
+y también los alias `fine`/`coarse` usados en los CSV y gráficas de ray tracing.
+El coordinador controla modelo, captura y ejecución sin ventana.
 
-Se supone que las mediciones son suficientemente independientes y que la media
-puede aproximarse con este método. Para justificar el número de repeticiones,
-revise `convergence.csv`, el semiancho del IC relativo a la media y el cambio
-entre las medias de las dos mitades del lote, incluidos en el resumen.
-Un IC estrecho por sí solo no demuestra estabilidad ni elimina sesgos por
-carga, temperatura o cachés. El script no declara automáticamente convergencia:
-la tolerancia aceptable debe justificarse en el paper. El histograma usa la
-regla de Sturges para la cantidad de intervalos e incluye todas las muestras.
+`BASELINE_CSV` permite reutilizar una referencia compatible en lugar de medirla
+de nuevo; se copia a `references/` para protegerla de sobrescrituras posteriores.
+Sin esta opción se mide una referencia nueva bajo cada estado SMT de la campaña.
+Los CSV guardan el estado de la referencia aunque difiera del modelo. Para aislar
+el efecto del hardware conviene usar una referencia medida bajo cada estado.
 
-Las mediciones principales deben ejecutarse sobre hardware físico, como exige
-el enunciado. Registre además compilador, banderas y estado de SMT para cada
-experimento. Cada modelo escribe unos 120 GB acumulados en 200 ejecuciones; el benchmark
-completo escribe unos 600 GB acumulados. Solo conserva la última trayectoria
-de cada modelo: unos 600 MB por lote, aproximadamente 3 GB entre los cinco.
+El tiempo mantiene el alcance original de nbody: creación/cierre de trabajadores,
+cálculo, sincronización, captura, flush y cierre del archivo. Excluye generación
+aleatoria inicial, cálculo del hash y gráficas. No es tiempo exclusivo de fuerzas.
+La trayectoria por defecto ocupa unos 60 MB con 1000 cuerpos y 1000 pasos.
+Los barridos escriben ese archivo repetidamente y conservan solo la última
+trayectoria por campaña. El perfilado con `make profile` sigue siendo una tarea
+separada; los CSV de benchmark no inventan contadores perf.
+
+El antiguo `scripts/analyze.py` sigue disponible para analizar los lotes
+históricos `output/benchmark-*/samples.csv` con su IC Student t e histograma SVG.
+El nuevo benchmark usa `plot_metrics.py` y `*-summary.csv` para mantener el mismo
+criterio estadístico y las mismas gráficas que ray tracing.
 
 ### Archivo de trayectoria
 
@@ -555,7 +673,7 @@ sin volcar estructuras C++ ni su padding. Se rechaza otro orden de bytes.
 El modelo v1 utiliza las constantes físicas documentadas arriba.
 
 Tamaño: `40 + (steps + 1) * cuerpos * 60` bytes. La configuración predeterminada
-ocupa aproximadamente 600 MB. Se escribe y reproduce un frame a la vez, con
+ocupa aproximadamente 60 MB. Se escribe y reproduce un frame a la vez, con
 memoria O(N). El lector verifica versión, dimensiones y tamaño exacto, y valida
 los valores de cada frame al leerlo. Si la generación falla, puede quedar un
 archivo parcial; no se publican métricas exitosas y el lector rechaza su tamaño
@@ -570,7 +688,7 @@ incompleto.
 | `--topology` | Consulta CPU disponibles y estado SMT sin simular | — |
 | `--quantum N` | Interacciones por turno; requiere Fine-Grained | `1` |
 | `--bodies-per-galaxy N` | Cantidad de cuerpos en cada galaxia | `500` |
-| `--steps N` | Cantidad de pasos temporales | `10000` |
+| `--steps N` | Cantidad de pasos temporales | `1000` |
 | `--dt X` | Duración de cada paso | `0.002` |
 | `--seed N` | Semilla de 32 bits para la inicialización | `42` |
 | `--trajectory ARCHIVO` | Ruta de la trayectoria generada | `output/trajectory.nbody` |
@@ -601,7 +719,8 @@ La ayuda integrada muestra las opciones disponibles:
 | `make` | Compila si es necesario, simula, guarda, imprime métricas y reproduce |
 | `make ARGS="--model fine-grained --quantum 1"` | Ejecuta el flujo completo con Fine-Grained |
 | `make build` | Solo compila `build/nbody` |
-| `make benchmark` | Ejecuta los 5 modelos, 200 repeticiones por modelo, con estadísticas e histogramas |
+| `make benchmark` | Referencia compartida, barridos por modelo, CSV/resúmenes y gráficas en resultnbody |
+| `make plots` / `make amdahl` | Regenerar gráficas o Amdahl desde CSV existentes |
 | `make test` | Compila y ejecuta todas las pruebas |
 | `make clean` | Elimina los ejecutables generados en `build/` |
 
@@ -668,7 +787,8 @@ El ciclo crea el modelo dentro del cronómetro y lo destruye antes de finalizar
 la trayectoria; así las creaciones/cierres de trabajadores forman parte
 del tiempo total. Las pruebas pueden recibir cualquier implementación de
 `ExecutionModel`, usando la secuencial como referencia. Los comandos `make`,
-`make build`, `make benchmark` y `make test` conservan sus comportamientos.
+`make build` y `make test` conservan sus comportamientos; `make benchmark`
+genera ahora CSV y gráficas equivalentes a ray tracing en `resultnbody/`.
 
 ## Variables que aumentan el paralelismo disponible
 

@@ -1,0 +1,45 @@
+{
+  "binary": "/home/jian/Desktop/fgonzalez_a2_2026_s2/n-body-sim/build/nbody",
+  "repetitions": 200,
+  "results_dir": "resultnbody",
+  "models": [
+    "cmp"
+  ],
+  "model": null,
+  "thread_counts": "auto",
+  "cmp_thread_counts": "1,2,4,8",
+  "smt_thread_counts": "auto",
+  "smt_states": "on,off",
+  "make_command": "make",
+  "threads": null,
+  "baseline_csv": "references/sequential-20261012-194155-1791855715105946506.csv",
+  "bodies_per_galaxy": 500,
+  "steps": 1000,
+  "dt": 0.002,
+  "seed": 42,
+  "quantum": 1,
+  "block_interval_ms": 10,
+  "block_duration_ms": 1,
+  "platform": "Linux-6.17.0-29-generic-x86_64-with-glibc2.39",
+  "topology": {
+    "physical_cores": "8",
+    "logical_cpus": "12",
+    "allowed_cpus": "0;1;2;3;4;5;6;7;8;9;10;11",
+    "core_cpus": "0;2;4;6;8;9;10;11",
+    "sibling_groups": "0;1|2;3|4;5|6;7|8|9|10|11",
+    "smt_control": "on",
+    "smt_active": "1"
+  },
+  "timing_scope": "creacion_calculo_sincronizacion_captura_cierre",
+  "warmups_per_configuration": 1,
+  "hash": "sha256",
+  "binary_sha256": "1b6644ade49c9415d15df6aceebf7fb10ea49450872cb0f39d0c5b797a9f5658",
+  "status": "complete",
+  "environment": {
+    "BENCHMARK_COMPILER": "g++",
+    "BENCHMARK_FLAGS": " -std=c++17 -O2 -Wall -Wextra -Wpedantic -Isrc -pthread "
+  },
+  "generated_csv": [
+    "cmp.csv"
+  ]
+}

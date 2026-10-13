@@ -24,11 +24,22 @@ SDL_LIBS := -l:libSDL2-2.0.so.0
 endif
 endif
 
-.PHONY: run build smt benchmark profile test clean
+.PHONY: run build smt benchmark plots amdahl profile test clean
 
 REPETITIONS ?= 200
 BENCHMARK_MODELS ?= sequential fine-grained coarse-grained smt cmp
 BENCHMARK_ARGS ?=
+RESULTS_DIR ?= resultnbody
+THREAD_COUNTS ?= auto
+CMP_THREAD_COUNTS ?= 1,2,4,8
+SMT_THREAD_COUNTS ?= auto
+SMT_STATES ?= on,off
+BENCHMARK_MAKE ?= $(MAKE)
+BASELINE_CSV ?=
+CSV ?= $(RESULTS_DIR)/*.csv
+PLOT_DIR ?= $(RESULTS_DIR)/plots/comparison
+MPLCONFIGDIR ?= /tmp/nbody-matplotlib
+export MPLCONFIGDIR
 PROFILE_MODELS ?= sequential fine-grained coarse-grained smt cmp
 PROFILE_REPETITIONS ?= 3
 PROFILE_ARGS ?=
@@ -82,10 +93,19 @@ profile: $(TARGET) smt
 	done
 
 benchmark: $(TARGET) smt
-	@set -e; for model in $(BENCHMARK_MODELS); do \
-		printf '\nBenchmark: %s (%s repeticiones)\n' "$$model" "$(REPETITIONS)"; \
-		bash scripts/benchmark.sh ./$(TARGET) "$(REPETITIONS)" "$(PYTHON)" --model "$$model" $(BENCHMARK_ARGS); \
-	done
+	BENCHMARK_COMPILER="$(CXX)" BENCHMARK_FLAGS="$(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(LDFLAGS)" \
+	$(PYTHON) scripts/benchmark.py ./$(TARGET) --repetitions "$(REPETITIONS)" \
+		--results-dir "$(RESULTS_DIR)" --models $(BENCHMARK_MODELS) \
+		--thread-counts "$(THREAD_COUNTS)" --smt-thread-counts "$(SMT_THREAD_COUNTS)" \
+		--cmp-thread-counts "$(CMP_THREAD_COUNTS)" \
+		--smt-states "$(SMT_STATES)" --make-command "$(BENCHMARK_MAKE)" \
+		$(if $(BASELINE_CSV),--baseline-csv "$(BASELINE_CSV)") $(BENCHMARK_ARGS)
+
+plots:
+	$(PYTHON) scripts/plot_metrics.py "$(CSV)" --output-dir "$(PLOT_DIR)"
+
+amdahl:
+	$(PYTHON) scripts/plot_metrics.py "$(CSV)" --output-dir "$(PLOT_DIR)" --amdahl-only
 
 $(TARGET): $(SOURCES) $(HEADER)
 	@test -n "$(SDL_LIBS)" || { printf 'Falta SDL2: instale libsdl2-dev y pkg-config (Linux), o sdl2 y pkg-config con Homebrew (macOS).\n'; exit 1; }
@@ -108,6 +128,7 @@ test: $(TARGET) build/test_physics build/test_native
 	bash tests/test_profile.sh
 	$(PYTHON) tests/test_analysis.py
 	$(PYTHON) tests/test_smt_control.py
+	$(PYTHON) tests/test_benchmark.py
 
 clean:
 	rm -f $(TARGET) build/test_physics build/test_native

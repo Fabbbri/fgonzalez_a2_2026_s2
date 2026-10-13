@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 binary=${1:-./build/nbody}
+"$binary" --defaults | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["bodies_per_galaxy"]>0 and d["steps"]>=0 and d["dt"]>0'
 test_dir=$(mktemp -d /tmp/nbody-cli.XXXXXX)
 trap 'rm -rf "$test_dir"' EXIT
 args=(--bodies-per-galaxy 5 --steps 25 --dt 0.002 --no-output)
@@ -97,6 +98,10 @@ benchmark_script=$(cd "$(dirname "$0")/../scripts" && pwd)/benchmark.sh
 cat > "$test_dir/changing-topology" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ $1 == --defaults ]]; then
+    printf '{"bodies_per_galaxy":5,"steps":2,"dt":0.002,"seed":42,"quantum":1,"block_interval_ms":10,"block_duration_ms":1}\n'
+    exit
+fi
 count=0
 if [[ -f $0.count ]]; then read -r count < "$0.count"; fi
 count=$((count+1))
@@ -106,7 +111,7 @@ MOCK
 chmod +x "$test_dir/changing-topology"
 if (cd "$test_dir" && bash "$benchmark_script" "$test_dir/changing-topology" 2 python3) > "$test_dir/benchmark.txt" 2>&1; then exit 1; fi
 grep -q 'Cambió la topología' "$test_dir/benchmark.txt"
-for samples in "$test_dir"/output/benchmark-*/samples.csv; do
+for samples in "$test_dir"/resultnbody/sequential.csv; do
     test "$(wc -l < "$samples")" -eq 1
 done
 printf 'Pruebas de CLI, métricas, orden del flujo y reproducibilidad correctas.\n'
