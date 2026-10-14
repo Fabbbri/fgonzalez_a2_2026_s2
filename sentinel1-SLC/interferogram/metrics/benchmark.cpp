@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -102,10 +103,29 @@ int main(int argc, char** argv) {
         std::vector<Case> cases{{"sequential", 1}, {"fine-grained", 1},
             {"coarse-grained", 1}, {"coarse-grained", 2}, {"coarse-grained", 4}, {"coarse-grained", 8},
             {"smt", 8}, {"smt", 12}, {"cmp", 1}, {"cmp", 2}, {"cmp", 4}, {"cmp", 8}};
+        // Selección opcional de un modelo, manteniendo la referencia secuencial.
+        if (const char* selected = std::getenv("BENCHMARK_MODEL")) {
+            const std::string model = selected;
+            if (model != "sequential" && model != "fine-grained" && model != "coarse-grained" &&
+                model != "smt" && model != "cmp") throw std::invalid_argument("Modelo inválido");
+            int workers = 1;
+            if (model != "sequential" && model != "fine-grained") {
+                const char* value = std::getenv("BENCHMARK_THREADS");
+                if (!value) throw std::invalid_argument("Falta BENCHMARK_THREADS");
+                std::size_t used = 0;
+                workers = std::stoi(value, &used);
+                if (used != std::string(value).size() || workers <= 0)
+                    throw std::invalid_argument("Cantidad de hilos inválida");
+            }
+            cases.clear();
+            cases.emplace_back("sequential", 1);
+            if (model != "sequential") cases.emplace_back(model, workers);
+        }
         std::ofstream configuration(output / "configuration.txt");
         configuration << "repetitions=" << repetitions << "\nwarmups=3\ncommand=" << argv[3] << '\n';
         for (const auto& arg : common) configuration << std::quoted(arg) << ' ';
         configuration << '\n';
+        for (const auto& item : cases) configuration << "case=" << item.model << ":" << item.threads << '\n';
         const auto originalTopology = topology();
         const std::regex kernelRegex("Kernel time: ([0-9.eE+-]+) ms");
         const std::regex sumRegex("Result sum[^\\n]+");
@@ -147,6 +167,7 @@ int main(int argc, char** argv) {
                 const double total = std::accumulate(item.samples.begin(), item.samples.end(), 0.0,
                     [](double sum, const Sample& sample) { return sum + sample.totalMs; });
                 sequentialMean = total / item.samples.size();
+
             }
             writeModel(item, output, sequentialMean);
         }
