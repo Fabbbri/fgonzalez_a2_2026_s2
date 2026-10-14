@@ -77,15 +77,14 @@ def write_page(args, valid):
     """Crea el visor HTML con las imágenes generadas y sus leyendas."""
     cards = [('Amplitud A · referencia', 'amplitude_a.png'),
              ('Amplitud B · secundaria', 'amplitude_b.png'),
-             ('Fase del producto interferométrico', 'interferogram_phase.png'),
-             ('Máscara común · blanco = válido', 'valid_mask.png')]
+             ('Fase del producto interferométrico', 'interferogram_phase.png')]
     figures = ''.join(f'<figure><img src="{file}" alt="{title}"><figcaption>{title}</figcaption></figure>'
                       for title, file in cards)
     page = f'''<!doctype html><html lang="es"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width"><title>Sentinel-1 · resultados</title>
-<style>body{{font:16px system-ui;background:#101820;color:#edf2f7;max-width:1150px;margin:40px auto;padding:0 24px}}
-p{{line-height:1.6}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}}
-figure{{margin:0;background:#1b2935;padding:16px;border-radius:10px}}figure img{{width:100%;image-rendering:pixelated}}
+<style>body{{font:16px system-ui;background:#101820;color:#edf2f7;margin:24px 0;padding:0 16px}}
+p{{line-height:1.6}}.grid{{display:grid;grid-template-columns:minmax(0,1fr);gap:24px}}
+figure{{margin:0;background:#1b2935;padding:16px;border-radius:10px}}figure img{{display:block;width:100%;height:auto;image-rendering:pixelated}}
 figcaption{{padding-top:12px}}.legend{{max-width:512px;width:100%;height:24px}}code{{overflow-wrap:anywhere}}</style>
 <h1>Sentinel-1 · imágenes corregistradas</h1>
 <p>Ventana {args.width} × {args.height}, origen ({args.x}, {args.y}).
@@ -93,7 +92,7 @@ figcaption{{padding-top:12px}}.legend{{max-width:512px;width:100%;height:24px}}c
 <p>Amplitudes con la misma escala logarítmica y contraste. Magenta = datos inválidos.
 Los ejes representan columnas y filas del radar, no distancias en el terreno.</p>
 <div class="grid">{figures}</div>
-<p>Escala de fase: −π → 0 → +π radianes (colores cíclicos).</p>
+<p>Escala de fase: −π -> 0 -> +π radianes (colores cíclicos).</p>
 <img class="legend" src="phase_legend.png" alt="Escala de fase">
 <p>Fase del resultado exportado por el modelo C++, sin corrección de tierra plana ni topografía.
 No es un mapa de deformación ni una validación de la precisión del corregistro.</p>
@@ -140,7 +139,6 @@ def main():
     valid &= np.isfinite(product)
     phase = np.angle(product)
     phase_image(phase, valid).save(args.out / 'interferogram_phase.png')
-    Image.fromarray((valid * 255).astype(np.uint8)).save(args.out / 'valid_mask.png')
     legend = np.linspace(-np.pi, np.pi, 512)[None, :].repeat(24, axis=0)
     phase_image(legend, np.ones(legend.shape, dtype=bool)).save(args.out / 'phase_legend.png')
 

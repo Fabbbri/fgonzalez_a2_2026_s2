@@ -43,14 +43,35 @@ test: $(TARGET) build/test_interferogram build/test_slc_reader
 clean:
 	rm -rf build
 
-.PHONY: images
-images:
-	python3 scripts/render_results.py $(ARGS)
+# Visualización de la imagen de datos de SLC_A y SLC_B.
+IMAGE_OUTPUT ?= results/imagenes-20240608-20240620
+IMAGE_X ?= 0
+IMAGE_Y ?= 0
+IMAGE_WIDTH ?= 24451
+IMAGE_HEIGHT ?= 1499
+
+.PHONY: images view-images export-result
+IMAGE_MODEL ?= sequential
+RESULT_OUTPUT ?= $(IMAGE_OUTPUT)/$(IMAGE_MODEL).tif
+
+export-result: $(TARGET)
+	./$(TARGET) --a "$(SLC_A)" --b "$(SLC_B)" \
+		--x $(IMAGE_X) --y $(IMAGE_Y) --width $(IMAGE_WIDTH) --height $(IMAGE_HEIGHT) \
+		--allow-nodata --mode $(IMAGE_MODEL) $(ARGS) --output "$(RESULT_OUTPUT)"
+
+images: export-result
+	python3 scripts/render_results.py --a "$(SLC_A)" --b "$(SLC_B)" \
+		--result "$(RESULT_OUTPUT)" --out "$(IMAGE_OUTPUT)" --x $(IMAGE_X) --y $(IMAGE_Y) \
+		--width $(IMAGE_WIDTH) --height $(IMAGE_HEIGHT)
+
+view-images:
+	xdg-open "$(IMAGE_OUTPUT)/index.html"
 
 # Matriz fija: secuencial, Fine 1, Coarse/CMP 1-2-4-8 y SMT 8-12.
 # Los resultados van a un directorio nuevo bajo results/ si OUTPUT=auto.
 .PHONY: benchmark profile run-sequential run-fine-grained run-coarse-grained run-smt run-cmp
 REPETITIONS ?= 200
+RESULT_REPETITION ?= 1
 OUTPUT ?= auto
 THREADS ?= 8
 SLC_A ?= data/coregistered/P09-R2-20240608-20240620/A.tif
@@ -61,14 +82,14 @@ build/benchmark: interferogram/metrics/benchmark.cpp Makefile | build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -std=c++17 $< $(LDFLAGS) $(LDLIBS) -o $@
 
 benchmark: $(TARGET) build/benchmark
-	bash scripts/benchmark.sh "$(OUTPUT)" "$(REPETITIONS)" $(BENCHMARK_ARGS)
+	RESULT_REPETITION="$(RESULT_REPETITION)" bash scripts/benchmark.sh "$(OUTPUT)" "$(REPETITIONS)" $(BENCHMARK_ARGS)
 
 # Una campaña por modelo, con N mediciones secuenciales de referencia.
 # THREADS puede sobrescribirse desde la terminal; Fine y secuencial usan 1.
 run-smt: THREADS = 12
 run-sequential run-fine-grained run-coarse-grained run-smt run-cmp: $(TARGET) build/benchmark
-	BENCHMARK_MODEL="$(@:run-%=%)" BENCHMARK_THREADS="$(THREADS)" \
-		bash scripts/benchmark.sh "$(OUTPUT)" "$(REPETITIONS)" $(BENCHMARK_ARGS)
+	BENCHMARK_MODEL="$(@:run-%=%)" BENCHMARK_THREADS="$(THREADS)" RESULT_REPETITION="$(RESULT_REPETITION)" \
+		RESULT_REPETITION="$(RESULT_REPETITION)" bash scripts/benchmark.sh "$(OUTPUT)" "$(REPETITIONS)" $(BENCHMARK_ARGS)
 
 PROFILE_REPETITIONS ?= 3
 PROFILE_CASES ?= sequential:1 fine-grained:1 \
