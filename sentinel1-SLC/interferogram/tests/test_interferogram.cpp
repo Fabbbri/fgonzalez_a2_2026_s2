@@ -307,12 +307,16 @@ void testSmt() {
 #endif
 }
 
-// Ventana no divisible entre los trabajadores y reutilización del mismo pool.
+// Tiles de borde, más trabajadores que tiles y reutilización del mismo pool.
 void testCmp() {
 #ifdef __linux__
     const auto info = detectCpuInfo();
-    for (int workers : {1, static_cast<int>(std::min<std::size_t>(3, info.physicalCores))}) {
-        Cmp model(7, 5, workers);
+    for (int tileSize : {1, 3, 20}) {
+      for (int workers : {1, static_cast<int>(std::min<std::size_t>(3, info.physicalCores))}) {
+        Cmp model(7, 5, tileSize, tileSize, workers);
+        if (model.tasks() != makeTiles(7, 5, tileSize, tileSize).size()) {
+            throw std::runtime_error("CMP no usa los tiles esperados");
+        }
         if (model.workers() != static_cast<std::size_t>(workers)) {
             throw std::runtime_error("Cantidad incorrecta de trabajadores CMP");
         }
@@ -346,15 +350,16 @@ void testCmp() {
         if (!rejected) {
             throw std::runtime_error("CMP aceptó una ventana diferente");
         }
+      }
     }
-    Cmp automatic(1, 1);
+    Cmp automatic(1, 1, 1, 1);
     if (automatic.workers() != 1) {
         throw std::runtime_error("CMP creó trabajadores sin muestras");
     }
     for (int count : {-1, static_cast<int>(info.physicalCores + 1)}) {
         bool rejected = false;
         try {
-            Cmp invalid(7, 5, count);
+            Cmp invalid(7, 5, 3, 3, count);
         } catch (const std::invalid_argument&) {
             rejected = true;
         }

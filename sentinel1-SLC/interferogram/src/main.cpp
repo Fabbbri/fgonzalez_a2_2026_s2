@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
         std::unique_ptr<Cmp> cmp;
         if (config.mode == "cmp") {
             cmp = std::make_unique<Cmp>(config.width, config.height,
-                config.threadsSpecified ? config.threads : 0);
+                config.tileWidth, config.tileHeight, config.threadsSpecified ? config.threads : 0);
         }
 
         // El reloj mide solo el kernel, excluyendo lectura e impresión.
@@ -145,7 +145,8 @@ int main(int argc, char* argv[]) {
         }
         if (cmp) {
             std::cout << "Execution: CMP, one worker per physical core\n"
-                      << "Workers: " << cmp->workers() << "\nPinned CPU IDs:";
+                      << "Workers: " << cmp->workers()
+                      << "\nTiles: " << cmp->tasks() << "\nPinned CPU IDs:";
             for (int cpu : cmp->cpus()) {
                 std::cout << ' ' << cpu;
             }

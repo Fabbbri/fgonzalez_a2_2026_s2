@@ -8,11 +8,11 @@
 
 namespace interferogram {
 
-// Un bloque contiguo por trabajador, fijado a un núcleo físico diferente.
+// Un rango de tiles completos por trabajador, fijado a un núcleo físico diferente.
 class Cmp {
 public:
     // threads == 0 selecciona los núcleos disponibles, limitado por las muestras.
-    Cmp(int width, int height, int threads = 0);
+    Cmp(int width, int height, int tileWidth, int tileHeight, int threads = 0);
     ~Cmp();
     Cmp(const Cmp&) = delete;
     Cmp& operator=(const Cmp&) = delete;
@@ -25,6 +25,8 @@ public:
         return threads_.size();
     }
 
+    std::size_t tasks() const { return tiles_.size(); }
+
     // IDs de CPUs lógicas asignadas, en el mismo orden que los trabajadores.
     const std::vector<int>& cpus() const {
         return cpus_;
@@ -33,7 +35,9 @@ public:
 private:
     void work(std::size_t begin, std::size_t end, int cpu);
     void stop();
+    int width_;
     std::size_t samples_;
+    std::vector<Tile> tiles_;
     std::vector<int> cpus_;
     std::exception_ptr startupError_;
     std::vector<std::thread> threads_;

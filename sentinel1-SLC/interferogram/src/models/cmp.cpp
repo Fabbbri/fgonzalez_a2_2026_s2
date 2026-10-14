@@ -10,7 +10,8 @@
 #endif
 
 namespace interferogram {
-Cmp::Cmp(int width, int height, int threads) : samples_(0) {
+Cmp::Cmp(int width, int height, int tileWidth, int tileHeight, int threads)
+    : width_(width), samples_(0), tiles_(makeTiles(width, height, tileWidth, tileHeight)) {
     if (width <= 0 || height <= 0 || threads < 0) {
         throw std::invalid_argument("Dimensiones o cantidad de hilos inválidas para CMP.");
     }
@@ -30,9 +31,9 @@ Cmp::Cmp(int width, int height, int threads) : samples_(0) {
     threads = static_cast<int>(count);
     threads_.reserve(threads);
     try {
-        // Si la división no es exacta, los primeros bloques reciben una muestra más.
-        const std::size_t base = samples_ / threads;
-        const std::size_t extra = samples_ % threads;
+        // Mismo reparto de tiles que CoarseGrained; algunos trabajadores pueden quedar sin tiles.
+        const std::size_t base = tiles_.size() / threads;
+        const std::size_t extra = tiles_.size() % threads;
         for (int worker = 0; worker < threads; ++worker) {
             const std::size_t begin = worker * base + std::min<std::size_t>(worker, extra);
             const std::size_t end = begin + base + (static_cast<std::size_t>(worker) < extra);
@@ -112,8 +113,14 @@ void Cmp::work(std::size_t begin, std::size_t end, int cpu) {
         auto& result = *result_;
         lock.unlock();
         // Cada muestra pertenece a un solo bloque; no hace falta bloquear la escritura.
-        for (std::size_t i = begin; i < end; ++i) {
-            result[i] = conjugateProduct(a[i], b[i]);
+        for (std::size_t t = begin; t < end; ++t) {
+            const auto& tile = tiles_[t];
+            for (int y = tile.yBegin; y < tile.yEnd; ++y) {
+                for (int x = tile.xBegin; x < tile.xEnd; ++x) {
+                    const std::size_t i = static_cast<std::size_t>(y) * width_ + x;
+                    result[i] = conjugateProduct(a[i], b[i]);
+                }
+            }
         }
         lock.lock();
         // El último trabajador avisa al coordinador que el resultado está completo.
