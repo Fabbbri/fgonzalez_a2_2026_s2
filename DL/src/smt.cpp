@@ -334,14 +334,14 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < cpus.size(); i++) cout << (i ? "," : "") << cpus[i];
     cout << "\n";
 
+    // Se mide incluyendo hilos
+    auto start = std::chrono::steady_clock::now();
     std::vector<std::thread> hilos;
     for (int t = 0; t < T; t++) {
         hilos.emplace_back(trabajador, t, T);
         if (!cpus.empty()) fijar_cpu(hilos.back(), cpus[t % cpus.size()]);
     }
 
-    // Se mide una vez que todos los hilos están creados y fijados
-    auto start = std::chrono::steady_clock::now();
     g_go.store(true, std::memory_order_release);
 
     for (auto& h : hilos) h.join();

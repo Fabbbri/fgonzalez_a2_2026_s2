@@ -309,7 +309,6 @@ int main(int argc, char** argv) {
     }
 
     // Misma inicialización que fino.cpp / smt.cpp (mismo orden de llamadas a Random)
-    std::srand(42);
     g_modelo.W1 = MatrixXd::Random(128, 784) * 0.1;
     g_modelo.b1 = VectorXd::Zero(128);
     g_modelo.W2 = MatrixXd::Random(64, 128) * 0.1;
@@ -341,14 +340,14 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < cpus.size(); i++) cout << (i ? "," : "") << cpus[i];
     cout << "\n";
 
+    // Se mide antes de los hilos
+    auto start = std::chrono::steady_clock::now();
     std::vector<std::thread> hilos;
     for (int t = 0; t < T; t++) {
         hilos.emplace_back(trabajador, t, T);
         fijar_cpu(hilos.back(), cpus[t]);
     }
 
-    // Se mide una vez que todos los hilos están creados y fijados
-    auto start = std::chrono::steady_clock::now();
     g_go.store(true, std::memory_order_release);
 
     for (auto& h : hilos) h.join();

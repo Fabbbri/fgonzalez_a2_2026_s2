@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include "checksum.h"        
 #include "mnist.h"
+#include <vector>
 
 using std::cout;
 
@@ -25,10 +26,7 @@ int main(int argc, char** argv) {
     const int num_muestras = 100;
     const int epochs = (argc > 1) ? std::atoi(argv[1]) : 1000;
     double mse_promedio = 0.0;
-    auto start = std::chrono::steady_clock::now();
     int conteo_clases[10] = {0};
-
-    Sample sample;
 
     // =========================================
     // PESOS Y SESGOS
@@ -64,7 +62,15 @@ int main(int argc, char** argv) {
         std::cerr << "No se pudieron abrir los archivos MNIST\n";
         return 1;
     }
-    
+
+    std::vector<Sample> muestras;
+    for (int i = 0; i < num_muestras; i++){
+        muestras.push_back(load_sample(image_file, label_file, i));
+    }
+
+    // Justo al iniciar el entrenamiento
+    auto start = std::chrono::steady_clock::now();
+
     // =========================================
     // ENTRENAMIENTO VARIAS IMG
     // =========================================
@@ -79,7 +85,7 @@ int main(int argc, char** argv) {
 
         for (int i=0 ; i<num_muestras ; i++){
 
-            sample = load_sample(image_file, label_file, i);
+            const Sample& sample = muestras[i];
             // sample.x es el vector de entrada
             // sample.y es la etiqueta (valor objetivo / clase real)
         

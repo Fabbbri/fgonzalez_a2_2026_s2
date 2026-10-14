@@ -3,6 +3,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <vector>
 
 #include "mnist.h"
 #include "checksum.h"
@@ -107,8 +108,6 @@ int main(int argc, char** argv) {
 
     int conteo_clases[10] = {0};
 
-    auto start = std::chrono::steady_clock::now();
-
     // --------------------------------------------------------
     // PESOS Y SESGOS
     // --------------------------------------------------------
@@ -141,6 +140,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    std::vector<Sample> muestras;
+    for (int i = 0; i < num_muestras; i++){
+        muestras.push_back(load_sample(image_file, label_file, i));    
+    }   
     // --------------------------------------------------------
     // ESTADO COMPARTIDO Y CREACIÓN DE HILOS
     // --------------------------------------------------------
@@ -165,6 +168,7 @@ int main(int argc, char** argv) {
         false
     };
 
+    auto start = std::chrono::steady_clock::now();      // justo antes de crear los hilos
     std::thread worker1(update_worker, 0, std::ref(shared));
     std::thread worker2(update_worker, 1, std::ref(shared));
 
@@ -179,7 +183,7 @@ int main(int argc, char** argv) {
 
         for (int i = 0; i < num_muestras; i++) {
 
-            Sample sample = load_sample(image_file, label_file, i);
+            const Sample& sample = muestras[i];
 
             // ================================================
             // FORWARD PASS
