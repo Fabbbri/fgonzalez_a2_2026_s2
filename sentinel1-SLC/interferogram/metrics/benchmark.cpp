@@ -90,13 +90,21 @@ int main(int argc, char** argv) {
         const fs::path output = argv[1];
         const int repetitions = std::stoi(argv[2]);
         if (repetitions < 2) throw std::invalid_argument("Se requieren al menos dos repeticiones");
+        int resultRepetition = 1;
+        if (const char* value = std::getenv("RESULT_REPETITION")) {
+            std::size_t used = 0;
+            resultRepetition = std::stoi(value, &used);
+            if (used != std::string(value).size()) throw std::invalid_argument("RESULT_REPETITION inválida");
+        }
+        if (resultRepetition < 1 || resultRepetition > repetitions)
+            throw std::invalid_argument("RESULT_REPETITION debe estar entre 1 y REPETITIONS");
         if (fs::exists(output)) throw std::invalid_argument("El directorio de salida debe ser nuevo");
         fs::create_directories(output);
         std::ofstream(output / "status.txt") << "incomplete\n";
         std::vector<std::string> common;
         for (int i = 4; i < argc; ++i) {
             const std::string argument = argv[i];
-            if (argument == "--mode" || argument == "--threads" || argument == "--help")
+            if (argument == "--output" || argument == "--mode" || argument == "--threads" || argument == "--help")
                 throw std::invalid_argument("La campaña controla --mode y --threads; use solo argumentos comunes");
             common.push_back(argument);
         }
@@ -122,6 +130,7 @@ int main(int argc, char** argv) {
             if (model != "sequential") cases.emplace_back(model, workers);
         }
         std::ofstream configuration(output / "configuration.txt");
+        configuration << "result_repetition=" << resultRepetition << '\n';
         configuration << "repetitions=" << repetitions << "\nwarmups=3\ncommand=" << argv[3] << '\n';
         for (const auto& arg : common) configuration << std::quoted(arg) << ' ';
         configuration << '\n';
@@ -143,7 +152,12 @@ int main(int argc, char** argv) {
                 const std::string phase = run < 0 ? "warmup" : "measurement";
                 const int number = run < 0 ? run + 4 : run + 1;
                 const auto log = output / (phase + '-' + item.model + '-' + std::to_string(item.threads) + '-' + std::to_string(number) + ".log");
-                const double elapsed = execute(command, log);
+                auto runCommand = command;
+                if (run >= 0 && number == resultRepetition) {
+                    runCommand.insert(runCommand.end(), {"--output",
+                        (output / (item.model + "-" + std::to_string(item.threads) + ".tif")).string()});
+                }
+                const double elapsed = execute(runCommand, log);
                 if (topology() != originalTopology) throw std::runtime_error("Cambió la topología/afinidad durante una ejecución; lote incompleto");
                 const auto text = read(log);
                 std::smatch match;
@@ -170,6 +184,7 @@ int main(int argc, char** argv) {
 
             }
             writeModel(item, output, sequentialMean);
+
         }
         std::ofstream(output / "status.txt") << "complete\n";
         std::cout << "Resultados: " << output << '\n';

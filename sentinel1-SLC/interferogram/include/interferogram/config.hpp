@@ -23,6 +23,7 @@ struct Config {
     int quantum = 1; // Píxeles por turno cooperativo.
     int threads = 2; // Trabajadores de coarse-grained.
     bool threadsSpecified = false; // SMT usa 2*C si no se indica --threads.
+    std::string output; // TIFF complejo opcional con el resultado del kernel.
     bool help = false;
 };
 /*

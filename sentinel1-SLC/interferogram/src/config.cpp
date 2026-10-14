@@ -60,7 +60,7 @@ Config parseConfig(int argc, char* argv[]) {
             continue;
         }
 
-        if (option != "--a" && option != "--b" && option != "--width" && option != "--height" &&
+        if (option != "--output" && option != "--a" && option != "--b" && option != "--width" && option != "--height" &&
             option != "--x" && option != "--y" && option != "--mode" &&
             option != "--tile-width" && option != "--tile-height" && option != "--quantum" && option != "--threads") {
             throw std::invalid_argument("Opción desconocida: " + option);
@@ -84,6 +84,8 @@ Config parseConfig(int argc, char* argv[]) {
             config.tileWidth = integer(value, option);
         else if (option == "--tile-height")
             config.tileHeight = integer(value, option);
+        else if (option == "--output")
+            config.output = value;
         else if (option == "--a")
             config.a = value;
         else if (option == "--b")
@@ -125,6 +127,7 @@ Config parseConfig(int argc, char* argv[]) {
 void printHelp(std::ostream& out) {
     out << "Uso: ./build/interferogram [opciones]\n"
         << "Kernel secuencial A * conjugate(B) sobre SLC complejos P09-R2.\n"
+        << "  --output PATH  Exportar resultado complejo C++ (fuera del tiempo de kernel)\n"
         << "  --a PATH       TIFF A (predeterminado: 2025-01-10, burst 179298)\n"
         << "  --b PATH       TIFF B (predeterminado: 2025-01-22, burst 179298)\n"
         << "  --width N      Ancho de ventana (24445)\n"

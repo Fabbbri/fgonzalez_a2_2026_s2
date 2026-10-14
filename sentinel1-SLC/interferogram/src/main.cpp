@@ -11,14 +11,69 @@
 #include <stdexcept>
 #include <memory>
 #include <cmath>
+#include <gdal_priv.h>
+#include <filesystem>
+#include <vector>
 
-/*
- * Coordina la configuración, la lectura de las adquisiciones y el cálculo.
- *
- * @param argc Número de argumentos recibidos.
- * @param argv Arreglo de argumentos de la línea de comandos.
- * @return 0 al completar el cálculo o mostrar ayuda; 1 ante un error capturado.
- */
+namespace {
+// Guarda el vector calculado por el modelo, sin volver a calcular el producto.
+void exportResult(const std::string& path,
+                  const std::vector<interferogram::Complex>& result,
+                  const interferogram::Config& config) {
+    if (std::filesystem::exists(path)) {
+        throw std::runtime_error("La salida ya existe: " + path);
+    }
+
+    const auto directory = std::filesystem::path(path).parent_path();
+    if (!directory.empty()) {
+        std::filesystem::create_directories(directory);
+    }
+
+    GDALAllRegister();
+    auto* driver = GetGDALDriverManager()->GetDriverByName("GTiff");
+    if (!driver) {
+        throw std::runtime_error("Driver GTiff no disponible");
+    }
+
+    char tiled[] = "TILED=YES";
+    char bigTiff[] = "BIGTIFF=IF_SAFER";
+    char* options[] = {tiled, bigTiff, nullptr};
+    std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
+        driver->Create(path.c_str(), config.width, config.height, 1, GDT_CFloat64, options),
+        GDALClose);
+    if (!dataset) {
+        throw std::runtime_error("No se pudo crear " + path);
+    }
+
+    dataset->SetMetadataItem("MODEL", config.mode.c_str());
+    dataset->SetMetadataItem("SOURCE_A", config.a.c_str());
+    dataset->SetMetadataItem("SOURCE_B", config.b.c_str());
+    dataset->SetMetadataItem("OFFSET_X", std::to_string(config.x).c_str());
+    dataset->SetMetadataItem("OFFSET_Y", std::to_string(config.y).c_str());
+    dataset->SetMetadataItem("PROCESSING", "C++ kernel A * conjugate(B); radar coordinates");
+
+    // GDAL recibe cada muestra como un par de doubles: real, imaginaria.
+    auto* band = dataset->GetRasterBand(1);
+    std::vector<double> row(static_cast<std::size_t>(config.width) * 2);
+    for (int y = 0; y < config.height; ++y) {
+        const std::size_t offset = static_cast<std::size_t>(y) * config.width;
+        for (int x = 0; x < config.width; ++x) {
+            const auto& sample = result[offset + x];
+            row[2 * x] = sample.real;
+            row[2 * x + 1] = sample.imag;
+        }
+
+        const auto status = band->RasterIO(
+            GF_Write, 0, y, config.width, 1, row.data(),
+            config.width, 1, GDT_CFloat64, 0, 0, nullptr);
+        if (status != CE_None) {
+            throw std::runtime_error("Error escribiendo " + path);
+        }
+    }
+    dataset->FlushCache();
+}
+} // namespace
+
 int main(int argc, char* argv[]) {
     using namespace interferogram;
     try {
@@ -85,6 +140,14 @@ int main(int argc, char* argv[]) {
         const double milliseconds =
             std::chrono::duration<double, std::milli>(stop - start).count();
 
+        double exportMilliseconds = 0;
+        if (!config.output.empty()) {
+            const auto exportStart = std::chrono::steady_clock::now();
+            exportResult(config.output, result, config);
+            exportMilliseconds = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - exportStart).count();
+        }
+
         // Resumen numérico para comparar ejecuciones, no una medida de calidad física.
         Complex sum{0, 0};
         std::size_t validSamples = 0;
@@ -103,6 +166,7 @@ int main(int argc, char* argv[]) {
                   << "Samples: " << a.size() << "\nMode: " << config.mode << '\n'
                   << std::fixed << std::setprecision(6)
                   << "Kernel time: " << milliseconds << " ms\n"
+                  << "Export time: " << exportMilliseconds << " ms\n"
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
                   << "Computational kernel; coregistration quality is not verified by this executable.\n";

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Visualiza amplitudes y fase del producto de dos SLC corregistrados."""
+"""Visualiza amplitudes SLC y la fase del resultado complejo exportado por C++."""
 import argparse
 import html
 import json
@@ -50,6 +50,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--a', type=Path, default=Path('data/coregistered/P09-R2-split/A.tif'))
     parser.add_argument('--b', type=Path, default=Path('data/coregistered/P09-R2-split/B.tif'))
+    parser.add_argument('--result', type=Path, required=True, help='TIFF complejo exportado por C++')
     parser.add_argument('--out', type=Path, default=Path('results'))
     parser.add_argument('--x', type=int, default=12000)
     parser.add_argument('--y', type=int, default=750)
@@ -67,8 +68,8 @@ def write_report(args, valid, low, high):
                   width=args.width, height=args.height, valid_pixels=int(valid.sum()),
                   total_pixels=int(valid.size), amplitude_limits=[float(low), float(high)],
                   amplitude_scale='log(1 + abs(SLC)), percentiles conjuntos 2–98',
-                  phase='arg(A * conjugate(B)), radianes, sin correcciones topográfica/tierra plana',
-                  calculation='NumPy para visualización; no exportado del ejecutable C++')
+                  phase='arg(resultado C++), radianes, sin correcciones topográfica/tierra plana',
+                  calculation='Resultado exportado del kernel C++; NumPy solo convierte a fase y amplitud', result=str(args.result.resolve()))
     (args.out / 'visualization.json').write_text(json.dumps(report, indent=2) + '\n')
 
 
@@ -94,7 +95,7 @@ Los ejes representan columnas y filas del radar, no distancias en el terreno.</p
 <div class="grid">{figures}</div>
 <p>Escala de fase: −π → 0 → +π radianes (colores cíclicos).</p>
 <img class="legend" src="phase_legend.png" alt="Escala de fase">
-<p>Fase calculada con NumPy a partir de A × conjugado(B), sin corrección de tierra plana ni topografía.
+<p>Fase del resultado exportado por el modelo C++, sin corrección de tierra plana ni topografía.
 No es un mapa de deformación ni una validación de la precisión del corregistro.</p>
 <p>A: <code>{html.escape(str(args.a))}</code><br>B: <code>{html.escape(str(args.b))}</code></p></html>'''
     (args.out / 'index.html').write_text(page, encoding='utf-8')
@@ -123,8 +124,20 @@ def main():
         image = amplitude_image(amplitude, valid, low, high)
         image.save(args.out / f'amplitude_{name}.png')
 
-    # Misma operación matemática que el kernel, calculada aquí para visualizar.
-    product = a.astype(np.complex128) * np.conj(b.astype(np.complex128))
+    # Leer el producto calculado por C++; no recalcular la multiplicación.
+    dataset = gdal.Open(str(args.result))
+    if dataset.RasterCount != 1 or not gdal.DataTypeIsComplex(dataset.GetRasterBand(1).DataType):
+        raise ValueError('El resultado C++ debe ser una banda compleja.')
+    if (dataset.RasterXSize, dataset.RasterYSize) != (args.width, args.height):
+        raise ValueError('Las dimensiones del resultado deben coincidir con la ventana.')
+    metadata = dataset.GetMetadata()
+    for key, source in [('SOURCE_A', args.a), ('SOURCE_B', args.b)]:
+        if Path(metadata.get(key, '')).resolve() != source.resolve():
+            raise ValueError('El resultado no corresponde a las entradas seleccionadas.')
+    if metadata.get('OFFSET_X') != str(args.x) or metadata.get('OFFSET_Y') != str(args.y):
+        raise ValueError('El resultado no corresponde al origen seleccionado.')
+    product = dataset.ReadAsArray()
+    valid &= np.isfinite(product)
     phase = np.angle(product)
     phase_image(phase, valid).save(args.out / 'interferogram_phase.png')
     Image.fromarray((valid * 255).astype(np.uint8)).save(args.out / 'valid_mask.png')
