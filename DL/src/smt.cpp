@@ -1,5 +1,5 @@
 // =============================================================
-// smt.cpp  -  Aproximación SMT por sobresuscripción de hilos
+// smt.cpp  -  SMT con afinidad verificada y sobresuscripción opcional
 //
 // Algoritmo: idéntico a main.cpp / fino.cpp (SGD por imagen,
 // mismo orden de muestras, misma inicialización, sigmoide + MSE).
@@ -16,10 +16,11 @@
 //                       (hermanos SMT si lscpu -e lo confirma)
 //   ./smt 8 0,1,2,3,4,5,6,7
 //   ./smt 16 0,1,...,15
-//   ./smt 4          -> sin afinidad (decide el SO)
+//   ./smt 4          -> afinidad automática: un CPU por núcleo primero
 // =============================================================
 
 #include <iostream>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <vector>
@@ -33,6 +34,7 @@
 #include <string>
 #include "mnist.h"
 #include "checksum.h"
+#include "runtime.h"
 
 #ifdef __linux__
 #include <pthread.h>
@@ -52,7 +54,7 @@ using Eigen::MatrixXd;
 // =========================================
 
 static const double LEARNING_RATE = 0.1;
-static const int NUM_MUESTRAS = 100;
+static int NUM_MUESTRAS = 100;
 static int EPOCHS = 1000;
 
 // =========================================
@@ -131,6 +133,7 @@ static Estado g_est;
 static std::vector<Sample> g_muestras;
 static Barrera* g_barrera = nullptr;
 static std::atomic<bool> g_go{false};
+static std::atomic<bool> g_cancel{false};
 
 // =========================================
 // TRABAJADOR
@@ -153,6 +156,7 @@ static void trabajador(int t, int T) {
     int aciertos = 0;
 
     while (!g_go.load(std::memory_order_acquire)) std::this_thread::yield();
+    if (g_cancel.load()) return;
 
     for (int epoch = 0; epoch < EPOCHS; epoch++) {
         if (t == 0) { mse = 0.0; aciertos = 0; }
@@ -247,19 +251,7 @@ static void trabajador(int t, int T) {
 // =========================================
 
 static void fijar_cpu(std::thread& th, int cpu) {
-#ifdef __linux__
-    cpu_set_t set;
-    CPU_ZERO(&set);
-    CPU_SET(cpu, &set);
-    int rc = pthread_setaffinity_np(th.native_handle(), sizeof(set), &set);
-    if (rc != 0) {
-        std::cerr << "Aviso: no se pudo fijar el hilo a la CPU " << cpu
-                  << " (error " << rc << ")\n";
-    }
-#else
-    (void)th; (void)cpu;
-    std::cerr << "Aviso: afinidad no soportada en este SO\n";
-#endif
+    dl::pin(th, cpu);
 }
 
 static std::vector<int> parsear_cpus(const std::string& lista) {
@@ -267,7 +259,8 @@ static std::vector<int> parsear_cpus(const std::string& lista) {
     std::stringstream ss(lista);
     std::string tok;
     while (std::getline(ss, tok, ',')) {
-        if (!tok.empty()) cpus.push_back(std::stoi(tok));
+        if (tok.empty()) throw std::invalid_argument("Lista de CPU inválida");
+        cpus.push_back(dl::integer(tok.c_str(), 0));
     }
     return cpus;
 }
@@ -291,15 +284,27 @@ static uint64_t checksum(const Modelo& m) {
 // MAIN
 // =========================================
 
-int main(int argc, char** argv) {
-    int T = (argc > 1) ? std::atoi(argv[1]) : 2;
+int run(int argc, char** argv) {
+    dl::initialize();
+    NUM_MUESTRAS = dl::env_int("DL_SAMPLES", 100);
+    int T = (argc > 1) ? dl::integer(argv[1]) : 2;
     std::vector<int> cpus;
     if (argc > 2) cpus = parsear_cpus(argv[2]);
-    if (argc > 3) EPOCHS = std::atoi(argv[3]);
-    if (T < 1 || T > 64) {
-        std::cerr << "num_hilos debe estar entre 1 y 64\n";
+    if (argc > 3) EPOCHS = dl::integer(argv[3]);
+    if (T < 1) {
+        std::cerr << "num_hilos debe ser positivo\n";
         return 1;
     }
+
+    if (cpus.empty()) cpus = dl::cpu_order();
+    const auto allowed = dl::cpu_order();
+    for (int cpu : cpus) if (std::find(allowed.begin(), allowed.end(), cpu) == allowed.end()) {
+        std::cerr << "CPU no permitida: " << cpu << "\n";
+        return 1;
+    }
+    std::vector<int> assigned;
+    for (int t = 0; t < T; ++t) assigned.push_back(cpus[t % cpus.size()]);
+    cpus = std::move(assigned);
 
     // Misma inicialización (mismo orden de llamadas a Random)
     g_modelo.W1 = MatrixXd::Random(128, 784) * 0.1;
@@ -337,9 +342,18 @@ int main(int argc, char** argv) {
     // Se mide incluyendo hilos
     auto start = std::chrono::steady_clock::now();
     std::vector<std::thread> hilos;
+    try {
     for (int t = 0; t < T; t++) {
         hilos.emplace_back(trabajador, t, T);
         if (!cpus.empty()) fijar_cpu(hilos.back(), cpus[t % cpus.size()]);
+    }
+
+    } catch (const std::exception& error) {
+        g_cancel.store(true);
+        g_go.store(true, std::memory_order_release);
+        for (auto& thread : hilos) thread.join();
+        std::cerr << error.what() << "\n";
+        return 1;
     }
 
     g_go.store(true, std::memory_order_release);
@@ -349,8 +363,19 @@ int main(int argc, char** argv) {
 
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
+    dl::finish(g_modelo.W1, g_modelo.b1, g_modelo.W2, g_modelo.b2, g_modelo.W3, g_modelo.b3);
+    cout << "CPU fijadas y verificadas: ";
+    for (int cpu : cpus) cout << cpu << ";";
+    cout << " Hilos: " << T << "\n";
     cout << "\nChecksum parametros: " << std::hex << checksum(g_modelo) << std::dec << "\n";
     cout << "\n=== SMT ===\n";
     cout << "Tiempo total: " << elapsed.count() << " us\n";
     return 0;
+}
+int main(int argc, char** argv) {
+    try { return run(argc, argv); }
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
 }

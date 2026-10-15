@@ -1,7 +1,9 @@
 #include <iostream>
 #include <chrono>
 #include <cstdlib>
-#include "checksum.h"        
+#include <cmath>
+#include "checksum.h"
+#include "runtime.h"
 #include "mnist.h"
 #include <vector>
 
@@ -9,13 +11,13 @@ using std::cout;
 
 using Eigen::VectorXd;
 using Eigen::MatrixXd;
-using Eigen::RowVectorXd;
 
-VectorXd sigmoid(const VectorXd& z) {
-    return 1.0 / (1.0 + (-z.array()).exp());
+double sigmoid(double z) {
+    return 1.0 / (1.0 + std::exp(-z));
 }
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
+    dl::initialize();
 
     // =========================================
     // CONFIGURACIÓN DEL ENTRENAMIENTO
@@ -23,8 +25,8 @@ int main(int argc, char** argv) {
 
     // n (\eta indica que tanto avanza en la direccion del gradiente)
     double learning_rate = 0.1;
-    const int num_muestras = 100;
-    const int epochs = (argc > 1) ? std::atoi(argv[1]) : 1000;
+    const int num_muestras = dl::env_int("DL_SAMPLES", 100);
+    const int epochs = (argc > 1) ? dl::integer(argv[1]) : 1000;
     double mse_promedio = 0.0;
     int conteo_clases[10] = {0};
 
@@ -33,16 +35,21 @@ int main(int argc, char** argv) {
     // =========================================
 
     MatrixXd W1 = MatrixXd::Random(128, 784) * 0.1;
-    MatrixXd b1 = MatrixXd::Zero(128, 1);
+    VectorXd b1 = VectorXd::Zero(128);
 
     MatrixXd W2 = MatrixXd::Random(64, 128) * 0.1;
-    MatrixXd b2 = MatrixXd::Zero(64, 1);
+    VectorXd b2 = VectorXd::Zero(64);
 
     MatrixXd W3 = MatrixXd::Random(10, 64) * 0.1;
-    MatrixXd b3 = MatrixXd::Zero(10, 1);
+    VectorXd b3 = VectorXd::Zero(10);
 
-    // Y_PRED , clase predicha que genera el modelo
-    VectorXd a3 = MatrixXd::Zero(10, 1);
+    // Igual que CMP/SMT: reservar el estado antes de medir el entrenamiento.
+    VectorXd a1 = VectorXd::Zero(128);
+    VectorXd a2 = VectorXd::Zero(64);
+    VectorXd a3 = VectorXd::Zero(10);
+    VectorXd dZ1 = VectorXd::Zero(128);
+    VectorXd dZ2 = VectorXd::Zero(64);
+    VectorXd dZ3 = VectorXd::Zero(10);
 
     // =========================================
     // LECTOR.CPP PARA RECIBIR ENTRADA
@@ -72,129 +79,92 @@ int main(int argc, char** argv) {
     auto start = std::chrono::steady_clock::now();
 
     // =========================================
-    // ENTRENAMIENTO VARIAS IMG
+    // ENTRENAMIENTO SGD POR IMAGEN
+    // Mismo kernel por filas/columnas que CMP/SMT, en un hilo y sin barreras.
     // =========================================
 
-    for (int epoch = 0; epoch<epochs ; epoch++){
-
-        // acumulador de MSE para comparar entre imagenes
+    for (int epoch = 0; epoch < epochs; epoch++) {
         double mse_total = 0.0;
         int aciertos = 0;
         Eigen::Index clase_real;
         Eigen::Index clase_predicha;
 
-        for (int i=0 ; i<num_muestras ; i++){
+        for (int s = 0; s < num_muestras; s++) {
+            const Sample& sample = muestras[s];
 
-            const Sample& sample = muestras[i];
-            // sample.x es el vector de entrada
-            // sample.y es la etiqueta (valor objetivo / clase real)
-        
-            // Primer forward-pass a W1
-            // z = función de activación
-            VectorXd z1 = W1 * sample.x + b1;
-        
-            // Aplicar transformación sigmoid
-            VectorXd a1 = sigmoid(z1);
+            const VectorXd& x = sample.x;
 
-            // Segundo forward-pass a W2
-            VectorXd z2 = W2 * a1 + b2;
+            // ---------- FORWARD capa 1 (filas de W1: 784 -> 128) ----------
+            for (int i = 0; i < 128; i++) {
+                double z = W1.row(i).dot(x) + b1(i);
+                a1(i) = sigmoid(z);
+            }
 
-            // Aplicar transformación sigmoid
-            VectorXd a2 = sigmoid(z2);
+            // ---------- FORWARD capa 2 (filas de W2: 128 -> 64) ----------
+            for (int i = 0; i < 64; i++) {
+                double z = W2.row(i).dot(a1) + b2(i);
+                a2(i) = sigmoid(z);
+            }
 
-            // Tercer y último forward-pass a W3
-            VectorXd z3 = W3 * a2 + b3;
+            // ---------- FORWARD capa 3 (filas de W3: 64 -> 10) ----------
+            for (int i = 0; i < 10; i++) {
+                double z = W3.row(i).dot(a2) + b3(i);
+                a3(i) = sigmoid(z);
+            }
 
-            // Aplicar transformación sigmoid
-            a3 = sigmoid(z3);
+            // ---------- MSE y delta de salida, igual que CMP/SMT ----------
+            mse_total += (a3 - sample.y).squaredNorm() / 10.0;
+            for (int i = 0; i < 10; i++) {
+                double dA3 = (2.0 / 10.0) * (a3(i) - sample.y(i));
+                dZ3(i) = dA3 * a3(i) * (1.0 - a3(i));
+                b3(i) -= learning_rate * dZ3(i);
+            }
 
-            // -----------------------------------------
-            // LOSS FUNCTION: MSE
-            // -----------------------------------------
+            // ---------- BACKPROP capa 2 y actualizar columnas de W3 ----------
+            // Leer cada columna anterior antes de actualizarla conserva SGD.
+            for (int j = 0; j < 64; j++) {
+                double dA2 = W3.col(j).dot(dZ3);
+                dZ2(j) = dA2 * a2(j) * (1.0 - a2(j));
+                for (int i = 0; i < 10; i++) {
+                    W3(i, j) -= learning_rate * (dZ3(i) * a2(j));
+                }
+                b2(j) -= learning_rate * dZ2(j);
+            }
 
-            double mse = (a3 - sample.y).squaredNorm() / a3.size();
-            mse_total += mse;
+            // ---------- BACKPROP capa 1 y actualizar columnas de W2 ----------
+            for (int k = 0; k < 128; k++) {
+                double dA1 = W2.col(k).dot(dZ2);
+                dZ1(k) = dA1 * a1(k) * (1.0 - a1(k));
+                for (int i = 0; i < 64; i++) {
+                    W2(i, k) -= learning_rate * (dZ2(i) * a1(k));
+                }
+                b1(k) -= learning_rate * dZ1(k);
+            }
 
-            // -----------------------------------------
-            // Backpropagation - capa de salida
-            // -----------------------------------------
+            // ---------- ACTUALIZAR W1 por filas ----------
+            for (int i = 0; i < 128; i++) {
+                for (int j = 0; j < 784; j++) {
+                    W1(i, j) -= learning_rate * (dZ1(i) * x(j));
+                }
+            }
 
-            // Derivada del error respecto a A3
-            VectorXd dA3 = (2.0 / a3.size()) * (a3 - sample.y);
-
-            // Derivada de Z3
-            VectorXd dZ3 = dA3.array() * a3.array() * (1.0 - a3.array());
-
-            // Derivadas de W3 y b3
-            MatrixXd dW3 = dZ3 * a2.transpose();
-            VectorXd db3 = dZ3;
-
-            // -----------------------------------------
-            // Backpropagation - capas ocultas
-            // -----------------------------------------
-
-            // Derivada de A2
-            VectorXd dA2 = W3.transpose() * dZ3;
-
-            // Derivada de Z2 
-            VectorXd dZ2 = dA2.array() * a2.array() * (1.0 - a2.array());
-
-            // Derivada de W2 y b2
-            MatrixXd dW2 = dZ2 * a1.transpose();
-            VectorXd db2 = dZ2;
-
-            // Derivada de A1
-            VectorXd dA1 = W2.transpose() * dZ2;
-
-            // Derivada de Z1
-            VectorXd dZ1 = dA1.array() * a1.array() * (1.0 - a1.array());
-
-            // Derivada de W1 y b1
-            MatrixXd dW1 = dZ1 * sample.x.transpose();
-            VectorXd db1 = dZ1;
-
-            // -----------------------------------------
-            // Descenso de gradiente -> Actualizar parámetros
-            // -----------------------------------------
-
-            W3 -= learning_rate * dW3;
-            b3 -= learning_rate * db3;
-
-            W2 -= learning_rate * dW2;
-            b2 -= learning_rate * db2;
-
-            W1 -= learning_rate * dW1;
-            b1 -= learning_rate * db1;
-
-            // -----------------------------------------
-            // Registrar aciertos de ESTA imagen
-            // -----------------------------------------
-
+            // ---------- Accuracy y distribución de clases ----------
             if (epoch == 0) {
                 Eigen::Index clase_real;
                 sample.y.maxCoeff(&clase_real);
                 conteo_clases[clase_real]++;
             }
 
-            // maxCoeff devuelve un numero y lo guarda en la direccion del argumento
             a3.maxCoeff(&clase_predicha);
-
             sample.y.maxCoeff(&clase_real);
-
             if (clase_predicha == clase_real) {
                 aciertos++;
             }
-
         }
 
-        // ===================================
-        // Fin de las 100 imágenes 
-        // ===================================
-
+        // ---------- Métricas de la época ----------
         mse_promedio = mse_total / num_muestras;
-        
         double accuracy = (double) aciertos / num_muestras * 100.0;
-
         cout << "MSE promedio: " << mse_promedio
              << " | Accuracy: " << accuracy << "%\n";
     }
@@ -209,6 +179,7 @@ int main(int argc, char** argv) {
             end - start
         );
 
+    dl::finish(W1, b1, W2, b2, W3, b3);
     uint64_t h = CHECKSUM_INICIAL;
     h = hash_params(W1, h); h = hash_params(b1, h);
     h = hash_params(W2, h); h = hash_params(b2, h);
@@ -216,6 +187,7 @@ int main(int argc, char** argv) {
     cout << "\nChecksum parametros: " << std::hex << h << std::dec << "\n";
 
     // Cuantas imágenes corresponden a cada número
+    if (!dl::quiet()) {
     cout << "\nDistribución de clases:\n";
 
     for (int i = 0; i < 10; i++) {
@@ -234,6 +206,7 @@ int main(int argc, char** argv) {
     cout << "W3:\n" << W3 << "\n";
     cout << "b3:\n" << b3 << "\n";
     
+    }
     cout << "\n=== Secuencial ===\n";
 
     cout << "\nTiempo total: "
@@ -241,4 +214,11 @@ int main(int argc, char** argv) {
          << " us\n";
 
     return 0;
+}
+int main(int argc, char** argv) {
+    try { return run(argc, argv); }
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
 }

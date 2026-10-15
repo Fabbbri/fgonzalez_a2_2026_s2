@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 
 using std::cout;
 
@@ -13,6 +14,7 @@ uint32_t read_uint32(std::ifstream& file) {
 
     file.read(reinterpret_cast<char*>(bytes), 4);
 
+    if (!file) throw std::runtime_error("MNIST: cabecera incompleta");
     return (static_cast<uint32_t>(bytes[0]) << 24) |
            (static_cast<uint32_t>(bytes[1]) << 16) |
            (static_cast<uint32_t>(bytes[2]) << 8)  |
@@ -39,6 +41,8 @@ Eigen::VectorXd load_image(std::ifstream& file, int index) {
         reinterpret_cast<char*>(pixels),
         pixels_per_image
     );
+
+    if (!file) throw std::runtime_error("MNIST: imagen incompleta o índice fuera de rango");
 
     // Crear vector Eigen de 784 elementos
     Eigen::VectorXd image(pixels_per_image);
@@ -70,6 +74,7 @@ int load_label(std::ifstream& file, int index) {
         1
     );
 
+    if (!file || label > 9) throw std::runtime_error("MNIST: etiqueta inválida o incompleta");
     return static_cast<int>(label);
 }
 

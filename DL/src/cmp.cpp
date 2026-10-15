@@ -32,6 +32,7 @@
 #include <string>
 #include "mnist.h"
 #include "checksum.h"
+#include "runtime.h"
 
 #ifdef __linux__
 #include <pthread.h>
@@ -51,7 +52,7 @@ using Eigen::MatrixXd;
 // =========================================
 
 static const double LEARNING_RATE = 0.1;
-static const int NUM_MUESTRAS = 100;
+static int NUM_MUESTRAS = 100;
 static int EPOCHS = 1000;
 
 // =========================================
@@ -124,6 +125,7 @@ static Estado g_est;
 static std::vector<Sample> g_muestras;
 static Barrera* g_barrera = nullptr;
 static std::atomic<bool> g_go{false};
+static std::atomic<bool> g_cancel{false};
 
 // =========================================
 // TRABAJADOR (mismo algoritmo que smt.cpp)
@@ -145,6 +147,7 @@ static void trabajador(int t, int T) {
     int aciertos = 0;
 
     while (!g_go.load(std::memory_order_acquire)) std::this_thread::yield();
+    if (g_cancel.load()) return;
 
     for (int epoch = 0; epoch < EPOCHS; epoch++) {
         if (t == 0) { mse = 0.0; aciertos = 0; }
@@ -233,80 +236,33 @@ static void trabajador(int t, int T) {
 // TOPOLOGÍA: UNA CPU LÓGICA POR NÚCLEO FÍSICO
 // =========================================
 
-// Lee un entero de un archivo de /sys; devuelve -1 si no se puede.
-static int leer_entero(const std::string& ruta) {
-    std::ifstream f(ruta);
-    int v = -1;
-    if (!(f >> v)) return -1;
-    return v;
-}
-
-// Devuelve, para cada núcleo físico (socket, core_id), su CPU lógica
-// de menor número. El mapa queda ordenado por (socket, core_id).
-static std::map<std::pair<int, int>, int> nucleos_fisicos() {
-    std::map<std::pair<int, int>, int> nucleos;
-    const std::string base = "/sys/devices/system/cpu/cpu";
-    unsigned total = std::thread::hardware_concurrency();
-    if (total == 0) total = 64;
-
-    for (unsigned cpu = 0; cpu < total; cpu++) {
-        std::string dir = base + std::to_string(cpu) + "/topology/";
-        int core = leer_entero(dir + "core_id");
-        int pkg = leer_entero(dir + "physical_package_id");
-        if (core < 0 || pkg < 0) continue;
-        auto clave = std::make_pair(pkg, core);
-        if (nucleos.find(clave) == nucleos.end()) {
-            nucleos[clave] = static_cast<int>(cpu);  // primera CPU vista = menor número
-        }
-    }
-    return nucleos;
-}
-
 static void fijar_cpu(std::thread& th, int cpu) {
-#ifdef __linux__
-    cpu_set_t set;
-    CPU_ZERO(&set);
-    CPU_SET(cpu, &set);
-    int rc = pthread_setaffinity_np(th.native_handle(), sizeof(set), &set);
-    if (rc != 0) {
-        std::cerr << "Aviso: no se pudo fijar el hilo a la CPU " << cpu
-                  << " (error " << rc << ")\n";
-    }
-#else
-    (void)th; (void)cpu;
-#endif
+    dl::pin(th, cpu);
 }
 
 // =========================================
 // MAIN
 // =========================================
 
-int main(int argc, char** argv) {
-    int T = (argc > 1) ? std::atoi(argv[1]) : 2;
-    if (argc > 2) EPOCHS = std::atoi(argv[2]);
+int run(int argc, char** argv) {
+    dl::initialize();
+    NUM_MUESTRAS = dl::env_int("DL_SAMPLES", 100);
+    int T = (argc > 1) ? dl::integer(argv[1]) : 2;
+    if (argc > 2) EPOCHS = dl::integer(argv[2]);
 
-    if (T < 1 || T > 64 || EPOCHS < 1) {
-        std::cerr << "Uso: ./cmp [num_hilos 1..64] [epocas >= 1]\n";
+    if (T < 1 || EPOCHS < 1) {
+        std::cerr << "Uso: ./cmp [num_hilos >= 1] [epocas >= 1]\n";
         return 1;
     }
 
     // CMP exige un hilo por núcleo físico: si no podemos garantizarlo, no ejecutamos.
-    auto nucleos = nucleos_fisicos();
-    if (nucleos.empty()) {
-        std::cerr << "No se pudo leer la topologia en /sys; no se puede garantizar CMP.\n";
-        return 1;
-    }
+    const auto nucleos = dl::cores();
     if (T > static_cast<int>(nucleos.size())) {
-        std::cerr << "Error: " << T << " hilos > " << nucleos.size()
-                  << " nucleos fisicos. Eso seria SMT/sobresuscripcion, no CMP.\n";
+        std::cerr << "CMP requiere trabajadores <= núcleos físicos disponibles\n";
         return 1;
     }
-
     std::vector<int> cpus;
-    for (const auto& par : nucleos) {
-        if (static_cast<int>(cpus.size()) == T) break;
-        cpus.push_back(par.second);
-    }
+    for (int t = 0; t < T; ++t) cpus.push_back(nucleos[t].front());
 
     // Misma inicialización que fino.cpp / smt.cpp (mismo orden de llamadas a Random)
     g_modelo.W1 = MatrixXd::Random(128, 784) * 0.1;
@@ -343,9 +299,18 @@ int main(int argc, char** argv) {
     // Se mide antes de los hilos
     auto start = std::chrono::steady_clock::now();
     std::vector<std::thread> hilos;
+    try {
     for (int t = 0; t < T; t++) {
         hilos.emplace_back(trabajador, t, T);
         fijar_cpu(hilos.back(), cpus[t]);
+    }
+
+    } catch (const std::exception& error) {
+        g_cancel.store(true);
+        g_go.store(true, std::memory_order_release);
+        for (auto& thread : hilos) thread.join();
+        std::cerr << error.what() << "\n";
+        return 1;
     }
 
     g_go.store(true, std::memory_order_release);
@@ -355,6 +320,10 @@ int main(int argc, char** argv) {
 
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
+    dl::finish(g_modelo.W1, g_modelo.b1, g_modelo.W2, g_modelo.b2, g_modelo.W3, g_modelo.b3);
+    cout << "CPU fijadas y verificadas: ";
+    for (int cpu : cpus) cout << cpu << ";";
+    cout << " Hilos: " << T << "\n";
     uint64_t h = CHECKSUM_INICIAL;
     h = hash_params(g_modelo.W1, h); h = hash_params(g_modelo.b1, h);
     h = hash_params(g_modelo.W2, h); h = hash_params(g_modelo.b2, h);
@@ -364,4 +333,11 @@ int main(int argc, char** argv) {
     cout << "\n=== CMP ===\n";
     cout << "Tiempo total: " << elapsed.count() << " us\n";
     return 0;
+}
+int main(int argc, char** argv) {
+    try { return run(argc, argv); }
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
 }

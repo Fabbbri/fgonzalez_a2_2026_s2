@@ -6,12 +6,13 @@
 #include <cstdlib>
 #include "mnist.h"
 #include "checksum.h"
+#include "runtime.h"
 
 using std::cout;
 using Eigen::VectorXd;
 using Eigen::MatrixXd;
 
-const auto QUANTUM = std::chrono::microseconds(100);
+auto QUANTUM = std::chrono::microseconds(100);
 const int NUM_HILOS = 4;
 
 // =========================================
@@ -253,10 +254,12 @@ void entrenar_muestra(
 // MAIN
 // =========================================
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
+    dl::initialize();
+    QUANTUM = std::chrono::microseconds(dl::env_int("DL_QUANTUM_US", 100));
     const double learning_rate = 0.1;
-    const int num_muestras = 100;
-    const int epochs = (argc > 1) ? std::atoi(argv[1]) : 1000;
+    const int num_muestras = dl::env_int("DL_SAMPLES", 100);
+    const int epochs = (argc > 1) ? dl::integer(argv[1]) : 1000;
 
     ModeloFG modelo;
 
@@ -315,12 +318,14 @@ int main(int argc, char** argv) {
             end - start
         );
 
+    dl::finish(modelo.W1, modelo.b1, modelo.W2, modelo.b2, modelo.W3, modelo.b3);
     uint64_t h = CHECKSUM_INICIAL;
     h = hash_params(modelo.W1, h); h = hash_params(modelo.b1, h);
     h = hash_params(modelo.W2, h); h = hash_params(modelo.b2, h);
     h = hash_params(modelo.W3, h); h = hash_params(modelo.b3, h);
     cout << "\nChecksum parametros: " << std::hex << h << std::dec << "\n";
 
+    if (!dl::quiet()) {
     cout << "\n=== Pesos y sesgos finales ===\n";
 
     cout << "W1:\n" << modelo.W1 << "\n";
@@ -332,8 +337,16 @@ int main(int argc, char** argv) {
     cout << "W3:\n" << modelo.W3 << "\n";
     cout << "b3:\n" << modelo.b3 << "\n";
 
+    }
     cout << "\n=== Fine-Grained ===\n";
     cout << "Tiempo total: " << elapsed.count() << " us\n";
 
     return 0;
+}
+int main(int argc, char** argv) {
+    try { return run(argc, argv); }
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
 }

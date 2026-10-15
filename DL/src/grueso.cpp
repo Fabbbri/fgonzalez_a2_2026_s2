@@ -1,110 +1,45 @@
 #include <iostream>
 #include <chrono>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
+#include <cmath>
 #include <vector>
 
 #include "mnist.h"
 #include "checksum.h"
+#include "runtime.h"
 
 using std::cout;
 
 using Eigen::VectorXd;
 using Eigen::MatrixXd;
 
-// ============================================================
-// DATOS COMPARTIDOS PARA LAS ACTUALIZACIONES
-// ============================================================
-
-struct SharedUpdate {
-    MatrixXd* W2;
-    VectorXd* b2;
-
-    MatrixXd* W3;
-    VectorXd* b3;
-
-    const MatrixXd* dW2;
-    const VectorXd* db2;
-
-    const MatrixXd* dW3;
-    const VectorXd* db3;
-
-    double learning_rate;
-
-    std::mutex mutex;
-    std::condition_variable cv_job;
-    std::condition_variable cv_done;
-
-    int generation = 0;
-    int completed = 0;
-    bool stop = false;
-};
-
-// ============================================================
-// TRABAJADORES PERSISTENTES
-// ============================================================
-
-void update_worker(int id, SharedUpdate& shared)
-{
-    int last_generation = 0;
-
-    while (true) {
-        std::unique_lock<std::mutex> lock(shared.mutex);
-
-        shared.cv_job.wait(lock, [&] {
-            return shared.stop ||
-                   shared.generation != last_generation;
-        });
-
-        if (shared.stop) {
-            return;
-        }
-
-        last_generation = shared.generation;
-
-        lock.unlock();
-
-        // Cada trabajador actualiza parámetros diferentes.
-        if (id == 0) {
-            *shared.W3 -= shared.learning_rate * (*shared.dW3);
-            *shared.b3 -= shared.learning_rate * (*shared.db3);
-        } else {
-            *shared.W2 -= shared.learning_rate * (*shared.dW2);
-            *shared.b2 -= shared.learning_rate * (*shared.db2);
-        }
-
-        lock.lock();
-
-        shared.completed++;
-
-        if (shared.completed == 2) {
-            shared.cv_done.notify_one();
-        }
-    }
-}
+#include "update_pool.h"
 
 // ============================================================
 // SIGMOIDE
 // ============================================================
 
-VectorXd sigmoid(const VectorXd& z)
+double sigmoid(double z)
 {
-    return 1.0 / (1.0 + (-z.array()).exp());
+    return 1.0 / (1.0 + std::exp(-z));
 }
 
 // ============================================================
 // MAIN
 // ============================================================
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
+    dl::initialize();
     // --------------------------------------------------------
     // CONFIGURACIÓN
     // --------------------------------------------------------
 
     const double learning_rate = 0.1;
-    const int num_muestras = 100;
-    const int epochs = (argc > 1) ? std::atoi(argv[1]) : 1000;
+    const int num_muestras = dl::env_int("DL_SAMPLES", 100);
+    const int epochs = (argc > 1) ? dl::integer(argv[1]) : 1000;
+
+    const int workers = argc > 2 ? dl::integer(argv[2]) : 2;
+    const int interval = argc > 3 ? dl::integer(argv[3], 0) : 10;
+    const int duration = argc > 4 ? dl::integer(argv[4], 0) : 1;
 
     int conteo_clases[10] = {0};
 
@@ -113,7 +48,7 @@ int main(int argc, char** argv) {
     // --------------------------------------------------------
 
     MatrixXd W1 = MatrixXd::Random(128, 784) * 0.1;
-    MatrixXd b1 = MatrixXd::Zero(128, 1);
+    VectorXd b1 = VectorXd::Zero(128);
 
     MatrixXd W2 = MatrixXd::Random(64, 128) * 0.1;
     VectorXd b2 = VectorXd::Zero(64);
@@ -148,29 +83,19 @@ int main(int argc, char** argv) {
     // ESTADO COMPARTIDO Y CREACIÓN DE HILOS
     // --------------------------------------------------------
 
+    // Reservar el estado antes del cronómetro, como en main/CMP/SMT.
+    VectorXd a1 = VectorXd::Zero(128);
+    VectorXd a2 = VectorXd::Zero(64);
+    VectorXd a3 = VectorXd::Zero(10);
+    VectorXd dZ1 = VectorXd::Zero(128);
+    VectorXd dZ2 = VectorXd::Zero(64);
+    VectorXd dZ3 = VectorXd::Zero(10);
+    MatrixXd dW1(128, 784);
     MatrixXd dW2(64, 128);
-    VectorXd db2(64);
-
     MatrixXd dW3(10, 64);
-    VectorXd db3(10);
 
-    SharedUpdate shared{
-        &W2, &b2,
-        &W3, &b3,
-        &dW2, &db2,
-        &dW3, &db3,
-        learning_rate,
-        {},
-        {},
-        {},
-        0,
-        0,
-        false
-    };
-
-    auto start = std::chrono::steady_clock::now();      // justo antes de crear los hilos
-    std::thread worker1(update_worker, 0, std::ref(shared));
-    std::thread worker2(update_worker, 1, std::ref(shared));
+    auto start = std::chrono::steady_clock::now();
+    UpdatePool pool(workers, interval, duration);
 
     // --------------------------------------------------------
     // ENTRENAMIENTO SGD POR IMAGEN
@@ -181,100 +106,71 @@ int main(int argc, char** argv) {
         double mse_total = 0.0;
         int aciertos = 0;
 
-        for (int i = 0; i < num_muestras; i++) {
+        for (int s = 0; s < num_muestras; s++) {
+            const Sample& sample = muestras[s];
+            const VectorXd& x = sample.x;
 
-            const Sample& sample = muestras[i];
-
-            // ================================================
-            // FORWARD PASS
-            // ================================================
-
-            VectorXd z1 = W1 * sample.x + b1;
-            VectorXd a1 = sigmoid(z1);
-
-            VectorXd z2 = W2 * a1 + b2;
-            VectorXd a2 = sigmoid(z2);
-
-            VectorXd z3 = W3 * a2 + b3;
-            VectorXd a3 = sigmoid(z3);
-
-            // ================================================
-            // MSE
-            // ================================================
-
-            double mse =
-                (a3 - sample.y).squaredNorm() / a3.size();
-
-            mse_total += mse;
-
-            // ================================================
-            // BACKPROPAGATION: CAPA DE SALIDA
-            // ================================================
-
-            VectorXd dA3 =
-                (2.0 / a3.size()) * (a3 - sample.y);
-
-            VectorXd dZ3 =
-                dA3.array()
-                * a3.array()
-                * (1.0 - a3.array());
-
-            dW3 = dZ3 * a2.transpose();
-            db3 = dZ3;
-
-            // ================================================
-            // BACKPROPAGATION: CAPA OCULTA 2
-            // ================================================
-
-            VectorXd dA2 = W3.transpose() * dZ3;
-
-            VectorXd dZ2 =
-                dA2.array()
-                * a2.array()
-                * (1.0 - a2.array());
-
-            dW2 = dZ2 * a1.transpose();
-            db2 = dZ2;
-
-            // ================================================
-            // BACKPROPAGATION: CAPA OCULTA 1
-            // ================================================
-
-            VectorXd dA1 = W2.transpose() * dZ2;
-
-            VectorXd dZ1 =
-                dA1.array()
-                * a1.array()
-                * (1.0 - a1.array());
-
-            MatrixXd dW1 = dZ1 * sample.x.transpose();
-            VectorXd db1 = dZ1;
-
-            // ================================================
-            // ACTUALIZACIONES CONCURRENTES
-            // ================================================
-
-            {
-                std::lock_guard<std::mutex> lock(shared.mutex);
-
-                shared.completed = 0;
-                shared.generation++;
+            // ---------- FORWARD capa 1 (filas de W1: 784 -> 128) ----------
+            for (int i = 0; i < 128; i++) {
+                double z = W1.row(i).dot(x) + b1(i);
+                a1(i) = sigmoid(z);
             }
 
-            shared.cv_job.notify_all();
-
-            // El hilo principal actualiza la primera capa.
-            W1 -= learning_rate * dW1;
-            b1 -= learning_rate * db1;
-
-            // Esperar las actualizaciones de W2 y W3.
-            {
-                std::unique_lock<std::mutex> lock(shared.mutex);
-
-                shared.cv_done.wait(lock, [&] {
-                    return shared.completed == 2;
-                });
+            // ---------- FORWARD capa 2 (filas de W2: 128 -> 64) ----------
+            for (int i = 0; i < 64; i++) {
+                double z = W2.row(i).dot(a1) + b2(i);
+                a2(i) = sigmoid(z);
             }
+
+            // ---------- FORWARD capa 3 (filas de W3: 64 -> 10) ----------
+            for (int i = 0; i < 10; i++) {
+                double z = W3.row(i).dot(a2) + b3(i);
+                a3(i) = sigmoid(z);
+            }
+
+            // ---------- MSE y delta de salida, igual que main ----------
+            mse_total += (a3 - sample.y).squaredNorm() / 10.0;
+            for (int i = 0; i < 10; i++) {
+                double dA3 = (2.0 / 10.0) * (a3(i) - sample.y(i));
+                dZ3(i) = dA3 * a3(i) * (1.0 - a3(i));
+            }
+
+            // ---------- BACKPROP capa 2 y gradientes de W3 por columnas ----------
+            for (int j = 0; j < 64; j++) {
+                double dA2 = W3.col(j).dot(dZ3);
+                dZ2(j) = dA2 * a2(j) * (1.0 - a2(j));
+                for (int i = 0; i < 10; i++) {
+                    dW3(i, j) = dZ3(i) * a2(j);
+                }
+            }
+
+            // ---------- BACKPROP capa 1 y gradientes de W2 por columnas ----------
+            for (int k = 0; k < 128; k++) {
+                double dA1 = W2.col(k).dot(dZ2);
+                dZ1(k) = dA1 * a1(k) * (1.0 - a1(k));
+                for (int i = 0; i < 64; i++) {
+                    dW2(i, k) = dZ2(i) * a1(k);
+                }
+            }
+
+            // ---------- Gradientes de W1 por filas ----------
+            for (int i = 0; i < 128; i++) {
+                for (int j = 0; j < 784; j++) {
+                    dW1(i, j) = dZ1(i) * x(j);
+                }
+            }
+
+            // ---------- Actualizaciones concurrentes de todas las capas ----------
+            // Publicar solo después de calcular todos los gradientes con los
+            // pesos anteriores. La barrera del pool precede la siguiente imagen.
+            pool.apply({
+                {W1.data(), dW1.data(), static_cast<size_t>(W1.size())},
+                {b1.data(), dZ1.data(), static_cast<size_t>(b1.size())},
+                {W2.data(), dW2.data(), static_cast<size_t>(W2.size())},
+                {b2.data(), dZ2.data(), static_cast<size_t>(b2.size())},
+                {W3.data(), dW3.data(), static_cast<size_t>(W3.size())},
+                {b3.data(), dZ3.data(), static_cast<size_t>(b3.size())}
+            }, learning_rate);
 
             // ================================================
             // ACCURACY
@@ -309,15 +205,7 @@ int main(int argc, char** argv) {
     // FINALIZAR TRABAJADORES
     // --------------------------------------------------------
 
-    {
-        std::lock_guard<std::mutex> lock(shared.mutex);
-        shared.stop = true;
-    }
-
-    shared.cv_job.notify_all();
-
-    worker1.join();
-    worker2.join();
+    pool.close();
 
     // --------------------------------------------------------
     // RESULTADOS
@@ -330,12 +218,14 @@ int main(int argc, char** argv) {
             end - start
         );
 
+    dl::finish(W1, b1, W2, b2, W3, b3);
     uint64_t h = CHECKSUM_INICIAL;
     h = hash_params(W1, h); h = hash_params(b1, h);
     h = hash_params(W2, h); h = hash_params(b2, h);
     h = hash_params(W3, h); h = hash_params(b3, h);
     cout << "\nChecksum parametros: " << std::hex << h << std::dec << "\n";
 
+    if (!dl::quiet()) {
     cout << "\nDistribución de clases:\n";
 
     for (int i = 0; i < 10; i++) {
@@ -354,10 +244,19 @@ int main(int argc, char** argv) {
     cout << "W3:\n" << W3 << "\n";
     cout << "b3:\n" << b3 << "\n";
 
+    }
     cout << "\n=== Coarse-Grained ===\n";
     cout << "Tiempo total: " << elapsed.count() << " us\n";
-    cout << "Hilos trabajadores: 2\n";
+    cout << "Hilos: " << workers << "\n";
+    cout << "Bloqueos periódicos: " << pool.blocks() << "\n";
     cout << "Hilo principal: entrenamiento y coordinación\n";
 
     return 0;
+}
+int main(int argc, char** argv) {
+    try { return run(argc, argv); }
+    catch (const std::exception& error) {
+        std::cerr << "Error: " << error.what() << "\n";
+        return 1;
+    }
 }
