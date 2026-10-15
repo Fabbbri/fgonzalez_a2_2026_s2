@@ -1,4 +1,5 @@
 #include "interferogram/config.hpp"
+#include "interferogram/result_fingerprint.hpp"
 #include "interferogram/slc_reader.hpp"
 #include "interferogram/interferogram.hpp"
 #include "interferogram/models/fine_grained.hpp"
@@ -170,6 +171,7 @@ int main(int argc, char* argv[]) {
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
                   << "Computational kernel; coregistration quality is not verified by this executable.\n";
+        std::cout << "Result hash (fnv1a64): " << std::hex << resultFingerprint(result) << std::dec << '\n';
         std::cout << "Valid result samples: " << validSamples
                   << "\nInvalid result samples: " << result.size() - validSamples
                   << "\nNoData policy: " << (config.allowNoData ? "preserve; exclude nonfinite results from sum" : "reject") << '\n';

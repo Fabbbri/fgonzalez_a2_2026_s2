@@ -13,7 +13,7 @@ COMMON := interferogram/src/config.cpp interferogram/src/slc_reader.cpp $(KERNEL
 HEADERS := $(wildcard interferogram/include/interferogram/*.hpp interferogram/include/interferogram/models/*.hpp)
 TARGET := build/interferogram
 
-.PHONY: all run test clean check-gdal
+.PHONY: all run test clean check-gdal test-benchmark smt plots amdahl rebase
 all: $(TARGET)
 
 check-gdal:
@@ -34,11 +34,13 @@ build/test_slc_reader: interferogram/tests/test_slc_reader.cpp interferogram/src
 run: $(TARGET)
 	./$(TARGET) $(ARGS)
 
-test: $(TARGET) build/test_interferogram build/test_slc_reader
+test: $(TARGET) build/test_interferogram build/test_slc_reader build/benchmark_fixture
 	./build/test_interferogram
 	./build/test_slc_reader
 	bash interferogram/tests/test_cli.sh ./$(TARGET)
 	bash interferogram/tests/test_profile_perf.sh
+	$(PYTHON) -m unittest discover -s interferogram/tests -p 'test_benchmark*.py'
+	$(PYTHON) interferogram/tests/test_smt_control.py
 
 clean:
 	rm -rf build
@@ -47,8 +49,8 @@ clean:
 IMAGE_OUTPUT ?= results/imagenes-20240608-20240620
 IMAGE_X ?= 0
 IMAGE_Y ?= 0
-IMAGE_WIDTH ?= 24451
-IMAGE_HEIGHT ?= 1499
+IMAGE_WIDTH ?= 24444
+IMAGE_HEIGHT ?= 1500
 
 .PHONY: images view-images export-result
 IMAGE_MODEL ?= sequential
@@ -67,36 +69,110 @@ images: export-result
 view-images:
 	xdg-open "$(IMAGE_OUTPUT)/index.html"
 
-# Matriz fija: secuencial, Fine 1, Coarse/CMP 1-2-4-8 y SMT 8-12.
-# Los resultados van a un directorio nuevo bajo results/ si OUTPUT=auto.
+# Métricas: no cambian los modelos ni el procesamiento del interferograma.
 .PHONY: benchmark profile run-sequential run-fine-grained run-coarse-grained run-smt run-cmp
+PYTHON ?= python3
 REPETITIONS ?= 200
-RESULT_REPETITION ?= 1
-OUTPUT ?= auto
+WARMUPS ?= 3
+RESULTS_DIR ?= resultsen
+OUTPUT ?= $(RESULTS_DIR)
 THREADS ?= 8
-SLC_A ?= data/coregistered/P09-R2-20240608-20240620/A.tif
-SLC_B ?= data/coregistered/P09-R2-20240608-20240620/B.tif
-BENCHMARK_ARGS ?= --a $(SLC_A) --b $(SLC_B) --x 0 --y 0 --width 24451 --height 1499 --allow-nodata --quantum 2
+THREAD_COUNTS ?= auto
+CMP_THREAD_COUNTS ?= auto
+SMT_THREAD_COUNTS ?= auto
+SMT_STATES ?= on,off
+SMT ?= keep
+BENCHMARK_MODELS ?= sequential fine-grained coarse-grained smt cmp
+BENCHMARK_MAKE ?= $(MAKE)
+BASELINE_CSV ?=
+CSV ?= $(RESULTS_DIR)/*.csv
+PLOT_DIR ?= $(RESULTS_DIR)/plots/comparison
+MPLCONFIGDIR ?= /tmp/sentinel-matplotlib
+export MPLCONFIGDIR
+SLC_A ?= data/coregistered/P09-R2-2023-2024/A.tif
+SLC_B ?= data/coregistered/P09-R2-2023-2024/B.tif
+WINDOW_X ?= 0
+WINDOW_Y ?= 0
+WINDOW_WIDTH ?= 24444
+WINDOW_HEIGHT ?= 1500
+TILE_WIDTH ?= 32
+TILE_HEIGHT ?= 32
+QUANTUM ?= 2
+COMMON_ARGS = --a "$(SLC_A)" --b "$(SLC_B)" --x $(WINDOW_X) --y $(WINDOW_Y) \
+              --width $(WINDOW_WIDTH) --height $(WINDOW_HEIGHT) --allow-nodata \
+              --tile-width $(TILE_WIDTH) --tile-height $(TILE_HEIGHT) --quantum $(QUANTUM)
+BENCHMARK_ARGS ?=
 
 build/benchmark: interferogram/metrics/benchmark.cpp Makefile | build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -std=c++17 $< $(LDFLAGS) $(LDLIBS) -o $@
 
-benchmark: $(TARGET) build/benchmark
-	RESULT_REPETITION="$(RESULT_REPETITION)" bash scripts/benchmark.sh "$(OUTPUT)" "$(REPETITIONS)" $(BENCHMARK_ARGS)
 
-# Una campaña por modelo, con N mediciones secuenciales de referencia.
-# THREADS puede sobrescribirse desde la terminal; Fine y secuencial usan 1.
+benchmark: $(TARGET) smt
+	BENCHMARK_COMPILER="$(CXX)" BENCHMARK_FLAGS="$(CPPFLAGS) $(GDAL_CFLAGS) $(CXXFLAGS) -pthread -std=c++17 $(LDFLAGS)" \
+	$(PYTHON) scripts/benchmark.py ./$(TARGET) --results-dir "$(OUTPUT)" \
+		--models $(BENCHMARK_MODELS) --repetitions "$(REPETITIONS)" --warmups "$(WARMUPS)" \
+		--thread-counts "$(THREAD_COUNTS)" --cmp-thread-counts "$(CMP_THREAD_COUNTS)" --smt-thread-counts "$(SMT_THREAD_COUNTS)" \
+		--smt-states "$(SMT_STATES)" --make-command "$(BENCHMARK_MAKE)" \
+		$(if $(BASELINE_CSV),--baseline-csv "$(BASELINE_CSV)") $(COMMON_ARGS) $(BENCHMARK_ARGS)
+
 run-smt: THREADS = 12
-run-sequential run-fine-grained run-coarse-grained run-smt run-cmp: $(TARGET) build/benchmark
-	BENCHMARK_MODEL="$(@:run-%=%)" BENCHMARK_THREADS="$(THREADS)" RESULT_REPETITION="$(RESULT_REPETITION)" \
-		RESULT_REPETITION="$(RESULT_REPETITION)" bash scripts/benchmark.sh "$(OUTPUT)" "$(REPETITIONS)" $(BENCHMARK_ARGS)
+run-sequential run-fine-grained run-coarse-grained run-smt run-cmp: $(TARGET) smt
+	$(PYTHON) scripts/benchmark.py ./$(TARGET) --results-dir "$(OUTPUT)" \
+		--model "$(@:run-%=%)" --repetitions "$(REPETITIONS)" --warmups "$(WARMUPS)" --threads "$(THREADS)" \
+		--smt-states "$(SMT_STATES)" --make-command "$(BENCHMARK_MAKE)" \
+		$(if $(BASELINE_CSV),--baseline-csv "$(BASELINE_CSV)") $(COMMON_ARGS) $(BENCHMARK_ARGS)
+
+rebase:
+	$(PYTHON) scripts/rebase_reference.py --results-dir "$(RESULTS_DIR)" \
+		$(if $(BASELINE_CSV),--baseline-csv "$(BASELINE_CSV)")
+
+plots:
+	$(PYTHON) scripts/plot_metrics.py "$(CSV)" --output-dir "$(PLOT_DIR)"
+
+amdahl:
+	$(PYTHON) scripts/plot_metrics.py "$(CSV)" --output-dir "$(PLOT_DIR)" --amdahl-only
+
+test-benchmark: $(TARGET) build/benchmark_fixture
+	$(PYTHON) -m unittest discover -s interferogram/tests -p 'test_benchmark*.py'
+	$(PYTHON) interferogram/tests/test_smt_control.py
+
+build/benchmark_fixture: interferogram/tests/benchmark_fixture.cpp Makefile | check-gdal build
+	$(CXX) $(GDAL_CFLAGS) $(CXXFLAGS) -std=c++17 $< $(GDAL_LIBS) -o $@
+
+smt:
+	@set -eu; \
+	case '$(SMT)' in \
+	    keep) exit 0 ;; \
+	    on|off) ;; \
+	    *) echo 'SMT debe ser keep, on u off' >&2; exit 1 ;; \
+	esac; \
+	control=/sys/devices/system/cpu/smt/control; \
+	active=/sys/devices/system/cpu/smt/active; \
+	if [ ! -r "$$control" ] || [ ! -r "$$active" ]; then \
+	    echo 'Este sistema no expone el control SMT de Linux' >&2; exit 1; \
+	fi; \
+	current=$$(cat "$$control"); \
+	if [ "$$current" != '$(SMT)' ]; then \
+	    case "$$current" in \
+	        forceoff|notsupported|notimplemented) \
+	            echo "No se puede cambiar SMT: $$current" >&2; exit 1 ;; \
+	    esac; \
+	    printf '%s\n' '$(SMT)' | sudo tee "$$control" >/dev/null; \
+	fi; \
+	state=$$(cat "$$active"); \
+	expected=0; [ '$(SMT)' != on ] || expected=1; \
+	if [ "$$state" != "$$expected" ]; then \
+	    echo "No se alcanzó SMT=$(SMT): smt/active=$$state" >&2; exit 1; \
+	fi; \
+	echo "SMT=$(SMT), active=$$state (estado global; permanece después de ejecutar)"
+
 
 PROFILE_REPETITIONS ?= 3
 PROFILE_CASES ?= sequential:1 fine-grained:1 \
                  coarse-grained:1 coarse-grained:2 coarse-grained:4 coarse-grained:8 \
                  smt:8 smt:12 cmp:1 cmp:2 cmp:4 cmp:8
 PROFILE_OUTPUT ?= auto
-PROFILE_ARGS ?= $(BENCHMARK_ARGS)
+PROFILE_ARGS ?= $(COMMON_ARGS) $(BENCHMARK_ARGS)
 profile: $(TARGET)
 	SLC_A="$(SLC_A)" SLC_B="$(SLC_B)" \
 		bash scripts/profile_all.sh "$(PROFILE_OUTPUT)" "$(PROFILE_REPETITIONS)" \
