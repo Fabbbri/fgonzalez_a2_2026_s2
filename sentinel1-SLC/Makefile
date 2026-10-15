@@ -103,10 +103,6 @@ COMMON_ARGS = --a "$(SLC_A)" --b "$(SLC_B)" --x $(WINDOW_X) --y $(WINDOW_Y) \
               --tile-width $(TILE_WIDTH) --tile-height $(TILE_HEIGHT) --quantum $(QUANTUM)
 BENCHMARK_ARGS ?=
 
-build/benchmark: interferogram/metrics/benchmark.cpp Makefile | build
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -std=c++17 $< $(LDFLAGS) $(LDLIBS) -o $@
-
-
 benchmark: $(TARGET) smt
 	BENCHMARK_COMPILER="$(CXX)" BENCHMARK_FLAGS="$(CPPFLAGS) $(GDAL_CFLAGS) $(CXXFLAGS) -pthread -std=c++17 $(LDFLAGS)" \
 	$(PYTHON) scripts/benchmark.py ./$(TARGET) --results-dir "$(OUTPUT)" \
