@@ -26,10 +26,17 @@ int selectSmtWorkers(int requested, std::size_t physicalCores) {
 Smt::Smt(int width, int height, int tileWidth, int tileHeight, int threads)
     : topology_(detectCpuInfo()) {
     const int workers = selectSmtWorkers(threads, topology_.physicalCores);
-    // Reutilizamos el reparto de tiles y la sincronización de CoarseGrained.
-    // El pool se crea una sola vez y sirve para las siguientes llamadas a compute.
-    // Cada hilo hereda la afinidad del coordinador. El SO decide dónde ejecutarlo.
-    pool_ = std::make_unique<CoarseGrained>(width, height, tileWidth, tileHeight, workers);
+    std::vector<int> order;
+    for (std::size_t level = 0;; ++level) {
+        bool found = false;
+        for (const auto& group : topology_.siblingGroups) {
+            if (level < group.size()) { order.push_back(group[level]); found = true; }
+        }
+        if (!found) break;
+    }
+    // Con SMT apagado, repetir CPUs físicas para conservar el mismo P.
+    for (int i = 0; i < workers; ++i) cpus_.push_back(order[i % order.size()]);
+    pool_ = std::make_unique<CoarseGrained>(width, height, tileWidth, tileHeight, workers, cpus_);
 }
 
 void Smt::compute(const std::vector<Complex>& a, const std::vector<Complex>& b,

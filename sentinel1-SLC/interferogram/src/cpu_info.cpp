@@ -1,6 +1,6 @@
 #include "interferogram/cpu_info.hpp"
 #include <fstream>
-#include <set>
+#include <map>
 #include <stdexcept>
 #include <utility>
 #ifdef __linux__
@@ -22,7 +22,7 @@ CpuInfo detectCpuInfo() {
 
     CpuInfo topology;
     // El ID de núcleo puede repetirse entre sockets; el par identifica cada núcleo.
-    std::set<std::pair<int, int>> cores;
+    std::map<std::pair<int, int>, std::size_t> cores;
     for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
         if (!CPU_ISSET(cpu, &allowed)) {
             continue;
@@ -39,9 +39,12 @@ CpuInfo detectCpuInfo() {
 
         topology.allowedCpus.push_back(cpu);
         // Los hilos lógicos del mismo núcleo añaden el mismo par al conjunto.
-        if (cores.emplace(socket, core).second) {
+        const auto inserted = cores.emplace(std::make_pair(socket, core), topology.siblingGroups.size());
+        if (inserted.second) {
+            topology.siblingGroups.emplace_back();
             topology.coreCpus.push_back(cpu);
         }
+        topology.siblingGroups[inserted.first->second].push_back(cpu);
     }
 
     topology.physicalCores = cores.size();

@@ -281,7 +281,8 @@ void testSmt() {
     for (int tileSize : {1, 3, 20}) {
         Smt model(7, 5, tileSize, tileSize);
         if (model.workers() != 2 || model.topology().physicalCores != 1 ||
-            model.topology().allowedCpus.size() != 1) {
+            model.topology().allowedCpus.size() != 1 ||
+            model.cpus() != std::vector<int>(2, originalTopology.allowedCpus.front())) {
             throw std::runtime_error("SMT no respeta los núcleos disponibles");
         }
         std::vector<Complex> a(35), b(35), expected(35), result(35);

@@ -12,6 +12,7 @@ struct CpuInfo {
     std::size_t physicalCores = 0;
     // Una CPU lógica por núcleo físico, elegida dentro de la afinidad permitida.
     std::vector<int> coreCpus;
+    std::vector<std::vector<int>> siblingGroups;
     // Estado informado por Linux para el equipo; unknown si no se puede leer.
     std::string smtControl = "unknown";
     std::string smtActive = "unknown";

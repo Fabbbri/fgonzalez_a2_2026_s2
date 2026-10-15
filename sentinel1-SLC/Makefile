@@ -73,7 +73,7 @@ view-images:
 .PHONY: benchmark profile run-sequential run-fine-grained run-coarse-grained run-smt run-cmp
 PYTHON ?= python3
 REPETITIONS ?= 200
-WARMUPS ?= 3
+WARMUPS ?= 1
 RESULTS_DIR ?= resultsen
 OUTPUT ?= $(RESULTS_DIR)
 THREADS ?= 8
@@ -89,12 +89,12 @@ CSV ?= $(RESULTS_DIR)/*.csv
 PLOT_DIR ?= $(RESULTS_DIR)/plots/comparison
 MPLCONFIGDIR ?= /tmp/sentinel-matplotlib
 export MPLCONFIGDIR
-SLC_A ?= data/coregistered/P09-R2-2023-2024/A.tif
-SLC_B ?= data/coregistered/P09-R2-2023-2024/B.tif
+SLC_A ?= data/coregistered/P09-R2-20240608-20240620/A.tif
+SLC_B ?= data/coregistered/P09-R2-20240608-20240620/B.tif
 WINDOW_X ?= 0
 WINDOW_Y ?= 0
 WINDOW_WIDTH ?= 24444
-WINDOW_HEIGHT ?= 1500
+WINDOW_HEIGHT ?= 1499
 TILE_WIDTH ?= 32
 TILE_HEIGHT ?= 32
 QUANTUM ?= 2

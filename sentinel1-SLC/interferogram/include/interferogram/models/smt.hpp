@@ -7,7 +7,7 @@ namespace interferogram {
 // requested == 0 elige automáticamente 2 * núcleos físicos disponibles.
 int selectSmtWorkers(int requested, std::size_t physicalCores);
 
-// Aproximación por sobresuscripción. No simula instrucciones ni activa SMT físico.
+// Primero un trabajador por núcleo.
 // Reutiliza el pool de CoarseGrained para procesar tiles con más hilos que núcleos.
 class Smt {
 public:
@@ -18,6 +18,7 @@ public:
     const CpuInfo& topology() const {
         return topology_;
     }
+    const std::vector<int>& cpus() const { return cpus_; }
     std::size_t workers() const {
         return pool_->workers();
     }
@@ -27,6 +28,7 @@ public:
     }
 private:
     CpuInfo topology_;
+    std::vector<int> cpus_;
     std::unique_ptr<CoarseGrained> pool_;
 };
 }
