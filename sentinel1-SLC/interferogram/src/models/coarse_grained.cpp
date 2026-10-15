@@ -10,8 +10,8 @@
 
 namespace interferogram {
 CoarseGrained::CoarseGrained(int width, int height, int tileWidth, int tileHeight, int threads,
-                             const std::vector<int>& cpus)
-    : width_(width), samples_(0), tiles_(makeTiles(width, height, tileWidth, tileHeight)) {
+                             const std::vector<int>& cpus, bool dynamicTiles)
+    : width_(width), dynamicTiles_(dynamicTiles), samples_(0), tiles_(makeTiles(width, height, tileWidth, tileHeight)) {
     if (threads <= 0) throw std::invalid_argument("La cantidad de hilos debe ser positiva.");
     if (!cpus.empty() && cpus.size() != static_cast<std::size_t>(threads))
         throw std::invalid_argument("Una CPU por trabajador requerida.");
@@ -92,7 +92,11 @@ void CoarseGrained::work(std::size_t begin, std::size_t end, int cpu) {
         auto& result = *result_;
         lock.unlock();
         // Regiones disjuntas: no se bloquea por píxel ni se comparte la escritura.
-        for (std::size_t t = begin; t < end; ++t) {
+        // fetch_add da un único dueño a cada tile. La publicación de entradas y
+        // la finalización se sincronizan con mutex_; el índice solo asigna trabajo.
+        for (std::size_t t = dynamicTiles_ ? nextTile_.fetch_add(1, std::memory_order_relaxed) : begin;
+             t < (dynamicTiles_ ? tiles_.size() : end);
+             t = dynamicTiles_ ? nextTile_.fetch_add(1, std::memory_order_relaxed) : t + 1) {
             const auto& tile = tiles_[t];
             for (int y = tile.yBegin; y < tile.yEnd; ++y)
                 for (int x = tile.xBegin; x < tile.xEnd; ++x) {
@@ -117,6 +121,7 @@ void CoarseGrained::compute(const std::vector<Complex>& a, const std::vector<Com
     a_ = &a;
     b_ = &b;
     result_ = &result;
+    nextTile_.store(0, std::memory_order_relaxed);
     remaining_ = threads_.size();
     ++generation_;
     ready_.notify_all();

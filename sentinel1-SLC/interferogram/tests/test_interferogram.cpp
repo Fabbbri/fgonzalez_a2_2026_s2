@@ -189,6 +189,26 @@ void testFineGrained() {
 }
 
 void testCoarseGrained() {
+    // Cola dinámica con bordes, más trabajadores que tiles y reinicio por generación.
+    for (int tileSize : {1, 3, 20}) {
+        for (int workers : {1, 2, 8}) {
+            CoarseGrained dynamic(7, 5, tileSize, tileSize, workers, {}, true);
+            std::vector<Complex> a(35), b(35), result(35), expected(35);
+            for (int run = 0; run < 20; ++run) {
+                for (int i = 0; i < 35; ++i) {
+                    a[i] = {i + double(run), -i * 0.5};
+                    b[i] = {run * 0.25, i - 4.0};
+                    result[i] = {NAN, NAN};
+                }
+                computeInterferogramSequential(a, b, expected);
+                dynamic.compute(a, b, result);
+                for (int i = 0; i < 35; ++i)
+                    if (result[i].real != expected[i].real || result[i].imag != expected[i].imag)
+                        throw std::runtime_error("Cola dinámica omite o altera píxeles");
+            }
+        }
+    }
+
     for (int tileSize : {1, 3, 20}) {
         for (int workers : {1, 2, 8}) {
             CoarseGrained pool(7, 5, tileSize, tileSize, workers);
@@ -237,10 +257,13 @@ void testCoarseGrained() {
 }
 
 void testSmt() {
+    if (selectSmtWorkers(0, 8, 12) != 12 || selectSmtWorkers(0, 8, 8) != 16 ||
+        selectSmtWorkers(1, 8, 12) != 1 || selectSmtWorkers(2, 8, 12) != 2)
+        throw std::runtime_error("Selección SMT incorrecta para CPUs lógicas o controles explícitos");
     if (selectSmtWorkers(0, 8) != 16 || selectSmtWorkers(9, 8) != 9 || selectSmtWorkers(8, 8) != 8) {
         throw std::runtime_error("Selección de hilos SMT incorrecta");
     }
-    for (int count : {-1, 1, 7}) {
+    for (int count : {-1}) {
         bool rejected = false;
         try {
             selectSmtWorkers(count, 8);
@@ -248,7 +271,7 @@ void testSmt() {
             rejected = true;
         }
         if (!rejected) {
-            throw std::runtime_error("SMT aceptó menos trabajadores que núcleos");
+            throw std::runtime_error("SMT aceptó trabajadores negativos");
         }
     }
     bool rejected = false;

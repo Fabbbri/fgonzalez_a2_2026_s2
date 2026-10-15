@@ -4,11 +4,10 @@
 #include <memory>
 
 namespace interferogram {
-// requested == 0 elige automáticamente 2 * núcleos físicos disponibles.
-int selectSmtWorkers(int requested, std::size_t physicalCores);
+// requested == 0 usa las CPUs lógicas si hay hermanos SMT o el doble de núcleos.
+int selectSmtWorkers(int requested, std::size_t physicalCores, std::size_t logicalCpus = 0);
 
-// Primero un trabajador por núcleo.
-// Reutiliza el pool de CoarseGrained para procesar tiles con más hilos que núcleos.
+// Asigna CPUs por núcleo y después por hermano SMT; distribuye tiles dinámicamente.
 class Smt {
 public:
     Smt(int width, int height, int tileWidth, int tileHeight, int threads = 0);
@@ -22,7 +21,7 @@ public:
     std::size_t workers() const {
         return pool_->workers();
     }
-    // Cuenta tiles, no hilos: un trabajador puede recibir varios o ninguno.
+    // Devuelve la cantidad total de tiles.
     std::size_t tasks() const {
         return pool_->tasks();
     }

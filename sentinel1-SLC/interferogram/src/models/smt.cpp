@@ -3,29 +3,27 @@
 #include <stdexcept>
 
 namespace interferogram {
-int selectSmtWorkers(int requested, std::size_t physicalCores) {
-    if (physicalCores == 0 || requested < 0) {
+int selectSmtWorkers(int requested, std::size_t physicalCores, std::size_t logicalCpus) {
+    if (physicalCores == 0 || requested < 0 || (logicalCpus && logicalCpus < physicalCores)) {
         throw std::invalid_argument("Topología o cantidad de hilos inválida para SMT.");
     }
-    // Cero indica selección automática: dos trabajadores por núcleo disponible.
+    // Resuelve la cantidad de trabajadores cuando requested es cero.
     if (requested == 0) {
-        // Comprobar el límite antes de multiplicar y convertir a int.
-        if (physicalCores > static_cast<std::size_t>(std::numeric_limits<int>::max() / 2)) {
-            throw std::invalid_argument("Demasiados núcleos para elegir 2*C trabajadores.");
+        const auto limit = static_cast<std::size_t>(std::numeric_limits<int>::max());
+        if (logicalCpus > physicalCores) {
+            if (logicalCpus > limit) throw std::invalid_argument("Demasiadas CPUs lógicas.");
+            requested = static_cast<int>(logicalCpus);
+        } else {
+            if (physicalCores > limit / 2) throw std::invalid_argument("Demasiados núcleos para elegir 2*C.");
+            requested = static_cast<int>(physicalCores * 2);
         }
-        requested = static_cast<int>(physicalCores * 2);
-    }
-    // Un valor igual a los núcleos físicos sirve como control.
-    if (static_cast<std::size_t>(requested) < physicalCores) {
-        throw std::invalid_argument("SMT requiere --threads al menos igual a " +
-                                    std::to_string(physicalCores) + " núcleos físicos disponibles.");
     }
     return requested;
 }
 
 Smt::Smt(int width, int height, int tileWidth, int tileHeight, int threads)
     : topology_(detectCpuInfo()) {
-    const int workers = selectSmtWorkers(threads, topology_.physicalCores);
+    const int workers = selectSmtWorkers(threads, topology_.physicalCores, topology_.allowedCpus.size());
     std::vector<int> order;
     for (std::size_t level = 0;; ++level) {
         bool found = false;
@@ -36,7 +34,7 @@ Smt::Smt(int width, int height, int tileWidth, int tileHeight, int threads)
     }
     // Con SMT apagado, repetir CPUs físicas para conservar el mismo P.
     for (int i = 0; i < workers; ++i) cpus_.push_back(order[i % order.size()]);
-    pool_ = std::make_unique<CoarseGrained>(width, height, tileWidth, tileHeight, workers, cpus_);
+    pool_ = std::make_unique<CoarseGrained>(width, height, tileWidth, tileHeight, workers, cpus_, true);
 }
 
 void Smt::compute(const std::vector<Complex>& a, const std::vector<Complex>& b,

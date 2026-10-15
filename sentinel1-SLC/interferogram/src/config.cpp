@@ -138,7 +138,7 @@ void printHelp(std::ostream& out) {
         << "  --tile-width N Ancho del tile (32)\n"
         << "  --tile-height N Alto del tile (32)\n"
         << "  --quantum N    Píxeles por turno en fine-grained (1)\n"
-        << "  --threads N    Trabajadores: coarse-grained (2), smt (2*C automático), cmp (núcleos disponibles)\n"
+        << "  --threads N    Trabajadores: coarse-grained (2), smt (CPUs lógicas o 2*C automático), cmp (núcleos disponibles)\n"
         << "  --allow-nodata Conservar NoData y excluir resultados no finitos del resumen\n"
         << "  --help         Mostrar ayuda\n"
         << "Misma ventana para A/B, contenida en las dimensiones de cada TIFF.\n"

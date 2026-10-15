@@ -164,9 +164,12 @@ int main(int argc, char* argv[]) {
         }
         if (smt) {
             const auto& topology = smt->topology();
-            modelMetadata << "Execution: " << (smt->workers() > topology.physicalCores
-                          ? "SMT approximation by thread oversubscription\n"
-                          : "SMT control without oversubscription\n")
+            modelMetadata << "Execution: " << (smt->workers() > topology.allowedCpus.size()
+                          ? "OS thread oversubscription beyond available logical CPUs\n"
+                          : smt->workers() > topology.physicalCores
+                            ? "Pinned workers using sibling logical CPUs\n"
+                            : "Control: one worker per selected physical core\n")
+                      << "Tile scheduling: dynamic atomic queue\n"
                       << "Workers: " << smt->workers()
                       << "\nTiles: " << smt->tasks()
                       << "\nAvailable physical cores: " << topology.physicalCores

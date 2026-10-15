@@ -4,13 +4,14 @@
 #include <mutex>
 #include <exception>
 #include <thread>
+#include <atomic>
 
 namespace interferogram {
 // Bloques completos
 class CoarseGrained {
 public:
     CoarseGrained(int width, int height, int tileWidth, int tileHeight, int threads,
-                  const std::vector<int>& cpus = {});
+                  const std::vector<int>& cpus = {}, bool dynamicTiles = false);
     ~CoarseGrained();
     CoarseGrained(const CoarseGrained&) = delete;
     CoarseGrained& operator=(const CoarseGrained&) = delete;
@@ -22,6 +23,8 @@ private:
     void work(std::size_t begin, std::size_t end, int cpu);
     void stop();
     int width_;
+    bool dynamicTiles_;
+    std::atomic<std::size_t> nextTile_{0};
     std::size_t samples_;
     std::vector<Tile> tiles_;
     std::vector<std::thread> threads_;
