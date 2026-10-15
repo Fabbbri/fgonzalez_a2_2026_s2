@@ -1,13 +1,13 @@
 # ==========================================
-# CONFIGURACIÓN Y VARIABLES DE COMPILACIÓN MACOS
+# CONFIGURACIÓN PARA UBUNTU
 # ==========================================
 
-CXX = clang++
+CXX = g++
 CXXFLAGS = -O2 -Wall -Wextra -std=c++17 -pthread
-EIGEN = -I/opt/homebrew/include/eigen3
+EIGEN = -I/usr/include/eigen3
 
-SRCS = $(wildcard *.cpp)
-TARGETS = $(SRCS:.cpp=)
+TARGETS = main fino grueso smt cmp
+HEADERS = mnist.h checksum.h
 
 # ==========================================
 # REGLAS
@@ -15,9 +15,9 @@ TARGETS = $(SRCS:.cpp=)
 
 all: $(TARGETS)
 
-# Enlazado de ejecutable dinamico @ a partir de su archivo fuente <
-%: %.cpp
-	$(CXX) $(CXXFLAGS) $(EIGEN) $< -o $@
+# Cada ejecutable X se construye desde X.cpp + lector.cpp
+$(TARGETS): %: %.cpp lector.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) $(EIGEN) $< lector.cpp -o $@
 
 clean:
 	rm -f $(TARGETS)

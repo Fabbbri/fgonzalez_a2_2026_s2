@@ -1,0 +1,19 @@
+repeticiones=200
+hilos=1,2,4,8
+hilos_smt=8,12
+estados_smt=on,off
+carga=--samples 8 
+nucleos_fisicos_disponibles=8 cpus_logicas_disponibles=12 smt_activo_linux=1
+nucleo=0 cpus=0;1
+nucleo=1 cpus=2;3
+nucleo=2 cpus=4;5
+nucleo=3 cpus=6;7
+nucleo=4 cpus=8
+nucleo=5 cpus=9
+nucleo=6 cpus=10
+nucleo=7 cpus=11
+repeticiones_perf=20
+alcance_perf=process
+eventos_perf=task-clock,context-switches,cpu-migrations,cycles,instructions,cache-misses
+referencia=sequential.csv
+repeticiones_sequential=200
