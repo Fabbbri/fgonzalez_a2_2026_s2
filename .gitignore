@@ -147,7 +147,7 @@ __pycache__/
 *.tgz
 *.zip
 
---- Sentinel-1 SLC project specific ---
+# --- Sentinel-1 SLC project specific ---
 /sentinel1-SLC/data/raw/
 /sentinel1-SLC/build/
 /sentinel1-SLC/data/coregistered/

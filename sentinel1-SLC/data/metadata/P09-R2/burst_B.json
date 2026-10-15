@@ -1,0 +1,67 @@
+{
+  "@odata.mediaContentType": "application/octet-stream",
+  "Id": "cc0c2abf-15a4-4665-9987-185e5f098adb",
+  "Name": "S1A-SLC-20250122T112314-179297-IW2-VV-464635",
+  "ContentType": "application/octet-stream",
+  "S3Path": "/eodata/Sentinel-1/SAR/IW_SLC__1S/2025/01/22/S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE/measurement/s1a-iw2-slc-vv-20250122t112254-20250122t112319-057556-0716fb-005.tiff",
+  "ContentDate": {
+    "Start": "2025-01-22T11:23:14.935379Z",
+    "End": "2025-01-22T11:23:15.968702Z"
+  },
+  "Footprint": "geography'SRID=4326;POLYGON ((-83.224649 9.774346, -83.640198 9.859513, -84.032558 9.939538, -84.071205 9.74724, -83.678245 9.671262, -83.262095 9.590142, -83.224649 9.774346))'",
+  "GeoFootprint": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -83.224649,
+          9.774346
+        ],
+        [
+          -83.640198,
+          9.859513
+        ],
+        [
+          -84.032558,
+          9.939538
+        ],
+        [
+          -84.071205,
+          9.74724
+        ],
+        [
+          -83.678245,
+          9.671262
+        ],
+        [
+          -83.262095,
+          9.590142
+        ],
+        [
+          -83.224649,
+          9.774346
+        ]
+      ]
+    ]
+  },
+  "ParentProductId": "dc704ae2-9212-4d54-b0a0-155406e94b73",
+  "ParentProductName": "S1A_IW_SLC__1SDV_20250122T112254_20250122T112321_057556_0716FB_76F4.SAFE",
+  "ByteOffset": 1026798315,
+  "BurstId": 179297,
+  "AbsoluteBurstId": 123625007,
+  "AzimuthTime": "2025-01-22T11:23:13.929594Z",
+  "AzimuthAnxTime": 2810.0628809931,
+  "ParentProductType": "IW_SLC__1S",
+  "SwathIdentifier": "IW2",
+  "RelativeOrbitNumber": 84,
+  "OrbitDirection": "DESCENDING",
+  "PlatformSerialIdentifier": "A",
+  "PolarisationChannels": "VV",
+  "OperationalMode": "IW",
+  "DatatakeID": 464635,
+  "Lines": 10500,
+  "LinesPerBurst": 1500,
+  "SamplesPerBurst": 24445,
+  "BeginningDateTime": "2025-01-22T11:23:14.935379Z",
+  "EndingDateTime": "2025-01-22T11:23:15.968702Z"
+}
