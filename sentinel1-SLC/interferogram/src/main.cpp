@@ -11,6 +11,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <memory>
+#include <sstream>
 #include <cmath>
 #include <gdal_priv.h>
 #include <filesystem>
@@ -90,7 +91,8 @@ int main(int argc, char* argv[]) {
         std::vector<Complex> result(a.size());
         validateInterferogramInputs(a, b, result);
 
-        // Preparar la partición fuera de la medición del kernel.
+        // Tiempo del modelo: preparación, cálculo, sincronización y cierre.
+        const auto modelStart = std::chrono::steady_clock::now();
         const auto tiles = config.mode == "tiled"
             ? makeTiles(config.width, config.height, config.tileWidth, config.tileHeight)
             : std::vector<Tile>{};
@@ -141,6 +143,62 @@ int main(int argc, char* argv[]) {
         const double milliseconds =
             std::chrono::duration<double, std::milli>(stop - start).count();
 
+        // Conservar metadatos antes de destruir los trabajadores.
+        std::ostringstream modelMetadata;
+        if (config.mode == "tiled") {
+            modelMetadata << "Tile size: " << config.tileWidth << " x " << config.tileHeight
+                      << "\nTiles: " << tiles.size() << '\n';
+        }
+        if (fineGrained) {
+            modelMetadata << "Execution: cooperative round-robin (1 OS thread)\n"
+                      << "Tile size: " << config.tileWidth << " x " << config.tileHeight
+                      << "\nTasks: " << fineGrained->tasks()
+                      << "\nQuantum (pixels): " << config.quantum
+                      << "\nRounds: " << fineGrained->rounds()
+                      << "\nDispatches: " << fineGrained->dispatches() << '\n';
+        }
+        if (coarseGrained) {
+            modelMetadata << "Execution: persistent OS threads, complete tiles\n"
+                      << "Workers: " << coarseGrained->workers()
+                      << "\nTiles: " << coarseGrained->tasks() << '\n';
+        }
+        if (smt) {
+            const auto& topology = smt->topology();
+            modelMetadata << "Execution: " << (smt->workers() > topology.physicalCores
+                          ? "SMT approximation by thread oversubscription\n"
+                          : "SMT control without oversubscription\n")
+                      << "Workers: " << smt->workers()
+                      << "\nTiles: " << smt->tasks()
+                      << "\nAvailable physical cores: " << topology.physicalCores
+                      << "\nAllowed logical CPUs: " << topology.allowedCpus.size()
+                      << "\nHost SMT control: " << topology.smtControl
+                      << "\nHost SMT active: " << topology.smtActive
+                      << "\nAllowed CPU IDs:";
+            for (int cpu : topology.allowedCpus) {
+                modelMetadata << ' ' << cpu;
+            }
+            modelMetadata << "\nPinned CPU IDs:";
+            for (int cpu : smt->cpus()) modelMetadata << ' ' << cpu;
+            modelMetadata << "\nHardware SMT is not enabled or changed by this program.\n";
+        }
+        if (cmp) {
+            modelMetadata << "Execution: CMP, one worker per physical core\n"
+                      << "Workers: " << cmp->workers()
+                      << "\nTiles: " << cmp->tasks() << "\nPinned CPU IDs:";
+            for (int cpu : cmp->cpus()) {
+                modelMetadata << ' ' << cpu;
+            }
+            modelMetadata << '\n';
+        }
+        const auto closeStart = std::chrono::steady_clock::now();
+        fineGrained.reset();
+        coarseGrained.reset();
+        smt.reset();
+        cmp.reset();
+        const double modelMilliseconds = std::chrono::duration<double, std::milli>(
+            stop - modelStart).count() + std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - closeStart).count();
+
         double exportMilliseconds = 0;
         if (!config.output.empty()) {
             const auto exportStart = std::chrono::steady_clock::now();
@@ -166,6 +224,7 @@ int main(int argc, char* argv[]) {
                   << "Offset: " << config.x << ", " << config.y << '\n'
                   << "Samples: " << a.size() << "\nMode: " << config.mode << '\n'
                   << std::fixed << std::setprecision(6)
+                  << "Model time: " << modelMilliseconds << " ms\n"
                   << "Kernel time: " << milliseconds << " ms\n"
                   << "Export time: " << exportMilliseconds << " ms\n"
                   << std::setprecision(0)
@@ -175,49 +234,7 @@ int main(int argc, char* argv[]) {
         std::cout << "Valid result samples: " << validSamples
                   << "\nInvalid result samples: " << result.size() - validSamples
                   << "\nNoData policy: " << (config.allowNoData ? "preserve; exclude nonfinite results from sum" : "reject") << '\n';
-        if (config.mode == "tiled") {
-            std::cout << "Tile size: " << config.tileWidth << " x " << config.tileHeight
-                      << "\nTiles: " << tiles.size() << '\n';
-        }
-        if (fineGrained) {
-            std::cout << "Execution: cooperative round-robin (1 OS thread)\n"
-                      << "Tile size: " << config.tileWidth << " x " << config.tileHeight
-                      << "\nTasks: " << fineGrained->tasks()
-                      << "\nQuantum (pixels): " << config.quantum
-                      << "\nRounds: " << fineGrained->rounds()
-                      << "\nDispatches: " << fineGrained->dispatches() << '\n';
-        }
-        if (coarseGrained) {
-            std::cout << "Execution: persistent OS threads, complete tiles\n"
-                      << "Workers: " << coarseGrained->workers()
-                      << "\nTiles: " << coarseGrained->tasks() << '\n';
-        }
-        if (smt) {
-            const auto& topology = smt->topology();
-            std::cout << "Execution: " << (smt->workers() > topology.physicalCores
-                          ? "SMT approximation by thread oversubscription\n"
-                          : "SMT control without oversubscription\n")
-                      << "Workers: " << smt->workers()
-                      << "\nTiles: " << smt->tasks()
-                      << "\nAvailable physical cores: " << topology.physicalCores
-                      << "\nAllowed logical CPUs: " << topology.allowedCpus.size()
-                      << "\nHost SMT control: " << topology.smtControl
-                      << "\nHost SMT active: " << topology.smtActive
-                      << "\nAllowed CPU IDs:";
-            for (int cpu : topology.allowedCpus) {
-                std::cout << ' ' << cpu;
-            }
-            std::cout << "\nHardware SMT is not enabled or changed by this program.\n";
-        }
-        if (cmp) {
-            std::cout << "Execution: CMP, one worker per physical core\n"
-                      << "Workers: " << cmp->workers()
-                      << "\nTiles: " << cmp->tasks() << "\nPinned CPU IDs:";
-            for (int cpu : cmp->cpus()) {
-                std::cout << ' ' << cpu;
-            }
-            std::cout << '\n';
-        }
+        std::cout << modelMetadata.str();
         return 0;
     // Convertir errores de configuración, lectura o cálculo en un fallo de la CLI.
     } catch (const std::exception& error) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark de Sentinel: kernel existente, referencia compartida y campañas SMT on/off."""
+"""Benchmark de Sentinel: tiempo del modelo, referencia compartida y campañas SMT on/off."""
 import argparse
 import copy
 import csv
@@ -26,7 +26,7 @@ FIELDS = ("modelo", "hilos", "repeticion", "ancho", "alto", "origen_x", "origen_
           "smt_activo_linux", "afinidad_cpus", "cpus_permitidas", "sibling_groups",
           "referencia_tipo", "referencia_csv", "resultado_hash", "muestras_validas", "muestras_invalidas",
           "referencia_smt", "alcance_tiempo")
-SCOPE = "kernel_sin_lectura_creacion_cierre_exportacion_hash"
+SCOPE = "preparacion_creacion_calculo_sincronizacion_cierre_sin_io_hash"
 ALIASES = {"sequential": "sequential", "fine": "fine-grained", "fine-grained": "fine-grained",
            "coarse": "coarse-grained", "coarse-grained": "coarse-grained", "smt": "smt", "cmp": "cmp"}
 
@@ -49,6 +49,12 @@ def topology(binary=None):
         sibling_groups="|".join(";".join(map(str, c)) for c in cores),
         smt_control=state("control"), smt_active=state("active"))
     return ",".join(f"{k}={v}" for k, v in topo.items()), topo
+
+
+def smt_cpus(topo, workers):
+    groups = [list(map(int, group.split(";"))) for group in topo["sibling_groups"].split("|")]
+    order = [group[level] for level in range(max(map(len, groups))) for group in groups if level < len(group)]
+    return [order[i % len(order)] for i in range(workers)]
 
 
 def file_hash(path):
@@ -122,7 +128,7 @@ def campaign(args):
                 "timing_scope": SCOPE, "warmups_per_configuration": args.warmups, "hash": "sha256",
                 "binary_sha256": file_hash(Path(binary)),
                 "input_sha256": {"a": input_hash_a, "b": input_hash_b},
-                "correctness_hash": "fnv1a64", "affinity_policy": "modelos originales sin modificar",
+                "correctness_hash": "fnv1a64", "affinity_policy": "SMT hermanos por nivel; CMP un trabajador por núcleo",
                 "status": "incomplete", "environment": {key: os.environ.get(key, "unknown")
                     for key in ("BENCHMARK_COMPILER", "BENCHMARK_FLAGS")}}
     try:
@@ -163,27 +169,29 @@ def campaign(args):
         check_topology()
         fields = dict(line.split(": ", 1) for line in result.stdout.splitlines() if ": " in line)
         try:
-            total = float(fields["Kernel time"].removesuffix(" ms"))
+            total = float(fields["Model time"].removesuffix(" ms"))
+            kernel = float(fields["Kernel time"].removesuffix(" ms"))
             digest = fields["Result hash (fnv1a64)"]
             count = int(fields.get("Workers", "1"))
             valid = int(fields["Valid result samples"])
             invalid = int(fields["Invalid result samples"])
         except (KeyError, ValueError) as error:
-            raise ValueError("Faltan tiempo de kernel, huella o metadatos de la ejecución") from error
-        if (not math.isfinite(total) or total <= 0 or fields.get("Mode") != model
+            raise ValueError("Faltan tiempos del modelo/kernel, huella o metadatos de la ejecución") from error
+        if (not math.isfinite(total) or total <= 0 or not math.isfinite(kernel) or not 0 < kernel <= total or fields.get("Mode") != model
                 or fields.get("Window") != f"{args.width} x {args.height}"
                 or fields.get("Offset") != f"{args.x}, {args.y}"
                 or count != (workers or 1) or valid + invalid != args.width * args.height
                 or min(valid, invalid) < 0 or not re.fullmatch("[0-9a-f]{1,16}", digest)):
             raise ValueError("Tiempo o configuración informada inválidos (amplíe la ventana si el tiempo redondea a cero)")
-        affinity = "sin_fijar_SO" if model in ("smt", "coarse-grained") else "no_aplica"
-        if model == "cmp":
+        affinity = "sin_fijar_SO" if model == "coarse-grained" else "no_aplica"
+        if model in ("smt", "cmp"):
             affinity = ";".join(fields.get("Pinned CPU IDs", "").split())
-            expected = ";".join(topo["core_cpus"].split(";")[:count])
+            expected = (";".join(map(str, smt_cpus(topo, count))) if model == "smt"
+                        else ";".join(topo["core_cpus"].split(";")[:count]))
             if affinity != expected:
-                raise ValueError("La afinidad CMP informada no corresponde a los núcleos esperados")
+                raise ValueError("La afinidad informada no corresponde a los núcleos esperados")
         record = dict(workers=str(count), affinity=affinity, process_ms=process_ms,
-                      valid_samples=valid, invalid_samples=invalid)
+                      valid_samples=valid, invalid_samples=invalid, kernel_ms=kernel)
         return record, total, digest
 
     expected_workload = (str(args.width), str(args.height), str(args.x), str(args.y),
@@ -214,6 +222,7 @@ def campaign(args):
                 if (row["modelo"] != {"fine-grained": "fine", "coarse-grained": "coarse"}.get(model, model)
                         or tuple(row[k] for k in WORKLOAD) != expected_workload
                         or tuple(int(row[k]) for k in ("K", "tile_ancho", "tile_alto")) != policy
+                        or (model == "smt" and row["afinidad_cpus"] != ";".join(map(str, smt_cpus(topo, int(row["hilos"])))))
                         or row["alcance_tiempo"] != SCOPE
                         or row["referencia_tipo"] != "compartida"
                         or row["referencia_smt"] != reference[0]["referencia_smt"]
@@ -284,7 +293,7 @@ def campaign(args):
                         hilos=p, repeticion=repetition, ancho=args.width, alto=args.height, origen_x=args.x, origen_y=args.y,
                         tile_ancho=args.tile_width, tile_alto=args.tile_height, K=args.quantum if model == "fine-grained" else 0,
                         allow_nodata=int(args.allow_nodata), slc_a_hash=input_hash_a, slc_b_hash=input_hash_b,
-                        tiempo_total_ms=total, tiempo_kernel_ms=total, tiempo_proceso_ms=record["process_ms"],
+                        tiempo_total_ms=total, tiempo_kernel_ms=record["kernel_ms"], tiempo_proceso_ms=record["process_ms"],
                         tiempo_secuencial_ms=base, speedup=base/total, eficiencia_paralela=base/total/p,
                         nucleos_fisicos_disponibles=physical, cpus_logicas_disponibles=logical,
                         smt_activo_linux=topo.get("smt_active", "unknown"), afinidad_cpus=cpus,
@@ -309,7 +318,7 @@ def campaign(args):
         with baseline_path.open(newline="") as stream:
             reader = csv.DictReader(stream)
             if tuple(reader.fieldnames or ()) != FIELDS:
-                raise ValueError("Referencia incompatible: use un CSV del nuevo benchmark de kernel")
+                raise ValueError("Referencia incompatible: use un CSV del benchmark de tiempo del modelo")
             baseline_rows = list(reader)
         if len(baseline_rows) < 2:
             raise ValueError("La referencia requiere al menos dos mediciones")
@@ -440,7 +449,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary")
     parser.add_argument("--repetitions", type=int, default=200)
-    parser.add_argument("--warmups", type=int, default=3)
+    parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--results-dir", type=Path, default=Path("resultsen"))
     parser.add_argument("--models", nargs="+", choices=ALIASES)
     parser.add_argument("--model", choices=ALIASES)
@@ -452,12 +461,12 @@ def main():
     parser.add_argument("--threads", type=int)
     parser.add_argument("--baseline-csv", type=Path)
     parser.add_argument("--resume", action="store_true", help="Conservar datos y completar hasta --repetitions por configuración")
-    parser.add_argument("--a", type=Path, default=Path("data/coregistered/P09-R2-2023-2024/A.tif"))
-    parser.add_argument("--b", type=Path, default=Path("data/coregistered/P09-R2-2023-2024/B.tif"))
+    parser.add_argument("--a", type=Path, default=Path("data/coregistered/P09-R2-20240608-20240620/A.tif"))
+    parser.add_argument("--b", type=Path, default=Path("data/coregistered/P09-R2-20240608-20240620/B.tif"))
     parser.add_argument("--x", type=int, default=0)
     parser.add_argument("--y", type=int, default=0)
     parser.add_argument("--width", type=int, default=24444)
-    parser.add_argument("--height", type=int, default=1500)
+    parser.add_argument("--height", type=int, default=1499)
     parser.add_argument("--tile-width", type=int, default=32)
     parser.add_argument("--tile-height", type=int, default=32)
     parser.add_argument("--quantum", type=int, default=2)

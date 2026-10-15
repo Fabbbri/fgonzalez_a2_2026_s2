@@ -31,7 +31,7 @@ class BenchmarkTests(unittest.TestCase):
         _, topo = benchmark.topology()
         physical = int(topo['physical_cores'])
         self.args = argparse.Namespace(binary=str(ROOT/'build/interferogram'), results_dir=Path(temp.name),
-            models=['sequential','fine','coarse','smt','cmp'], model=None, repetitions=2, warmups=3,
+            models=['sequential','fine','coarse','smt','cmp'], model=None, repetitions=2, warmups=1,
             a=self.inputs/'A.tif', b=self.inputs/'B.tif', x=2, y=3, width=128, height=64,
             tile_width=16, tile_height=16, quantum=2, allow_nodata=True,
             thread_counts='1,2', cmp_thread_counts='1', smt_thread_counts=str(physical),
@@ -45,6 +45,11 @@ class BenchmarkTests(unittest.TestCase):
         with (self.args.results_dir/name).open() as stream:
             return list(csv.DictReader(stream))
 
+    def test_smt_cpu_order_and_oversubscription(self):
+        self.assertEqual(benchmark.smt_cpus({'sibling_groups': '0;4|1;5'}, 6),
+                         [0, 1, 4, 5, 0, 1])
+        self.assertEqual(benchmark.smt_cpus({'sibling_groups': '0|1'}, 4), [0, 1, 0, 1])
+
     def test_native_models_kernel_time_correctness_and_layout(self):
         result = benchmark.run_campaigns(self.args)
         all_rows = []
@@ -54,15 +59,15 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(set(rows[0]), set(benchmark.FIELDS))
             self.assertTrue(path.with_name(path.stem+'-summary.csv').exists())
             for row in rows:
-                self.assertEqual(row['tiempo_total_ms'], row['tiempo_kernel_ms'])
+                self.assertGreaterEqual(float(row['tiempo_total_ms']), float(row['tiempo_kernel_ms']))
                 self.assertGreater(float(row['tiempo_proceso_ms']), float(row['tiempo_kernel_ms']))
                 speedup = float(row['tiempo_secuencial_ms'])/float(row['tiempo_total_ms'])
                 self.assertAlmostEqual(float(row['speedup']), speedup)
                 self.assertAlmostEqual(float(row['eficiencia_paralela']), speedup/int(row['hilos']))
         self.assertEqual(len({r['resultado_hash'] for r in all_rows}), 1)
-        self.assertEqual({r['afinidad_cpus'] for r in all_rows if r['modelo']=='smt'}, {'sin_fijar_SO'})
+        self.assertEqual({r['afinidad_cpus'] for r in all_rows if r['modelo']=='smt'}, {';'.join(map(str, benchmark.smt_cpus(benchmark.topology()[1], int(self.args.smt_thread_counts))))})
         commands = [json.loads(line) for line in (result['logs']/'commands.jsonl').read_text().splitlines()]
-        self.assertEqual(len(commands), (3+2)*6)
+        self.assertEqual(len(commands), (1+2)*6)
         self.assertTrue(all('--output' not in command for command in commands))
         groups, _ = plot_metrics.load([str(self.args.results_dir/'*.csv')])
         self.assertEqual(len(groups), 6)
@@ -87,6 +92,20 @@ class BenchmarkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'CSV previo incompatible'):
             benchmark.run_campaigns(self.args)
         self.assertEqual((self.args.results_dir/'coarse.csv').read_bytes(),old)
+
+    def test_resume_rejects_old_unpinned_smt(self):
+        self.args.models = ['smt']
+        benchmark.campaign(self.args)
+        label = 'smt-' + {'1': 'on', '0': 'off'}.get(benchmark.topology()[1]['smt_active'], 'unknown') + '.csv'
+        path = self.args.results_dir / label
+        rows = self.rows(label)
+        for row in rows:
+            row['afinidad_cpus'] = 'sin_fijar_SO'
+        rebase_reference.write_rows(path, rows)
+        self.args.baseline_csv = self.args.results_dir / 'sequential.csv'
+        self.args.resume = True
+        with self.assertRaisesRegex(ValueError, 'CSV previo incompatible'):
+            benchmark.run_campaigns(self.args)
 
     def test_external_reference_and_new_smt_reference_preserve_sequential(self):
         self.args.models=['sequential']
@@ -174,21 +193,38 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(campaign.call_args.args[0].baseline_label,'sequential-off')
         self.assertEqual(control.call_args.args,('on','make'))
 
-    def test_metrics_depend_on_kernel_not_wall_clock(self):
+    def test_legacy_kernel_reference_is_rejected(self):
+        self.args.models = ['sequential']
+        benchmark.campaign(self.args)
+        rows = self.rows('sequential.csv')
+        for row in rows:
+            row['alcance_tiempo'] = 'kernel_sin_lectura_creacion_cierre_exportacion_hash'
+        baseline = self.args.results_dir / 'sequential.csv'
+        rebase_reference.write_rows(baseline, rows)
+        self.args.baseline_csv = baseline
+        self.args.models = ['coarse']
+        with self.assertRaisesRegex(ValueError, 'alcance'):
+            benchmark.campaign(self.args)
+        with self.assertRaisesRegex(ValueError, 'alcance'):
+            plot_metrics.load([str(baseline)])
+
+    def test_metrics_depend_on_model_not_kernel_or_wall_clock(self):
         self.args.models=['sequential']
         text='''Mode: sequential
 Window: 128 x 64
 Offset: 2, 3
+Model time: 3.000000 ms
 Kernel time: 2.000000 ms
 Result hash (fnv1a64): abcdef
 Valid result samples: 8192
 Invalid result samples: 0
 '''
         with patch.object(benchmark.subprocess,'run',return_value=subprocess.CompletedProcess([],0,text,'')), \
-             patch.object(benchmark.time,'perf_counter',side_effect=[0.,1.]*5):
+             patch.object(benchmark.time,'perf_counter',side_effect=[0.,1.]*3):
             benchmark.campaign(self.args)
         for row in self.rows('sequential.csv'):
-            self.assertEqual(float(row['tiempo_total_ms']),2)
+            self.assertEqual(float(row['tiempo_total_ms']),3)
+            self.assertEqual(float(row['tiempo_kernel_ms']),2)
             self.assertEqual(float(row['tiempo_proceso_ms']),1000)
 
 if __name__=='__main__': unittest.main()

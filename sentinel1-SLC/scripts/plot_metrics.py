@@ -50,10 +50,10 @@ def load(patterns):
             if "repeticion" not in (reader.fieldnames or []):
                 continue
             for row in reader:
-                if row.get("alcance_tiempo") != "kernel_sin_lectura_creacion_cierre_exportacion_hash":
-                    raise ValueError("CSV con alcance temporal incompatible con el benchmark de kernel")
-                if not math.isclose(float(row["tiempo_total_ms"]), float(row["tiempo_kernel_ms"]), rel_tol=1e-12):
-                    raise ValueError("El tiempo principal no coincide con el tiempo del kernel")
+                if row.get("alcance_tiempo") != "preparacion_creacion_calculo_sincronizacion_cierre_sin_io_hash":
+                    raise ValueError("CSV con alcance temporal incompatible con el benchmark del modelo")
+                if not 0 < float(row["tiempo_kernel_ms"]) <= float(row["tiempo_total_ms"]):
+                    raise ValueError("El tiempo del kernel debe ser positivo y no superar el del modelo")
                 current = tuple(row[k] for k in WORKLOAD)
                 if workload is not None and current != workload:
                     raise ValueError("Los CSV mezclan cargas diferentes; grafícalas por separado")
@@ -254,7 +254,7 @@ def generate(groups, workload, output):
     captions = [sample_caption(k, groups[k]) for k in keys]
     colors = [COLORS[k[0][0]] for k in keys]
     width, height, x, y, hash_a, hash_b, nodata = workload
-    context = f"Sentinel: ventana {width}×{height} · origen ({x}, {y}) · NoData={nodata} · tiempo de kernel"
+    context = f"Sentinel: ventana {width}×{height} · origen ({x}, {y}) · NoData={nodata} · tiempo del modelo"
     shared = any(rows.baseline is not None for rows in groups.values())
     confidence = ("IC95 aproximado; speedup compartido = cociente de medias (método delta)." if shared else
                   "Barras de error: IC95 aproximado de la media.") + " n indica las repeticiones leídas del CSV."
@@ -388,7 +388,7 @@ def generate(groups, workload, output):
                "Evaluar la precisión con el margen relativo (margen/media) de tiempo y speedup; "
                "un número fijo de repeticiones no garantiza precisión suficiente.", "",
                "Registrar CPU, núcleos/hilos lógicos, sistema operativo, compilador, flags y condiciones "
-               "de carga del equipo en el informe. Mantener TIFF A/B, ventana, tiles, quantum y política NoData constantes durante cada barrido. El calentamiento no se cuenta. El tiempo principal mide el kernel y su sincronización; excluye lectura de TIFF, creación/cierre de trabajadores, exportación, resumen y huella. El CSV también registra el tiempo del proceso completo por separado, sin exportar TIFF durante las mediciones. "
+               "de carga del equipo en el informe. Mantener TIFF A/B, ventana, tiles, quantum y política NoData constantes durante cada barrido. El calentamiento no se cuenta. El tiempo principal incluye preparación, creación de trabajadores, cálculo, sincronización y cierre; excluye lectura de TIFF, exportación, resumen y huella. El CSV también registra el tiempo del proceso completo por separado, sin exportar TIFF durante las mediciones. "
                "Las ejecuciones consecutivas pueden presentar correlación o cambios térmicos: el IC "
                "aproximado no corrige esos sesgos. Las mediciones principales deben hacerse en hardware físico."]
     generate_amdahl(groups, workload, output)
