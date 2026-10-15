@@ -1,6 +1,6 @@
 # Ley de Amdahl
 
-Carga: ancho=24444, alto=1500, origen_x=0, origen_y=0, slc_a_hash=d1e69c7ee86c24b7bca70e2c13d6cb32cfc8e229ef1ec1ab7402734543315fe9, slc_b_hash=895fa59bc9b4ee11c2dc6c8371a2d17e8aa24354fa2901705dc49b4dfdaa3432, allow_nodata=1.
+Carga: ancho=24444, alto=1499, origen_x=0, origen_y=0, slc_a_hash=d1e69c7ee86c24b7bca70e2c13d6cb32cfc8e229ef1ec1ab7402734543315fe9, slc_b_hash=895fa59bc9b4ee11c2dc6c8371a2d17e8aa24354fa2901705dc49b4dfdaa3432, allow_nodata=1.
 
 S(P) = 1 / [f + (1-f)/P]. P es el número de trabajadores; f es una fracción secuencial efectiva.
 El ajuste minimiza la suma de errores cuadrados de 1/S(P) = f + (1-f)/P, con igual peso por configuración y f restringida a [0,1]. No impone que el modelo con P=1 tenga speedup 1.

@@ -243,6 +243,7 @@ def generate(groups, workload, output):
     w, h, tw, th, samples, bounces, seed = workload
     context = f"Imagen {w} × {h} · tiles {tw} × {th} · {samples} muestras/píxel · {bounces} rebotes · semilla {seed}"
     shared = any(rows.baseline is not None for rows in groups.values())
+    comparison = len({k[0][0] for k in keys}) > 1
     confidence = ("IC95 aproximado; speedup compartido = cociente de medias (método delta)." if shared else
                   "Barras de error: IC95 aproximado de la media.") + " Menos de 200: prueba preliminar."
     metrics = [(0, "Tiempo (segundos)", "tiempo", .001),
@@ -254,7 +255,12 @@ def generate(groups, workload, output):
         estimates = [metric_estimate(groups[k], index, scale) for k in keys]
         fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .8 + 2)))
         positions = list(range(len(keys)))
-        if index == 0:
+        if index == 0 and comparison:
+            # Sequential ya aparece como una configuración: no repetirlo por modelo.
+            bars = ax.barh(positions, [s[0] for s in estimates], height=.55,
+                           xerr=[s[2] for s in estimates], color=colors, capsize=4)
+            question = "¿Cuál termina antes? · Menos tiempo es mejor"
+        elif index == 0:
             # Una referencia por comparación, sin mezclar baselines de campañas distintas.
             bases = [metric_estimate(groups[k], 1, scale) for k in keys]
             reference_bars = ax.barh([p-.18 for p in positions], [s[0] for s in bases], height=.32,
@@ -276,7 +282,8 @@ def generate(groups, workload, output):
         ax.invert_yaxis()
         upper = max(s[0] + s[2] for s in estimates)
         if index == 0:
-            upper = max(upper, max(s[0] + s[2] for s in bases))
+            if not comparison:
+                upper = max(upper, max(s[0] + s[2] for s in bases))
         else:
             upper = max(upper, reference)
         ax.set_xlim(0, upper * 1.25)
@@ -344,8 +351,8 @@ def generate(groups, workload, output):
               "Carga fija: " + ", ".join(f"{k}={v}" for k, v in zip(WORKLOAD, workload)) + ".", "",
               "Gráficas principales: comparacion-tiempo.png (segundos, menos es mejor), "
               "comparacion-speedup.png (1× es la referencia) y escalabilidad.png (variar trabajadores). "
-              "Las barras muestran estimaciones con IC95 aproximado; las referencias secuenciales "
-              "de tiempo se conservan por comparación, sin mezclar campañas. "
+              "Las barras muestran estimaciones con IC95 aproximado. En la comparación de modelos, "
+              "el tiempo secuencial aparece en su propia fila, sin repetirlo junto a cada modelo. "
               "Los boxplots e histogramas muestran variabilidad y todas las repeticiones.", "",
               "Se incluyen todas las iteraciones, sin eliminar valores atípicos.",
               ("Sequential se mide una sola vez y se reutiliza. Speedup = media sequential / media modelo. "

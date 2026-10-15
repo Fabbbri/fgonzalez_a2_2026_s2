@@ -38,7 +38,6 @@ test: $(TARGET) build/test_interferogram build/test_slc_reader build/benchmark_f
 	./build/test_interferogram
 	./build/test_slc_reader
 	bash interferogram/tests/test_cli.sh ./$(TARGET)
-	bash interferogram/tests/test_profile_perf.sh
 	$(PYTHON) -m unittest discover -s interferogram/tests -p 'test_benchmark*.py'
 	$(PYTHON) interferogram/tests/test_smt_control.py
 
@@ -70,7 +69,7 @@ view-images:
 	xdg-open "$(IMAGE_OUTPUT)/index.html"
 
 # Métricas: no cambian los modelos ni el procesamiento del interferograma.
-.PHONY: benchmark profile run-sequential run-fine-grained run-coarse-grained run-smt run-cmp
+.PHONY: benchmark run-sequential run-fine-grained run-coarse-grained run-smt run-cmp
 PYTHON ?= python3
 REPETITIONS ?= 200
 WARMUPS ?= 1
@@ -89,8 +88,8 @@ CSV ?= $(RESULTS_DIR)/*.csv
 PLOT_DIR ?= $(RESULTS_DIR)/plots/comparison
 MPLCONFIGDIR ?= /tmp/sentinel-matplotlib
 export MPLCONFIGDIR
-SLC_A ?= data/coregistered/P09-R2-20240608-20240620/A.tif
-SLC_B ?= data/coregistered/P09-R2-20240608-20240620/B.tif
+SLC_A ?= data/coregistered/P09-R2-2023-2024/A.tif
+SLC_B ?= data/coregistered/P09-R2-2023-2024/B.tif
 WINDOW_X ?= 0
 WINDOW_Y ?= 0
 WINDOW_WIDTH ?= 24444
@@ -161,15 +160,3 @@ smt:
 	    echo "No se alcanzó SMT=$(SMT): smt/active=$$state" >&2; exit 1; \
 	fi; \
 	echo "SMT=$(SMT), active=$$state (estado global; permanece después de ejecutar)"
-
-
-PROFILE_REPETITIONS ?= 3
-PROFILE_CASES ?= sequential:1 fine-grained:1 \
-                 coarse-grained:1 coarse-grained:2 coarse-grained:4 coarse-grained:8 \
-                 smt:8 smt:12 cmp:1 cmp:2 cmp:4 cmp:8
-PROFILE_OUTPUT ?= auto
-PROFILE_ARGS ?= $(COMMON_ARGS) $(BENCHMARK_ARGS)
-profile: $(TARGET)
-	SLC_A="$(SLC_A)" SLC_B="$(SLC_B)" \
-		bash scripts/profile_all.sh "$(PROFILE_OUTPUT)" "$(PROFILE_REPETITIONS)" \
-		"$(PROFILE_CASES)" $(PROFILE_ARGS)
