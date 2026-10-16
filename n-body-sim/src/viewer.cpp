@@ -163,7 +163,7 @@ struct View {
     }
 
     View() {
-        window.reset(SDL_CreateWindow("Encuentro de galaxias | N-body 2D",
+        window.reset(SDL_CreateWindow("Simulación de galaxias",
                      SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1100, 720,
                      SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI));
         if (!window) throw std::runtime_error(SDL_GetError());
@@ -318,7 +318,7 @@ struct View {
         SDL_SetRenderDrawColor(render, 9, 15, 26, 255);
         SDL_Rect header{0, 0, width, top}, footer{0, height - bottom, width, bottom};
         SDL_RenderFillRect(render, &header); SDL_RenderFillRect(render, &footer);
-        draw_text(render, "ENCUENTRO DE GALAXIAS", 28, 22, white, 3);
+        draw_text(render, "SIMULACIÓN DE GALAXIAS", 28, 22, white, 3);
         draw_text(render, "INTERACCION GRAVITACIONAL / PLANO XY", 29, 56, muted, 2);
         draw_text(render, "GALAXIA A", 29, 82, cyan, 2);
         draw_text(render, "GALAXIA B", 165, 82, orange, 2);

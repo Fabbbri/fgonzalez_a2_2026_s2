@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111e27">
+  <meta name="description" content="Framework experimental de modelos de ejecución Multithreading: resultados de Deep Learning, N-body, Ray Tracing y Sentinel-1 SLC.">
+  <title>Framework experimental de modelos de ejecución Multithreading · Arquitectura de Computadores II</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="data.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="ambient-background" aria-hidden="true"><canvas id="ambient-scene"></canvas></div>
+  <a class="skip-link" href="#resultados">Ir a los resultados</a>
+  <header class="masthead">
+    <a class="brand" href="#dl" aria-label="Framework experimental de modelos de ejecución Multithreading, inicio">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 25V7h6v18m7 0V13h6v12m7 0V3"/></svg>
+      <span>ARQUITECTURA DE COMPUTADORES <b>II</b></span>
+    </a>
+    <span class="edition">2026 <span>/</span> S2</span>
+  </header>
+
+  <main>
+    <div class="page-intro wrap">
+      <div><h1>Framework experimental de modelos de ejecución Multithreading<span>.</span></h1></div>
+    </div>
+
+    <nav class="problem-nav" aria-label="Seleccionar problema">
+      <div class="wrap nav-inner">
+        <a href="#dl" data-problem="dl" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 7 7-7 7m14-14-7 7 7 7M5 5h14M5 19h14"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg><span>Deep Learning</span></a>
+        <a href="#nbody" data-problem="nbody"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-30 12 12)"/><ellipse cx="12" cy="12" rx="4" ry="10" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="2"/></svg><span>N-body Sim</span></a>
+        <a href="#ray" data-problem="ray"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h8l4 8-4 8H2m12-8h8"/><circle cx="16" cy="12" r="6"/></svg><span>Ray Tracing</span></a>
+        <a href="#sentinel" data-problem="sentinel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 9-3 3-9-9ZM5 2 2 5l4 4 3-3Zm14 13-4 4 4 3 3-3ZM7 14l-3 3m1-4a6 6 0 0 0 6 6"/></svg><span>Sentinel-1 SLC</span></a>
+      </div>
+    </nav>
+
+    <article id="problem-content" class="wrap" aria-labelledby="problem-title" data-theme="dl">
+      <section class="problem-hero">
+        <div class="hero-copy">
+          <p class="eyebrow hero-eyebrow"><span id="problem-category">APRENDIZAJE AUTOMÁTICO</span></p>
+          <h2 id="problem-title">Deep<br>Learning<span>.</span></h2>
+          <p id="problem-description" class="hero-description">Una red neuronal aprende a reconocer dígitos. Medimos el costo de distribuir su entrenamiento.</p>
+          <div id="workload" class="workload" aria-label="Parámetros de la carga"></div>
+        </div>
+        <div class="hero-art">
+          <canvas id="scene" role="img" aria-label="Ilustración animada de una red neuronal"></canvas>
+          <div class="art-topline"><span id="scene-label">784 → 128 → 64 → 10</span><button id="motion-toggle" type="button" aria-pressed="false" aria-label="Pausar animaciones de cabecera y fondo"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M11 3v10"/></svg><span>Pausar</span></button></div>
+          <div class="art-caption"><span class="signal-dot"></span><span id="scene-caption">PROPAGACIÓN DE SEÑAL</span><span class="illustration-label">ILUSTRACIÓN</span></div>
+        </div>
+      </section>
+
+      <div class="result-strip" aria-label="Resumen de resultados">
+        <div><span class="stat-label">MENOR TIEMPO MEDIO</span><strong id="best-time">—</strong><span id="best-config" class="stat-detail">—</span></div>
+        <div><span class="stat-label">MAYOR SPEEDUP</span><strong id="best-speedup">—</strong><span id="speedup-config" class="stat-detail">—</span></div>
+        <div><span class="stat-label">MUESTRAS POR CONFIGURACIÓN</span><strong id="sample-count">—</strong><span id="sample-detail" class="stat-detail">Repeticiones medidas</span></div>
+        <div class="strip-footnote"><span class="footnote-mark">↳</span><p>Valores del reporte de comparación.<br>IC95: intervalo de confianza al 95 %.</p></div>
+      </div>
+
+      <section id="resultados" class="results-section" aria-labelledby="results-title">
+        <div class="section-heading">
+          <div><h3 id="results-title">Mediciones</h3></div>
+          <a id="report-link" class="text-link" href="resultados/dl/reporte.md" target="_blank" rel="noopener">Reporte original <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="table-toolbar">
+          <div class="model-filters" role="group" aria-label="Filtrar por modelo">
+            <button type="button" data-filter="all" aria-pressed="true">Todos <span>14</span></button>
+            <button type="button" data-filter="sequential" aria-pressed="false">Secuencial</button>
+            <button type="button" data-filter="fine" aria-pressed="false">Fine</button>
+            <button type="button" data-filter="coarse" aria-pressed="false">Coarse</button>
+            <button type="button" data-filter="cmp" aria-pressed="false">CMP</button>
+            <button type="button" data-filter="smt" aria-pressed="false">SMT</button>
+          </div>
+          <button id="download-csv" class="text-button" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v4h14v-4"/></svg>Exportar CSV</button>
+        </div>
+        <div class="table-scroll" role="region" aria-label="Resultados de las configuraciones; desplazar horizontalmente en pantallas pequeñas" tabindex="0">
+          <table>
+            <caption class="sr-only">Métricas por configuración del problema seleccionado</caption>
+            <thead><tr>
+              <th scope="col">Configuración</th><th scope="col">n</th><th scope="col">Referencia 200</th><th scope="col">Tiempo medio ± IC95 <small>(ms)</small></th><th scope="col">Desviación <small>(ms)</small></th><th scope="col">Speedup medio ± IC95</th><th scope="col">Desviación speedup</th>
+            </tr></thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <div class="table-notes"><p id="reference-note"></p><span id="row-count" role="status" aria-live="polite">14 configuraciones</span></div>
+        <p class="table-legend"><span>P = trabajadores</span><span>C = núcleos físicos</span><span>L = CPU lógicas</span><span>SMT = estado de hardware (1 / 0)</span></p>
+      </section>
+
+      <section class="charts-section" aria-labelledby="charts-title">
+        <div class="section-heading"><div><h3 id="charts-title">Gráficas</h3></div><span class="section-aside">4 GRÁFICAS <span>·</span> CLIC PARA AMPLIAR</span></div>
+        <div id="charts" class="charts-grid"></div>
+      </section>
+
+      <div class="next-problem"><span>SIGUIENTE EXPERIMENTO</span><a id="next-link" href="#nbody"><b>N-body Sim</b> <span aria-hidden="true">→</span></a></div>
+    </article>
+    <noscript><p class="wrap">Esta vista necesita JavaScript para mostrar las tablas y las gráficas. Puedes consultar los reportes originales en las carpetas de cada proyecto.</p></noscript>
+  </main>
+
+  <footer class="wrap page-footer"><span>ARQUITECTURA DE COMPUTADORES II <span>/</span> FRAMEWORK EXPERIMENTAL DE MODELOS DE EJECUCIÓN MULTITHREADING</span><span>Datos experimentales del repositorio <span>·</span> 2026</span></footer>
+
+  <dialog id="chart-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-toolbar"><div><span id="dialog-counter" class="eyebrow"></span><h3 id="dialog-title"></h3></div><button id="close-dialog" type="button" class="icon-button" aria-label="Cerrar gráfica">✕</button></div>
+    <div class="dialog-image-wrap"><img id="dialog-image" alt=""></div>
+    <div class="dialog-footer"><p id="dialog-caption"></p><div><button id="prev-chart" class="icon-button" type="button" aria-label="Gráfica anterior">←</button><button id="next-chart" class="icon-button" type="button" aria-label="Gráfica siguiente">→</button><a id="original-image" target="_blank" rel="noopener" class="text-link">Abrir PNG <span aria-hidden="true">↗</span></a></div></div>
+  </dialog>
+</body>
+</html>
