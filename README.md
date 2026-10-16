@@ -1,5 +1,9 @@
 # fgonzalez_a2_2026_s2
 
+[Perfilado general con perf](perf/README.md): `make perf` compila y mide los cinco
+modelos de los cuatro problemas. Guarda un CSV por problema, capturas originales,
+un reporte y gráficas automatizadas en `perf/`.
+
 [Abrir el Framework experimental de modelos de ejecución Multithreading](defensa/index.html): vista HTML local con las métricas y
 gráficas de los cuatro problemas. No requiere instalación.
 
