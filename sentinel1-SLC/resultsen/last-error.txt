@@ -1,0 +1,1 @@
+No existe el TIFF de entrada: data/coregistered/P09-R2-20240608-20240620/A.tif. Configure SLC_A y SLC_B.
