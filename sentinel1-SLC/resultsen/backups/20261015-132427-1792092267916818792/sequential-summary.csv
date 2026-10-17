@@ -1,2 +1,0 @@
-modelo,hilos,repeticiones,tiempo_total_media_ms,tiempo_total_desviacion_ms,tiempo_total_ic95_aprox_inferior,tiempo_total_ic95_aprox_superior,tiempo_secuencial_media_ms,speedup_media,speedup_desviacion,speedup_ic95_aprox_inferior,speedup_ic95_aprox_superior,eficiencia_media,eficiencia_ic95_aprox_inferior,eficiencia_ic95_aprox_superior
-sequential,1,20,84.2572862,9.574086768082356,80.06125766816096,88.45331473183903,84.2572862,1.0,0.0,1.0,1.0,1.0,1.0,1.0
