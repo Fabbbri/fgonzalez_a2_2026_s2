@@ -1,4 +1,4 @@
-/*.csv
-/reporte.md
-/plots/
-/raw/
+# Versionar todos los resultados y capturas de perf, incluidos los *.log
+# que el .gitignore general del repositorio ignora.
+!*/
+!*

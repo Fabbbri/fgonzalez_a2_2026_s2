@@ -1,0 +1,3 @@
+estado=completo modo=sin_ventana modelo=coarse trabajadores=4 resolucion=640x480 tile=32x32 muestras=8 rebotes=12 tiles=300/300
+intervalo_bloqueo_ms=10 espera_bloqueo_ms=1 bloqueos=124
+tiempo_total_ms=346.760

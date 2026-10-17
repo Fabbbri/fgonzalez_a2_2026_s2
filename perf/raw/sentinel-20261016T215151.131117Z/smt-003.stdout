@@ -1,0 +1,27 @@
+P09-R2
+A: /home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/data/coregistered/P09-R2-2023-2024/A.tif
+B: /home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/data/coregistered/P09-R2-2023-2024/B.tif
+Window: 24444 x 1499
+Offset: 0, 0
+Samples: 36641556
+Mode: smt
+Model time: 86.082751 ms
+Kernel time: 84.603534 ms
+Export time: 0.000000 ms
+Result sum (real, imag): -26824576, -31757271
+Computational kernel; coregistration quality is not verified by this executable.
+Result hash (fnv1a64): 3b5cbee5f533d601
+Valid result samples: 20632377
+Invalid result samples: 16009179
+NoData policy: preserve; exclude nonfinite results from sum
+Execution: Pinned workers using sibling logical CPUs
+Tile scheduling: dynamic atomic queue
+Workers: 12
+Tiles: 35908
+Available physical cores: 8
+Allowed logical CPUs: 12
+Host SMT control: on
+Host SMT active: 1
+Allowed CPU IDs: 0 1 2 3 4 5 6 7 8 9 10 11
+Pinned CPU IDs: 0 2 4 6 8 9 10 11 1 3 5 7
+Hardware SMT is not enabled or changed by this program.

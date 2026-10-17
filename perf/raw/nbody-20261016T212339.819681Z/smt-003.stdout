@@ -1,0 +1,2 @@
+model,workers,bodies,steps,dt,seed,quantum,total_seconds
+smt,12,1000,1000,0.002,42,0,0.68883642300000003

@@ -37,7 +37,8 @@ Incluye valor, unidad, disponibilidad, tiempo de contador, porcentaje medido,
 tiempo de pared, trabajadores, estado SMT, comando y enlace a evidencia cruda.
 Cada campaña reemplaza el CSV de su problema, conserva las capturas anteriores
 y regenera el reporte de todos los CSV existentes. Los resultados generados
-están ignorados por Git; se pueden compartir copiando la carpeta `perf/`.
+se versionan en Git junto con las capturas crudas; también se pueden compartir
+copiando la carpeta `perf/`.
 Una campaña interrumpida deja `status.txt=incomplete`; su CSV puede ser parcial
 y no debe presentarse como una campaña terminada.
 

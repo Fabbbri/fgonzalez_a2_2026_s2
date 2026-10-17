@@ -1,0 +1,25 @@
+{
+  "command": [
+    "perf",
+    "stat",
+    "--no-big-num",
+    "-x",
+    ";",
+    "-e",
+    "task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,cache-references,cache-misses",
+    "-o",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/perf/raw/dl-20261016T212414.147989Z/cmp-003.stat",
+    "--",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/DL/src/cmp",
+    "4",
+    "1000"
+  ],
+  "cwd": "/home/jian/Desktop/fgonzalez_a2_2026_s2/DL/src",
+  "env": {
+    "DL_QUANTUM_US": "100",
+    "DL_SAMPLES": "100",
+    "DL_SEED": "1",
+    "DL_EPOCHS": "1000",
+    "DL_QUIET": "1"
+  }
+}
