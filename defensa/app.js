@@ -48,6 +48,10 @@
   const formatNumber = new Intl.NumberFormat("es-CR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
   let currentKey = "dl";
+  let sentinelEquipmentB = false;
+  const selectedData = (key = currentKey) => window.METRICAS[
+    key === "sentinel" && sentinelEquipmentB ? "sentinel_equipo_b" : key
+  ];
   let currentFilter = "all";
   let currentChart = 0;
   let manuallyPaused = motionPreference.matches;
@@ -55,7 +59,7 @@
 
   const modelOf = (row) => row[0].split(" · ")[0];
   const valueOf = (cell) => Number.parseFloat(cell);
-  const imagePath = (index) => `${window.METRICAS[currentKey].folder}/${chartDefinitions[index].file}`;
+  const imagePath = (index) => `${selectedData().folder}/${chartDefinitions[index].file}`;
   function make(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -85,7 +89,7 @@
   }
 
   function renderTable() {
-    const data = window.METRICAS[currentKey];
+    const data = selectedData();
     const rows = data.rows.filter((row) => currentFilter === "all" || modelOf(row) === currentFilter);
     const fastest = data.rows.reduce((a, b) => valueOf(a[3]) <= valueOf(b[3]) ? a : b);
     const body = $("results-body");
@@ -146,7 +150,14 @@
     currentKey = key;
     currentFilter = "all";
     const config = problems[key];
-    const data = window.METRICAS[key];
+    const data = selectedData(key);
+    $("sentinel-equipment").hidden = key !== "sentinel";
+    $("equipment-label").textContent = sentinelEquipmentB
+      ? "Equipo B · memoria de 8533 MT/s · 8 núcleos / 8 CPU lógicas · SMT no soportado"
+      : "Equipo A · memoria de 3200 MT/s · 8 núcleos / 12 CPU lógicas con SMT activo";
+    $("equipment-toggle").textContent = sentinelEquipmentB
+      ? "Regresar a los datos del equipo A · memoria de 3200 MT/s"
+      : "Datos con un equipo diferente · memoria de 8533 MT/s";
     const article = $("problem-content");
     article.dataset.theme = key;
     $("ambient-scene").dataset.theme = key;
@@ -229,7 +240,7 @@
     button.addEventListener("click", () => { currentFilter = button.dataset.filter; renderTable(); });
   });
   $("download-csv").addEventListener("click", () => {
-    const data = window.METRICAS[currentKey];
+    const data = selectedData();
     const rows = data.rows.filter((row) => currentFilter === "all" || modelOf(row) === currentFilter);
     const csv = [data.headers, ...rows].map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob(["\ufeff", csv], {type: "text/csv;charset=utf-8"}));
@@ -565,6 +576,10 @@
     scene.sync();
     atmosphere.sync();
   }
+  $("equipment-toggle").addEventListener("click", () => {
+    sentinelEquipmentB = !sentinelEquipmentB;
+    selectProblem("sentinel");
+  });
   $("motion-toggle").addEventListener("click", () => {manuallyPaused = !manuallyPaused; updateMotionButton();});
   motionPreference.addEventListener("change", updateMotionButton);
   window.addEventListener("hashchange", () => {

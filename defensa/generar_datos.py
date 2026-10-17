@@ -56,12 +56,14 @@ def main():
                 shutil.copy2(ROOT.parent / path / filename, destination / filename)
     data = {key: read_report(ROOT / "resultados" / key, f"resultados/{key}")
             for key in SOURCES}
+    data["sentinel_equipo_b"] = read_report(
+        ROOT / "resultados/sentinel_equipo_b", "resultados/sentinel_equipo_b")
     # Es un archivo JS local para que index.html también funcione por file://.
     payload = json.dumps(data, ensure_ascii=False, indent=2).replace("</", "<\\/")
     (ROOT / "data.js").write_text(
         "// Generado por generar_datos.py a partir de los reportes incluidos en defensa.\n"
         f"window.METRICAS = {payload};\n", encoding="utf-8")
-    print("Actualizadas las tablas de los cuatro problemas; 16 PNG de comparación verificados en defensa.")
+    print("Actualizadas las tablas de los cuatro problemas; 20 PNG verificados en defensa.")
 
 
 if __name__ == "__main__":
