@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuatro mundos. Una pregunta. · Video del proyecto</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#060c15;color:#edf4ff;font:15px system-ui,sans-serif}main{max-width:1560px;margin:auto;padding:28px}header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:20px}h1{font-size:24px;margin:0 0 6px;letter-spacing:-.5px}header p{margin:0;color:#91a6c3}.pill{border:1px solid #2c435e;border-radius:30px;padding:9px 16px;color:#a9c8e8;font-size:13px;white-space:nowrap}canvas{display:block;width:100%;aspect-ratio:16/9;background:#081120;border:1px solid #27364e;border-radius:14px;box-shadow:0 25px 100px #0007}nav,.exports{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0}button,select{font:inherit;color:inherit;background:#14243b;border:1px solid #344660;padding:10px 14px;border-radius:8px;cursor:pointer}button:hover{background:#253c5c}button:disabled{opacity:.5;cursor:default}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #73a8ff;outline-offset:3px}#play{background:#234b79}#seek{flex:1;min-width:150px;accent-color:#73a8ff}#time{font-variant-numeric:tabular-nums;color:#9bb3cf;min-width:95px}#scene{max-width:340px}p{color:#aabbd1;line-height:1.6}canvas:fullscreen{width:100vw;height:100vh;object-fit:contain;border:0;border-radius:0}a{color:#79d7ff}.reader{display:grid;grid-template-columns:1fr 290px;gap:28px;background:#0d192a;border:1px solid #243851;padding:25px;border-radius:14px;margin-top:24px}.eyebrow{color:#73a8ff;text-transform:uppercase;letter-spacing:2px;font-size:12px}h2{font-size:22px;margin:9px 0}#narration{font-size:20px;line-height:1.7;color:#dae6f7;margin-bottom:0}.side{border-left:1px solid #2a3f59;padding-left:24px;font-size:14px}.side p{margin:8px 0}summary{cursor:pointer;color:#b6d2ee;padding:20px 0;font-size:17px}#storyboard{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#storyboard button{text-align:left;font-size:13px;line-height:1.5}#storyboard button[aria-current=true]{border-color:#73a8ff;background:#1c3b60}label{display:flex;gap:8px;align-items:center;color:#b5c8e2}#status{font-size:14px}footer{font-size:13px;border-top:1px solid #253851;padding-top:16px;margin-top:22px;color:#87a0bd}@media(max-width:800px){main{padding:12px}.reader{grid-template-columns:1fr}.side{border:0;padding:0}#storyboard{grid-template-columns:1fr 1fr}.pill{display:none}#narration{font-size:17px}}
+</style>
+<script defer src="guion.js"></script><script defer src="animaciones.js"></script>
+</head>
+<body>
+<main>
+<header><div><h1>Cuatro mundos. Una pregunta.</h1><p>Un relato visual del framework experimental de multithreading</p></div><span class="pill">26 escenas · 4 min 31 s · 1080p60</span></header>
+<canvas id="film" width="1920" height="1080" role="img" aria-label="Video explicativo animado de cuatro problemas y sus modelos de ejecución"></canvas>
+<nav aria-label="Reproducción"><button id="play">Pausar</button><button id="restart">Reiniciar</button><select id="scene" aria-label="Escena"></select><input id="seek" type="range" min="0" max="271" step="0.05" value="0" aria-label="Tiempo en segundos"><span id="time">0:00 / 4:31</span><button id="fullscreen">Pantalla completa</button></nav>
+<div class="exports"><label><input id="subtitles" type="checkbox" checked> Subtítulos en el video</label><select id="export-mode" aria-label="Alcance de exportación"><option value="all">Exportar el video completo · 4:31</option><option value="shot">Exportar escena actual</option></select><button id="record">Exportar WebM · 60 fps</button><button id="script">Descargar guion</button><button id="srt">Descargar SRT</button></div>
+<p id="status" role="status">Sin audio. Exportá el montaje y añadí la narración del grupo. Espacio: pausar · flechas: ±5 segundos. La reproducción se detiene al ocultar la pestaña.</p>
+<section class="reader" aria-label="Guion de la escena"><div><span class="eyebrow">Narración sincronizada · <span id="speaker"></span></span><h2 id="shot-title"></h2><p id="narration"></p></div><div class="side"><strong>Listo para grabar</strong><p>Una voz por tema; cambiá los nombres en el guion según el grupo.</p><p>Las escenas duran 10 segundos; la comparación de RAM dura 20 y la despedida, 11. Ensayen a unas 150–170 palabras por minuto, con pausas breves.</p><a href="guion.md">Guion completo y dirección visual ↗</a></div></section>
+<details><summary>Ver las 26 escenas del montaje</summary><div id="storyboard"></div></details>
+<footer>Ilustraciones conceptuales y resultados observados se identifican en pantalla. Las barras usan los reportes del repositorio; DL se presenta como preliminar. Sin conexión, sin dependencias y sin narración sintética.</footer>
+</main>
+</body>
+</html>
