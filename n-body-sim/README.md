@@ -1,5 +1,23 @@
 # Simulación N-body de dos galaxias en 2D
 
+## Ejecución rápida
+
+Desde `n-body-sim/`, cada comando compila si hace falta, calcula la trayectoria,
+imprime la duración en segundos y abre su reproducción visual:
+
+```bash
+make sec
+make fine
+make coarse
+make smt
+make cmp
+```
+
+Puedes agregar parámetros, por ejemplo `make coarse ARGS="--threads 4"` o
+`make fine ARGS="--quantum 4"`. La duración excluye la reproducción visual.
+`make smt` conserva el estado SMT del equipo por defecto; el control explícito
+del hardware se realiza con `make smt-control SMT=on` o `SMT=off`.
+
 
 ## Estado actual
 
@@ -159,12 +177,12 @@ estando disponible en macOS, sin grupos de afinidad verificables.
 
 `SMT=keep` es el valor predeterminado y conserva el estado actual. `SMT=on/off`
 controla `/sys/devices/system/cpu/smt/control` antes de ejecutar `run`, `benchmark`
-o `profile`; también se puede usar el objetivo `smt` por separado:
+o `profile`; también se puede usar el objetivo `smt-control` por separado:
 
 ```bash
 # Cambiar el estado sin ejecutar la simulación.
-make smt SMT=off
-make smt SMT=on
+make smt-control SMT=off
+make smt-control SMT=on
 
 # Misma cantidad de trabajadores con hardware activado y desactivado.
 make run SMT=on ARGS="--model smt --threads 12 --no-output"
@@ -175,7 +193,7 @@ make benchmark BENCHMARK_MODELS=smt SMT_THREAD_COUNTS=12
 # El benchmark mide on/off y restaura automáticamente el estado original.
 ```
 
-El cambio explícito con `make smt` o `make run SMT=on/off` afecta **a todo el
+El cambio explícito con `make smt-control` o `make run SMT=on/off` afecta **a todo el
 sistema**, puede solicitar `sudo` y permanece tras terminar. El benchmark que
 alterna estados restaura automáticamente el estado original, también si falla
 o se interrumpe con Ctrl+C/SIGTERM; un cierre forzado como SIGKILL impide ejecutar

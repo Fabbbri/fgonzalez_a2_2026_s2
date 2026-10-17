@@ -36,7 +36,7 @@ if not os.environ.get("SMT_TEST_MISMATCH"):
                     "SMT_TEST_ROOT": str(self.root)}
 
     def run_make(self, state, **env):
-        return subprocess.run(["make", "--no-print-directory", "smt", "SMT=" + state],
+        return subprocess.run(["make", "--no-print-directory", "smt-control", "SMT=" + state],
                               cwd=self.root, env={**self.env, **env},
                               capture_output=True, text=True, timeout=10)
 

@@ -196,6 +196,8 @@ int main(int argc, char* argv[]) try {
     model.reset();  // Incluye el cierre de futuros trabajadores en el tiempo total.
     writer.finish();
     const double total_seconds = std::chrono::duration<double>(Clock::now() - total_start).count();
+    std::cerr << "Duración total (" << model_name << "): "
+              << std::setprecision(6) << total_seconds << " segundos\n";
     // Una cabecera y una fila por ejecución permiten agregación externa con Make/Bash.
     // Speedup, eficiencia y estadísticas requieren comparar varias muestras/modelos.
     std::cout << "model,workers,bodies,steps,dt,seed,quantum,total_seconds\n"

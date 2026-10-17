@@ -24,7 +24,7 @@ SDL_LIBS := -l:libSDL2-2.0.so.0
 endif
 endif
 
-.PHONY: run build smt benchmark plots amdahl profile test clean
+.PHONY: run build sec fine coarse smt cmp smt-control benchmark plots amdahl profile test clean
 
 REPETITIONS ?= 200
 BENCHMARK_MODELS ?= sequential fine-grained coarse-grained smt cmp
@@ -50,14 +50,24 @@ ARGS ?=
 # Control global de Linux; keep no modifica el estado del equipo.
 SMT ?= keep
 
-run: $(TARGET) smt
+run: $(TARGET) smt-control
 	./$(TARGET) $(ARGS)
+
+sec: RUN_MODEL := sequential
+fine: RUN_MODEL := fine-grained
+coarse: RUN_MODEL := coarse-grained
+smt: RUN_MODEL := smt
+cmp: RUN_MODEL := cmp
+
+# El ejecutable imprime la duración y después abre el reproductor SDL2.
+sec fine coarse smt cmp: $(TARGET) smt-control
+	./$(TARGET) $(ARGS) --model $(RUN_MODEL)
 
 build: $(TARGET)
 
 # No restaura el estado automáticamente: permite medir varios modelos con
 # la misma configuración. El ejecutable sigue corriendo sin sudo.
-smt:
+smt-control:
 	@set -eu; \
 	case '$(SMT)' in \
 	    keep) exit 0 ;; \
@@ -85,14 +95,14 @@ smt:
 	echo "SMT=$(SMT), active=$$state (estado global; permanece después de ejecutar)"
 
 
-profile: $(TARGET) smt
+profile: $(TARGET) smt-control
 	@set -e; for model in $(PROFILE_MODELS); do \
 		PERF="$(PERF)" PERF_EVENTS="$(PERF_EVENTS)" \
 		PROFILE_COMPILER="$(CXX)" PROFILE_FLAGS="$(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(LDFLAGS)" \
 		bash scripts/profile.sh ./$(TARGET) "$(PROFILE_REPETITIONS)" --model "$$model" $(PROFILE_ARGS); \
 	done
 
-benchmark: $(TARGET) smt
+benchmark: $(TARGET) smt-control
 	BENCHMARK_COMPILER="$(CXX)" BENCHMARK_FLAGS="$(CPPFLAGS) $(CXXFLAGS) $(PROJECT_CFLAGS) $(LDFLAGS)" \
 	$(PYTHON) scripts/benchmark.py ./$(TARGET) --repetitions "$(REPETITIONS)" \
 		--results-dir "$(RESULTS_DIR)" --models $(BENCHMARK_MODELS) \

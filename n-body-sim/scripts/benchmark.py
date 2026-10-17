@@ -264,7 +264,7 @@ def read_smt_state():
 
 
 def set_smt_state(state, make_command):
-    subprocess.run([*shlex.split(make_command), "--no-print-directory", "smt", "SMT=" + state],
+    subprocess.run([*shlex.split(make_command), "--no-print-directory", "smt-control", "SMT=" + state],
                    cwd=Path(__file__).resolve().parents[1], check=True)
 
 
@@ -312,7 +312,7 @@ def run_campaigns(args):
         try:
             set_smt_state(original, make_command)
         except (OSError, subprocess.CalledProcessError) as error:
-            raise RuntimeError(f"No se pudo restaurar SMT={original}. Ejecute: make smt SMT={original}") from error
+            raise RuntimeError(f"No se pudo restaurar SMT={original}. Ejecute: make smt-control SMT={original}") from error
     # Restaurar antes de graficar, como en la campaña de ray tracing.
     generated = [path for result in results for path in result["generated"]]
     plot_campaign(generated, root)

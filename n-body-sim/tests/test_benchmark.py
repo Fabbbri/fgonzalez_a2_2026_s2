@@ -239,7 +239,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
              patch.object(benchmark, "set_smt_state", side_effect=[None, None, None, OSError("denied")]), \
              patch.object(benchmark, "authorize_smt_control"), \
              patch.object(benchmark, "campaign", return_value={}):
-            with self.assertRaisesRegex(RuntimeError, "make smt SMT=on"):
+            with self.assertRaisesRegex(RuntimeError, "make smt-control SMT=on"):
                 benchmark.run_campaigns(self.args)
 
 
