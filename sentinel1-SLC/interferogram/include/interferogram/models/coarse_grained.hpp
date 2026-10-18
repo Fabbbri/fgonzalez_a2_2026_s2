@@ -7,9 +7,13 @@
 #include <atomic>
 
 namespace interferogram {
-// Bloques completos
+// Pool de hilos persistentes que procesan tiles completos. Los hilos se crean una
+// vez y se reutilizan en cada compute(), así la medición no incluye su creación.
+// También sirve de base a Smt, que le pasa CPUs fijas y reparto dinámico.
 class CoarseGrained {
 public:
+    // cpus vacío: sin afinidad. dynamicTiles: los tiles se toman de una cola atómica
+    // en lugar de repartirse en rangos fijos por trabajador.
     CoarseGrained(int width, int height, int tileWidth, int tileHeight, int threads,
                   const std::vector<int>& cpus = {}, bool dynamicTiles = false);
     ~CoarseGrained();
@@ -32,7 +36,9 @@ private:
     std::condition_variable ready_, done_;
     std::exception_ptr startupError_;
     bool stopping_ = false;
+    // generation_ cambia en cada compute(); remaining_ cuenta trabajadores sin terminar.
     std::size_t generation_ = 0, remaining_ = 0, started_ = 0;
+    // Entradas y salida del cálculo en curso; solo son válidas durante compute().
     const std::vector<Complex>* a_ = nullptr;
     const std::vector<Complex>* b_ = nullptr;
     std::vector<Complex>* result_ = nullptr;

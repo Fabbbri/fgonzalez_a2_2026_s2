@@ -20,12 +20,14 @@ import rebase_reference
 class BenchmarkTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        """Genera una sola vez los TIFF sintéticos compartidos por todas las pruebas."""
         cls.fixture_dir = tempfile.TemporaryDirectory(prefix='sentinel-fixture-')
         cls.addClassCleanup(cls.fixture_dir.cleanup)
         cls.inputs = Path(cls.fixture_dir.name)
         subprocess.run([str(ROOT/'build/benchmark_fixture'), str(cls.inputs)], check=True)
 
     def setUp(self):
+        """Carpeta temporal propia y argumentos de una campaña corta para cada prueba."""
         temp = tempfile.TemporaryDirectory(prefix='sentinel-benchmark-')
         self.addCleanup(temp.cleanup)
         _, topo = benchmark.topology()
@@ -42,11 +44,12 @@ class BenchmarkTests(unittest.TestCase):
         quiet.__enter__(); self.addCleanup(quiet.__exit__, None, None, None)
 
     def rows(self, name):
+        """Lee un CSV de la carpeta de resultados de la prueba."""
         with (self.args.results_dir/name).open() as stream:
             return list(csv.DictReader(stream))
 
     def test_smt_physical_core_control(self):
-        # benchmark.py exige al menos un trabajador SMT por núcleo físico.
+        """SMT con un trabajador por núcleo físico, el mínimo que acepta benchmark.py."""
         self.args.models = ['smt']
         _, topo = benchmark.topology()
         physical = int(topo['physical_cores'])
@@ -58,11 +61,13 @@ class BenchmarkTests(unittest.TestCase):
         self.assertTrue(all(row['afinidad_cpus'] == expected for row in rows))
 
     def test_smt_cpu_order_and_oversubscription(self):
+        """Orden de CPUs SMT: una por núcleo, luego hermanos, y se repite si sobran trabajadores."""
         self.assertEqual(benchmark.smt_cpus({'sibling_groups': '0;4|1;5'}, 6),
                          [0, 1, 4, 5, 0, 1])
         self.assertEqual(benchmark.smt_cpus({'sibling_groups': '0|1'}, 4), [0, 1, 0, 1])
 
     def test_native_models_kernel_time_correctness_and_layout(self):
+        """Campaña completa: columnas, tiempos coherentes, mismo hash en todos los modelos y cantidad de ejecuciones."""
         result = benchmark.run_campaigns(self.args)
         all_rows = []
         for path in result['generated']:
@@ -86,6 +91,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(result['metadata']['status'], 'complete')
 
     def test_resume_keeps_data_and_completes_missing_repetitions(self):
+        """--resume conserva lo medido, completa lo que falta y rechaza otra configuración."""
         self.args.models=['coarse']
         benchmark.campaign(self.args)
         original=self.rows('coarse.csv')
@@ -106,6 +112,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual((self.args.results_dir/'coarse.csv').read_bytes(),old)
 
     def test_resume_rejects_old_unpinned_smt(self):
+        """Filas SMT sin afinidad fija (versión anterior) no se pueden continuar."""
         self.args.models = ['smt']
         benchmark.campaign(self.args)
         label = 'smt-' + {'1': 'on', '0': 'off'}.get(benchmark.topology()[1]['smt_active'], 'unknown') + '.csv'
@@ -120,6 +127,7 @@ class BenchmarkTests(unittest.TestCase):
             benchmark.run_campaigns(self.args)
 
     def test_external_reference_and_new_smt_reference_preserve_sequential(self):
+        """Con BASELINE_CSV no se vuelve a medir sequential ni se modifica su CSV."""
         self.args.models=['sequential']
         benchmark.campaign(self.args)
         seq=self.args.results_dir/'sequential.csv'
@@ -136,6 +144,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual((self.args.results_dir/'cmp.csv').read_bytes(),old)
 
     def test_rebase_preserves_times_and_changes_denominator_with_backup(self):
+        """Duplicar el tiempo secuencial duplica speedup y eficiencia sin tocar los tiempos."""
         self.args.models=['coarse']
         benchmark.campaign(self.args)
         old=self.rows('coarse.csv')
@@ -157,6 +166,7 @@ class BenchmarkTests(unittest.TestCase):
         plot_metrics.load([str(self.args.results_dir/'*.csv')])
 
     def test_result_fingerprint_mismatch_is_rejected(self):
+        """Si un modelo da píxeles distintos a la referencia, no se guarda ninguna fila."""
         self.args.models=['sequential']
         benchmark.campaign(self.args)
         self.args.models=['coarse']; self.args.baseline_csv=self.args.results_dir/'sequential.csv'
@@ -170,6 +180,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(self.rows('coarse.csv'),[])
 
     def test_missing_inputs_fail_before_sudo_or_state_change(self):
+        """Un TIFF faltante se detecta antes de pedir sudo o cambiar SMT."""
         self.args.a=self.args.a.with_name('missing.tif')
         self.args.smt_states='on,off'
         with patch.object(benchmark,'authorize_smt_control') as authorize, \
@@ -179,6 +190,7 @@ class BenchmarkTests(unittest.TestCase):
         authorize.assert_not_called(); change.assert_not_called()
 
     def test_smt_states_fixed_counts_and_restoration_on_error(self):
+        """Ambos estados SMT usan los mismos hilos y, si uno falla, se restaura el estado original."""
         self.args.models=['smt']; self.args.smt_states='on,off'
         measured=[]
         def campaign(args):
@@ -196,6 +208,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(measured[0].smt_thread_counts,measured[1].smt_thread_counts)
 
     def test_off_only_restores_after_interruption_and_uses_own_reference_name(self):
+        """Ctrl+C durante la campaña también restaura SMT; la referencia lleva el nombre del estado."""
         self.args.models=['smt']; self.args.smt_states='off'
         with patch.object(benchmark,'read_smt_state',return_value='on'), \
              patch.object(benchmark,'authorize_smt_control'), \
@@ -206,6 +219,7 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(control.call_args.args,('on','make'))
 
     def test_legacy_kernel_reference_is_rejected(self):
+        """CSV medidos con otro alcance de tiempo (solo kernel) no se mezclan."""
         self.args.models = ['sequential']
         benchmark.campaign(self.args)
         rows = self.rows('sequential.csv')
@@ -221,6 +235,7 @@ class BenchmarkTests(unittest.TestCase):
             plot_metrics.load([str(baseline)])
 
     def test_metrics_depend_on_model_not_kernel_or_wall_clock(self):
+        """El speedup usa "Model time", no el tiempo del kernel ni el reloj del proceso."""
         self.args.models=['sequential']
         text='''Mode: sequential
 Window: 128 x 64

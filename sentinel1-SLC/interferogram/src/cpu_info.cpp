@@ -9,6 +9,12 @@
 
 namespace interferogram {
 
+/*
+ * Lee la topología de las CPUs que el proceso puede usar desde /sys.
+ * La usan SMT y CMP para decidir en qué CPU fijar cada trabajador.
+ *
+ * @throws std::runtime_error si no es Linux o no se puede identificar algún núcleo.
+ */
 CpuInfo detectCpuInfo() {
 #ifndef __linux__
     throw std::runtime_error("La detección de topología SMT requiere Linux.");

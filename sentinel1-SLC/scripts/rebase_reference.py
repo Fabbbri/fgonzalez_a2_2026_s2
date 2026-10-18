@@ -15,6 +15,7 @@ from plot_metrics import WORKLOAD, load
 
 
 def read_rows(path):
+    """Lee un CSV de mediciones y rechaza otros esquemas."""
     with path.open(newline="") as stream:
         reader = csv.DictReader(stream)
         if tuple(reader.fieldnames or ()) != FIELDS:
@@ -23,6 +24,7 @@ def read_rows(path):
 
 
 def write_rows(path, rows):
+    """Escribe en un archivo temporal y lo reemplaza, para no dejar un CSV a medias."""
     temporary = path.with_suffix(path.suffix + ".tmp")
     try:
         with temporary.open("w", newline="") as stream:
@@ -35,6 +37,10 @@ def write_rows(path, rows):
 
 
 def rebase(root, baseline, plots=True):
+    """Recalcula speedup y eficiencia de todos los CSV de root con otra referencia secuencial.
+
+    Los tiempos de cada modelo no cambian; solo cambia la media secuencial con la que se comparan.
+    """
     root, baseline = Path(root).resolve(), Path(baseline).resolve()
     reference = read_rows(baseline)
     load([str(baseline)])
@@ -74,6 +80,7 @@ def rebase(root, baseline, plots=True):
                 eficiencia_paralela=mean / total / workers, referencia_tipo="compartida",
                 referencia_csv=os.path.relpath(snapshot, root), referencia_smt=first["referencia_smt"])
         updated[path] = rows
+    # Respaldar los CSV y sus resúmenes antes de reescribirlos.
     backup = root / "backups" / ("rebase-" + stamp)
     backup.mkdir(parents=True)
     for path in paths:

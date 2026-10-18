@@ -19,6 +19,7 @@ import time
 
 from plot_metrics import Measurements, WORKLOAD, generate, load, metric_estimate
 
+# Columnas de cada CSV de mediciones; también se usan para validar CSV previos.
 FIELDS = ("modelo", "hilos", "repeticion", "ancho", "alto", "origen_x", "origen_y",
           "tile_ancho", "tile_alto", "K", "allow_nodata", "slc_a_hash", "slc_b_hash",
           "tiempo_total_ms", "tiempo_kernel_ms", "tiempo_proceso_ms", "tiempo_secuencial_ms",
@@ -26,13 +27,16 @@ FIELDS = ("modelo", "hilos", "repeticion", "ancho", "alto", "origen_x", "origen_
           "smt_activo_linux", "afinidad_cpus", "cpus_permitidas", "sibling_groups",
           "referencia_tipo", "referencia_csv", "resultado_hash", "muestras_validas", "muestras_invalidas",
           "referencia_smt", "alcance_tiempo")
+# Qué incluye tiempo_total_ms: todo el modelo, excepto lectura, exportación y hash.
 SCOPE = "preparacion_creacion_calculo_sincronizacion_cierre_sin_io_hash"
 ALIASES = {"sequential": "sequential", "fine": "fine-grained", "fine-grained": "fine-grained",
            "coarse": "coarse-grained", "coarse-grained": "coarse-grained", "smt": "smt", "cmp": "cmp"}
 
 
 def topology(binary=None):
+    """Lee la topología de las CPUs permitidas. Devuelve un resumen en texto y un dict."""
     groups = {}
+    # Agrupar CPUs lógicas por (socket, núcleo): cada grupo son hermanos SMT.
     for cpu in sorted(os.sched_getaffinity(0)):
         directory = Path(f"/sys/devices/system/cpu/cpu{cpu}/topology")
         key = (int((directory / "physical_package_id").read_text()), int((directory / "core_id").read_text()))
@@ -52,12 +56,17 @@ def topology(binary=None):
 
 
 def smt_cpus(topo, workers):
+    """CPUs que se esperan para SMT: una por núcleo, luego hermanos, y se repite si sobran trabajadores.
+
+    Debe coincidir con el orden que usa Smt en smt.cpp.
+    """
     groups = [list(map(int, group.split(";"))) for group in topo["sibling_groups"].split("|")]
     order = [group[level] for level in range(max(map(len, groups))) for group in groups if level < len(group)]
     return [order[i % len(order)] for i in range(workers)]
 
 
 def file_hash(path):
+    """SHA-256 por bloques; identifica los TIFF y el binario usados en la campaña."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -66,6 +75,7 @@ def file_hash(path):
 
 
 def write_summary(path, rows, baseline):
+    """Escribe medias, desviaciones e IC95 aproximados por cantidad de hilos."""
     summaries = []
     for workers in sorted({int(row["hilos"]) for row in rows}):
         selected = [row for row in rows if int(row["hilos"]) == workers]
@@ -88,6 +98,10 @@ def write_summary(path, rows, baseline):
 
 
 def counts(value, physical, logical, smt=False):
+    """Convierte "auto" o "1,2,4" en la lista de cantidades de hilos a medir.
+
+    En modo auto, SMT mide P = núcleos físicos y P = CPUs lógicas (o 2*C sin SMT).
+    """
     if value == "auto":
         return sorted({physical, logical if logical > physical else 2 * physical}) if smt else sorted(
             {p for p in (1, 2, 4, 8, physical) if p <= physical})
@@ -101,6 +115,7 @@ def counts(value, physical, logical, smt=False):
 
 
 def campaign(args):
+    """Mide la referencia secuencial y luego cada modelo, con el estado SMT actual."""
     import matplotlib  # Fallar antes de medir si no se podrán producir gráficas.
     matplotlib.use("Agg")
     binary = str(Path(args.binary).resolve())
@@ -146,10 +161,12 @@ def campaign(args):
     if args.allow_nodata:
         common.append("--allow-nodata")
 
+    # Una campaña solo es comparable si la topología no cambia mientras se mide.
     def check_topology():
         if topology(binary)[0] != snapshot:
             raise ValueError("Cambió la topología/afinidad o el estado SMT; campaña interrumpida")
 
+    # Ejecuta el binario una vez y valida lo que informa antes de aceptar el tiempo.
     def run(model, workers, label):
         check_topology()
         command = [binary, *common, "--mode", model]
@@ -167,6 +184,7 @@ def campaign(args):
         if result.returncode:
             raise ValueError(f"Falló {label}: {result.stderr.strip()}")
         check_topology()
+        # La salida del programa son líneas "Clave: valor".
         fields = dict(line.split(": ", 1) for line in result.stdout.splitlines() if ": " in line)
         try:
             total = float(fields["Model time"].removesuffix(" ms"))
@@ -200,6 +218,8 @@ def campaign(args):
     baseline_path = None
     generated = []
 
+    # Mide un modelo para cada cantidad de hilos y escribe su CSV y resumen.
+    # Con --resume, valida las filas existentes y solo completa las repeticiones faltantes.
     def measure(model, workers_list, label, reference=None):
         rows = []
         path = root / (label + ".csv")
@@ -250,6 +270,7 @@ def campaign(args):
                 if (sorted(int(row["repeticion"]) for row in selected) != list(range(1, len(selected) + 1))
                         or len({(row["resultado_hash"], row["afinidad_cpus"]) for row in selected}) != 1):
                     raise ValueError("Repeticiones previas duplicadas, incompletas o inconsistentes")
+        # Respaldar resultados anteriores antes de sobrescribirlos.
         for existing in (path, root / (label + "-summary.csv")):
             if existing.exists():
                 backup = root / "backups" / stamp
@@ -266,6 +287,7 @@ def campaign(args):
                 if len(previous) >= args.repetitions:
                     print(f"{label}: P={workers or 1}, se conservan {len(previous)} repeticiones existentes", flush=True)
                     continue
+                # Los calentamientos no se guardan; fijan el hash esperado del resultado.
                 expected_hash = None
                 for warmup_index in range(args.warmups):
                     warmup, _, digest = run(model, workers, label)
@@ -313,6 +335,7 @@ def campaign(args):
         generated.append(path)
         return rows
 
+    # La referencia secuencial se reutiliza de BASELINE_CSV o se mide primero.
     if args.baseline_csv:
         baseline_path = args.baseline_csv.resolve()
         with baseline_path.open(newline="") as stream:
@@ -360,6 +383,7 @@ def campaign(args):
 
 
 def plot_campaign(generated, root):
+    """Gráficas por CSV y una comparación con todos los modelos."""
     for path in generated:
         groups, workload = load([str(path)])
         generate(groups, workload, root / "plots" / path.stem)
@@ -376,10 +400,12 @@ def read_smt_state():
 
 
 def set_smt_state(state, make_command):
+    """Cambia SMT en todo el equipo mediante el objetivo `make smt` (requiere sudo)."""
     subprocess.run([*shlex.split(make_command), "--no-print-directory", "smt", "SMT=" + state],
                    cwd=Path(__file__).resolve().parents[1], check=True)
 
 
+# SIGTERM se trata como Ctrl+C para que run_campaigns restaure el estado SMT.
 def interrupt_benchmark(signum, frame):
     raise KeyboardInterrupt
 
@@ -389,6 +415,7 @@ def authorize_smt_control():
 
 
 def run_campaigns(args):
+    """Ejecuta una campaña, o una por cada estado de SMT_STATES, restaurando SMT al final."""
     for source in (args.a, args.b):
         if not source.is_file():
             raise ValueError(f"No existe el TIFF de entrada: {source}. Configure SLC_A y SLC_B.")

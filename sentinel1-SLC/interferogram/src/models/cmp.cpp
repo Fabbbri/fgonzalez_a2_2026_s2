@@ -10,11 +10,19 @@
 #endif
 
 namespace interferogram {
+/*
+ * Crea un trabajador por núcleo físico, cada uno fijado a una CPU distinta.
+ * Con threads == 0 usa todos los núcleos disponibles (sin superar las muestras).
+ *
+ * @throws std::invalid_argument si la ventana es inválida o se piden más
+ *         trabajadores que núcleos físicos o muestras.
+ */
 Cmp::Cmp(int width, int height, int tileWidth, int tileHeight, int threads)
     : width_(width), samples_(0), tiles_(makeTiles(width, height, tileWidth, tileHeight)) {
     if (width <= 0 || height <= 0 || threads < 0) {
         throw std::invalid_argument("Dimensiones o cantidad de hilos inválidas para CMP.");
     }
+    // Evitar desbordamiento al calcular width * height.
     if (static_cast<std::size_t>(width) > std::numeric_limits<std::size_t>::max() / height) {
         throw std::invalid_argument("Ventana demasiado grande para CMP.");
     }
@@ -27,6 +35,7 @@ Cmp::Cmp(int width, int height, int tileWidth, int tileHeight, int threads)
     if (count == 0 || count > cpus_.size() || count > samples_) {
         throw std::invalid_argument("CMP requiere entre 1 y min(núcleos físicos, muestras) hilos.");
     }
+    // Quedarse con las primeras count CPUs, una por núcleo distinto.
     cpus_.resize(count);
     threads = static_cast<int>(count);
     threads_.reserve(threads);
@@ -38,6 +47,7 @@ Cmp::Cmp(int width, int height, int tileWidth, int tileHeight, int threads)
             const std::size_t begin = worker * base + std::min<std::size_t>(worker, extra);
             const std::size_t end = begin + base + (static_cast<std::size_t>(worker) < extra);
             const int cpu = cpus_[worker];
+            // El hilo arranca de inmediato y fija su CPU dentro de work().
             threads_.emplace_back([this, begin, end, cpu] { work(begin, end, cpu); });
         }
         // Esperar el arranque para excluirlo de la medición posterior.
@@ -53,17 +63,21 @@ Cmp::Cmp(int width, int height, int tileWidth, int tileHeight, int threads)
     }
 }
 
+// Cerrar el pool al destruir el modelo, para que ningún hilo quede vivo.
 Cmp::~Cmp() {
     stop();
 }
 
+// Igual que en CoarseGrained: avisar el cierre y unir todos los hilos.
 void Cmp::stop() {
     {
+        // Marcar el cierre bajo el mutex para que los trabajadores lo vean al despertar.
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
     }
     // Despertar a los trabajadores que esperan otro cálculo para que puedan salir.
     ready_.notify_all();
+    // Esperar a que cada hilo termine; joinable evita unir dos veces.
     for (auto& thread : threads_) {
         if (thread.joinable()) {
             thread.join();
@@ -71,15 +85,22 @@ void Cmp::stop() {
     }
 }
 
+/*
+ * Ciclo de un trabajador CMP: procesa siempre el mismo rango de tiles
+ * [begin, end) en la CPU asignada, una vez por cada llamada a compute().
+ */
 void Cmp::work(std::size_t begin, std::size_t end, int cpu) {
     // La afinidad se establece antes de avisar que el trabajador está listo.
     std::exception_ptr error;
     try {
 #ifdef __linux__
+        // Máscara con una sola CPU: el hilo solo podrá ejecutarse en ese núcleo.
         cpu_set_t mask;
         CPU_ZERO(&mask);
         CPU_SET(cpu, &mask);
+        // Aplica la afinidad al hilo actual, no a todo el proceso.
         const int status = pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask);
+        // pthread devuelve el código de error en lugar de usar errno.
         if (status != 0) {
             throw std::system_error(status, std::generic_category(), "Afinidad CMP");
         }
@@ -91,13 +112,17 @@ void Cmp::work(std::size_t begin, std::size_t end, int cpu) {
         // El constructor recibe el error; una excepción no debe escapar del hilo.
         error = std::current_exception();
     }
+    // seen guarda la última generación procesada para no repetir un cálculo.
     std::size_t seen = 0;
     std::unique_lock<std::mutex> lock(mutex_);
+    // Guardar el error para que el constructor lo relance en el hilo principal.
     if (error) {
         startupError_ = error;
     }
+    // Avisar al constructor, que espera hasta que started_ == cantidad de hilos.
     ++started_;
     done_.notify_one();
+    // Sin afinidad válida, este trabajador no participa.
     if (error) {
         return;
     }
@@ -108,6 +133,7 @@ void Cmp::work(std::size_t begin, std::size_t end, int cpu) {
             return;
         }
         seen = generation_;
+        // Copiar las referencias con el mutex tomado y soltarlo para calcular en paralelo.
         const auto& a = *a_;
         const auto& b = *b_;
         auto& result = *result_;
@@ -115,13 +141,16 @@ void Cmp::work(std::size_t begin, std::size_t end, int cpu) {
         // Cada muestra pertenece a un solo bloque; no hace falta bloquear la escritura.
         for (std::size_t t = begin; t < end; ++t) {
             const auto& tile = tiles_[t];
+            // Recorrer el tile por filas; tile guarda coordenadas locales a la ventana.
             for (int y = tile.yBegin; y < tile.yEnd; ++y) {
                 for (int x = tile.xBegin; x < tile.xEnd; ++x) {
+                    // Índice lineal en los vectores de la ventana (orden por filas).
                     const std::size_t i = static_cast<std::size_t>(y) * width_ + x;
                     result[i] = conjugateProduct(a[i], b[i]);
                 }
             }
         }
+        // Volver a tomar el mutex para descontar este trabajador de forma segura.
         lock.lock();
         // El último trabajador avisa al coordinador que el resultado está completo.
         if (--remaining_ == 0) {
@@ -130,6 +159,10 @@ void Cmp::work(std::size_t begin, std::size_t end, int cpu) {
     }
 }
 
+/*
+ * Publica las entradas, despierta a los trabajadores y espera a que terminen.
+ * Al regresar, result contiene el producto completo.
+ */
 void Cmp::compute(const std::vector<Complex>& a, const std::vector<Complex>& b,
                             std::vector<Complex>& result) {
     validateInterferogramInputs(a, b, result);
@@ -141,10 +174,14 @@ void Cmp::compute(const std::vector<Complex>& a, const std::vector<Complex>& b,
     a_ = &a;
     b_ = &b;
     result_ = &result;
+    // Todos los trabajadores participan, aunque alguno no tenga tiles.
     remaining_ = threads_.size();
+    // Una generación nueva indica a cada trabajador que hay un cálculo pendiente.
     ++generation_;
     ready_.notify_all();
+    // wait libera el mutex mientras espera, así los trabajadores pueden reportar.
     done_.wait(lock, [this] { return remaining_ == 0; });
+    // Los vectores pertenecen al llamador; no conservar punteros después del cálculo.
     a_ = nullptr;
     b_ = nullptr;
     result_ = nullptr;

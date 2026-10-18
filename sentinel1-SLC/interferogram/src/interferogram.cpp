@@ -22,6 +22,14 @@ void validateInterferogramInputs(const std::vector<Complex>& a,
         &a == &result || &b == &result)
         throw std::invalid_argument("El kernel requiere entradas no vacías y salida independiente del mismo tamaño.");
 }
+
+/*
+ * Divide la ventana en tiles de tileWidth x tileHeight, recorriendo por filas.
+ * Los tiles del borde derecho e inferior se recortan al tamaño restante, así
+ * que cada píxel pertenece exactamente a un tile.
+ *
+ * @throws std::invalid_argument si alguna dimensión no es positiva.
+ */
 std::vector<Tile> makeTiles(int width, int height, int tileWidth, int tileHeight) {
     if (width <= 0 || height <= 0 || tileWidth <= 0 || tileHeight <= 0)
         throw std::invalid_argument("Las dimensiones de ventana y tile deben ser positivas.");

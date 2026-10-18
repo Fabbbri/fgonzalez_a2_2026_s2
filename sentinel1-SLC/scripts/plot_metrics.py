@@ -11,11 +11,18 @@ import statistics
 WORKLOAD = ("ancho", "alto", "origen_x", "origen_y", "slc_a_hash", "slc_b_hash", "allow_nodata")
 POLICY = ("modelo", "K", "tile_ancho", "tile_alto")
 
+# Filas (total, secuencial, speedup, eficiencia) de una configuración.
+# baseline guarda los tiempos de la referencia secuencial compartida, si la hay.
 class Measurements(list):
     baseline = None
 
 
 def metric_estimate(rows, index, scale=1):
+    """Media, desviación y semiancho del IC95 de una métrica (0=tiempo, 1=secuencial, 2=speedup, 3=eficiencia).
+
+    Con referencia compartida, speedup y eficiencia se estiman como cociente de medias
+    y su incertidumbre se propaga con el método delta.
+    """
     if rows.baseline is None:
         return estimate([r[index] * scale for r in rows])
     if index == 1:
@@ -32,12 +39,14 @@ def metric_estimate(rows, index, scale=1):
 
 
 def estimate(values):
+    """Media, desviación estándar e IC95 aproximado con distribución normal."""
     mean = statistics.mean(values)
     sd = statistics.stdev(values)
     return mean, sd, 1.96 * sd / math.sqrt(len(values))
 
 
 def load(patterns):
+    """Lee los CSV crudos, valida su consistencia y los agrupa por (política, hilos)."""
     paths = sorted({Path(p) for pattern in patterns for p in glob.glob(pattern)})
     if not paths:
         raise ValueError("No hay CSV que coincidan con la ruta indicada")
@@ -105,6 +114,7 @@ def load(patterns):
 
 
 def label(key):
+    """Etiqueta corta de una configuración para los ejes."""
     policy, workers = key
     model, quantum, interval, wait = policy[:4]
     detail = f"quantum={quantum} píxeles" if model == "fine" else f"tiles={interval}×{wait}" if model == "coarse" else "base"
@@ -119,6 +129,7 @@ NAMES = {"sequential": "Secuencial", "fine": "Fine", "coarse": "Coarse", "cmp": 
 
 
 def readable(key):
+    """Descripción legible de una configuración para títulos y leyendas."""
     policy, workers = key
     model = policy[0]
     name = NAMES.get(model, model)
@@ -141,6 +152,7 @@ def sample_caption(key, data, reference=False):
 
 
 def decorate(ax, title, xlabel):
+    """Estilo común de los ejes."""
     ax.set_title(title, loc="left", fontsize=15, fontweight="bold", pad=20)
     ax.set_xlabel(xlabel, fontsize=11)
     ax.set_axisbelow(True)
@@ -150,6 +162,7 @@ def decorate(ax, title, xlabel):
 
 
 def save(fig, path, note):
+    """Agrega la nota al pie y guarda la figura en PNG."""
     fig.text(.02, .02, note, fontsize=9, color="#475569")
     fig.tight_layout(rect=(0, .09, 1, 1))
     fig.savefig(path, dpi=170, facecolor="white")
@@ -175,6 +188,7 @@ def fit_amdahl(points):
 
 
 def generate_amdahl(groups, workload, output):
+    """Ajusta Amdahl a cada modelo y escribe amdahl.png y amdahl.md."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -243,6 +257,7 @@ def generate_amdahl(groups, workload, output):
 
 
 def generate(groups, workload, output):
+    """Genera las gráficas de tiempo, speedup y eficiencia y el reporte de la carpeta."""
     try:
         import matplotlib
         matplotlib.use("Agg")

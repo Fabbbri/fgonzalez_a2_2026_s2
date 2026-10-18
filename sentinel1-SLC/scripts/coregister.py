@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 
 
 def source_path(value):
+    """Acepta un directorio SAFE, su manifest.safe o un ZIP y devuelve la ruta que lee SNAP."""
     path = Path(value).resolve()
     if path.is_dir():
         path /= 'manifest.safe'
@@ -21,6 +22,7 @@ def source_path(value):
 
 
 def burst_range(value):
+    """Convierte "PRIMERO:ULTIMO" en una tupla de índices de burst."""
     try:
         first, last = map(int, value.split(':'))
         if first < 1 or last < first:
@@ -31,9 +33,16 @@ def burst_range(value):
 
 
 def graph(a, b, out, ranges, swath, pol, dem, already_split=False):
+    """Arma el grafo XML de SNAP GPT.
+
+    Por cada adquisición: Read -> TOPSAR-Split (opcional) -> Apply-Orbit-File.
+    Luego Back-Geocoding remuestrea B sobre la geometría de A usando el DEM,
+    ESD corrige el desfase entre bursts si hay más de uno, y Write guarda el stack.
+    """
     root = ET.Element('graph', id='SLC-coregistration')
     ET.SubElement(root, 'version').text = '1.0'
 
+    # Agrega un nodo con su operador, sus fuentes y parámetros.
     def node(name, operator, sources=(), **params):
         n = ET.SubElement(root, 'node', id=name)
         ET.SubElement(n, 'operator').text = operator
@@ -66,12 +75,18 @@ def graph(a, b, out, ranges, swath, pol, dem, already_split=False):
 
 
 def export_stack(out):
+    """Convierte las bandas I/Q del stack de SNAP en A.tif y B.tif complejos.
+
+    Los píxeles sin dato en cualquiera de las dos imágenes se marcan como NaN
+    en ambas, para que el programa C++ procese la misma región válida.
+    """
     import numpy as np
     from osgeo import gdal
     gdal.UseExceptions()
     files = list((out / 'stack.data').glob('*.img'))
     datasets = []
     selected = []
+    # SNAP nombra las bandas como i_/q_ con mst/slv o ref/sec según la versión.
     for role, aliases in (('reference', ('mst', 'ref')), ('secondary', ('slv', 'sec'))):
         for component in ('i', 'q'):
             matches = [p for p in files if p.stem.startswith(component + '_')
@@ -91,6 +106,7 @@ def export_stack(out):
         ds.SetMetadataItem('PROCESSING', 'SNAP Back-Geocoding; see graph.xml and processing.json')
         ds.GetRasterBand(1).SetNoDataValue(float('nan'))
         outputs.append(ds)
+    # Procesar por bloques de 128 filas para no cargar el stack completo en memoria.
     valid_count = 0
     for y in range(0, height, 128):
         rows = min(128, height - y)
@@ -104,6 +120,7 @@ def export_stack(out):
             if nodata is not None and not np.isnan(nodata) and nodata != 0:
                 valid &= v != nodata
         valid_count += int(valid.sum())
+        # Unir I y Q en un complejo: índices 0/1 son la referencia y 2/3 la secundaria.
         for k, ds in zip((0, 2), outputs):
             values = arrays[k].astype(np.complex64)
             values.imag = arrays[k + 1]
@@ -148,6 +165,7 @@ def main():
             from osgeo import gdal
         except ImportError as e:
             raise ValueError('Faltan numpy/GDAL para Python (python3-numpy y python3-gdal).') from e
+    # exist_ok=False evita mezclar el resultado con un corregistro anterior.
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=False)
     graph(a, b, out, ranges, args.swath, args.pol, args.dem, args.already_split).write(
@@ -158,6 +176,7 @@ def main():
     command = [args.gpt, str(out / 'graph.xml'), '-c', args.cache]
     with (out / 'gpt.log').open('w') as log:
         subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
+    # processing.json deja registro de las entradas y el comando usados.
     report = export_stack(out)
     report.update(reference=str(a), secondary=str(b), bursts=ranges, command=command,
                   already_split=args.already_split,

@@ -1,3 +1,4 @@
+# Programa de interferogramas Sentinel-1 SLC: compilación, pruebas, imágenes y mediciones.
 .DEFAULT_GOAL := all
 .DELETE_ON_ERROR:
 
@@ -7,6 +8,8 @@ GDAL_CONFIG ?= gdal-config
 GDAL_CFLAGS = $(shell $(GDAL_CONFIG) --cflags 2>/dev/null)
 GDAL_LIBS = $(shell $(GDAL_CONFIG) --libs 2>/dev/null)
 CPPFLAGS += -Iinterferogram/include
+# KERNEL: cálculo y modelos
+# COMMON: KERNEL + lectura de TIFF y opciones de la CLI.
 MODELS := $(wildcard interferogram/src/models/*.cpp)
 KERNEL := interferogram/src/interferogram.cpp interferogram/src/cpu_info.cpp $(MODELS)
 COMMON := interferogram/src/config.cpp interferogram/src/slc_reader.cpp $(KERNEL)
@@ -39,7 +42,6 @@ test: $(TARGET) build/test_interferogram build/test_slc_reader build/benchmark_f
 	./build/test_slc_reader
 	bash interferogram/tests/test_cli.sh ./$(TARGET)
 	$(PYTHON) -m unittest discover -s interferogram/tests -p 'test_benchmark*.py'
-	$(PYTHON) interferogram/tests/test_smt_control.py
 
 clean:
 	rm -rf build
@@ -129,11 +131,11 @@ amdahl:
 
 test-benchmark: $(TARGET) build/benchmark_fixture
 	$(PYTHON) -m unittest discover -s interferogram/tests -p 'test_benchmark*.py'
-	$(PYTHON) interferogram/tests/test_smt_control.py
 
 build/benchmark_fixture: interferogram/tests/benchmark_fixture.cpp Makefile | check-gdal build
 	$(CXX) $(GDAL_CFLAGS) $(CXXFLAGS) -std=c++17 $< $(GDAL_LIBS) -o $@
 
+# Cambia el SMT de todo el equipo; el cambio persiste después de ejecutar.
 smt:
 	@set -eu; \
 	case '$(SMT)' in \

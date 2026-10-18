@@ -19,27 +19,34 @@
 
 namespace {
 // Guarda el vector calculado por el modelo, sin volver a calcular el producto.
+// Se usa con --output, por ejemplo en `make images` para visualizar el resultado.
 void exportResult(const std::string& path,
                   const std::vector<interferogram::Complex>& result,
                   const interferogram::Config& config) {
+    // No sobrescribir un resultado anterior por accidente.
     if (std::filesystem::exists(path)) {
         throw std::runtime_error("La salida ya existe: " + path);
     }
 
+    // Crear la carpeta de salida si todavía no existe.
     const auto directory = std::filesystem::path(path).parent_path();
     if (!directory.empty()) {
         std::filesystem::create_directories(directory);
     }
 
+    // Registrar los formatos de GDAL y obtener el escritor de GeoTIFF.
     GDALAllRegister();
     auto* driver = GetGDALDriverManager()->GetDriverByName("GTiff");
     if (!driver) {
         throw std::runtime_error("Driver GTiff no disponible");
     }
 
+    // TILED=YES guarda el TIFF en bloques internos (opción de GDAL, no los tiles del modelo).
+    // BIGTIFF=IF_SAFER cambia a BigTIFF si el archivo podría superar 4 GB.
     char tiled[] = "TILED=YES";
     char bigTiff[] = "BIGTIFF=IF_SAFER";
     char* options[] = {tiled, bigTiff, nullptr};
+    // Una banda compleja de doubles; el puntero cierra el archivo con GDALClose.
     std::unique_ptr<GDALDataset, decltype(&GDALClose)> dataset(
         driver->Create(path.c_str(), config.width, config.height, 1, GDT_CFloat64, options),
         GDALClose);
@@ -47,6 +54,7 @@ void exportResult(const std::string& path,
         throw std::runtime_error("No se pudo crear " + path);
     }
 
+    // Metadatos para saber después de qué entradas y ventana salió el TIFF.
     dataset->SetMetadataItem("MODEL", config.mode.c_str());
     dataset->SetMetadataItem("SOURCE_A", config.a.c_str());
     dataset->SetMetadataItem("SOURCE_B", config.b.c_str());
@@ -65,6 +73,7 @@ void exportResult(const std::string& path,
             row[2 * x + 1] = sample.imag;
         }
 
+        // Escribir una fila completa del resultado en la fila y del TIFF.
         const auto status = band->RasterIO(
             GF_Write, 0, y, config.width, 1, row.data(),
             config.width, 1, GDT_CFloat64, 0, 0, nullptr);
@@ -72,13 +81,20 @@ void exportResult(const std::string& path,
             throw std::runtime_error("Error escribiendo " + path);
         }
     }
+    // Forzar la escritura a disco antes de cerrar.
     dataset->FlushCache();
 }
 } // namespace
 
+/*
+ * Lee la misma ventana de A y B, ejecuta el modelo pedido con --mode y
+ * escribe tiempos, metadatos del modelo y un resumen del resultado.
+ * benchmark.py interpreta esta salida línea por línea ("Clave: valor").
+ */
 int main(int argc, char* argv[]) {
     using namespace interferogram;
     try {
+        // Interpretar las opciones; valores no indicados usan los de config.hpp.
         const Config config = parseConfig(argc, argv);
         if (config.help) {
             printHelp(std::cout);
@@ -93,6 +109,7 @@ int main(int argc, char* argv[]) {
 
         // Tiempo del modelo: preparación, cálculo, sincronización y cierre.
         const auto modelStart = std::chrono::steady_clock::now();
+        // Solo se crea el modelo elegido; los demás punteros quedan vacíos.
         std::unique_ptr<FineGrained> fineGrained;
         if (config.mode == "fine-grained") {
             fineGrained = std::make_unique<FineGrained>(config.width, config.height,
@@ -107,6 +124,7 @@ int main(int argc, char* argv[]) {
 
         std::unique_ptr<Smt> smt;
         if (config.mode == "smt") {
+            // 0 deja que SMT elija la cantidad según la topología del equipo.
             const int requestedThreads = config.threadsSpecified ? config.threads : 0;
             smt = std::make_unique<Smt>(config.width, config.height,
                 config.tileWidth, config.tileHeight, requestedThreads);
@@ -115,6 +133,7 @@ int main(int argc, char* argv[]) {
         std::unique_ptr<Cmp> cmp;
         if (config.mode == "cmp") {
             cmp = std::make_unique<Cmp>(config.width, config.height,
+                // Igual que SMT: 0 usa un trabajador por núcleo físico disponible.
                 config.tileWidth, config.tileHeight, config.threadsSpecified ? config.threads : 0);
         }
 
@@ -127,10 +146,12 @@ int main(int argc, char* argv[]) {
         } else if (coarseGrained) {
             coarseGrained->compute(a, b, result);
         } else if (fineGrained) {
+            // Fine-grained no tiene hilos propios: main ejecuta las rondas.
             while (!fineGrained->finished()) {
                 fineGrained->runRound(a, b, result);
             }
         } else {
+            // Ningún modelo paralelo: referencia secuencial.
             computeInterferogramSequential(a, b, result);
         }
         const auto stop = std::chrono::steady_clock::now();
@@ -139,6 +160,7 @@ int main(int argc, char* argv[]) {
 
         // Conservar metadatos antes de destruir los trabajadores.
         std::ostringstream modelMetadata;
+        // Cada modelo informa su configuración real; benchmark.py valida estos campos.
         if (fineGrained) {
             modelMetadata << "Execution: cooperative round-robin (1 OS thread)\n"
                       << "Tile size: " << config.tileWidth << " x " << config.tileHeight
@@ -154,6 +176,7 @@ int main(int argc, char* argv[]) {
         }
         if (smt) {
             const auto& topology = smt->topology();
+            // Describir el caso: más hilos que CPUs, uso de hermanos SMT o un hilo por núcleo.
             modelMetadata << "Execution: " << (smt->workers() > topology.allowedCpus.size()
                           ? "OS thread oversubscription beyond available logical CPUs\n"
                           : smt->workers() > topology.physicalCores
@@ -183,15 +206,19 @@ int main(int argc, char* argv[]) {
             }
             modelMetadata << '\n';
         }
+        // Cerrar los pools forma parte del tiempo del modelo (unir hilos), no del kernel.
         const auto closeStart = std::chrono::steady_clock::now();
         fineGrained.reset();
         coarseGrained.reset();
         smt.reset();
         cmp.reset();
+        // Tiempo del modelo = desde crear el modelo hasta el fin del kernel + el cierre.
+        // No incluye armar modelMetadata, que ocurre entre ambos tramos.
         const double modelMilliseconds = std::chrono::duration<double, std::milli>(
             stop - modelStart).count() + std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - closeStart).count();
 
+        // La exportación es opcional y se mide aparte para no afectar el tiempo del modelo.
         double exportMilliseconds = 0;
         if (!config.output.empty()) {
             const auto exportStart = std::chrono::steady_clock::now();
@@ -204,6 +231,7 @@ int main(int argc, char* argv[]) {
         Complex sum{0, 0};
         std::size_t validSamples = 0;
         for (const auto& value : result) {
+            // Los píxeles NoData (NaN) no se suman; se cuentan como inválidos.
             if (!std::isfinite(value.real) || !std::isfinite(value.imag)) {
                 continue;
             }
@@ -211,6 +239,7 @@ int main(int argc, char* argv[]) {
             sum.real += value.real;
             sum.imag += value.imag;
         }
+        // Salida "Clave: valor": la lee benchmark.py y la verifican los tests de CLI.
         std::cout << "P09-R2\n"
                   << "A: " << config.a << "\nB: " << config.b << '\n'
                   << "Window: " << config.width << " x " << config.height << '\n'
@@ -223,6 +252,7 @@ int main(int argc, char* argv[]) {
                   << std::setprecision(0)
                   << "Result sum (real, imag): " << sum.real << ", " << sum.imag << '\n'
                   << "Computational kernel; coregistration quality is not verified by this executable.\n";
+        // El hash permite comprobar que todos los modelos producen exactamente los mismos píxeles.
         std::cout << "Result hash (fnv1a64): " << std::hex << resultFingerprint(result) << std::dec << '\n';
         std::cout << "Valid result samples: " << validSamples
                   << "\nInvalid result samples: " << result.size() - validSamples
