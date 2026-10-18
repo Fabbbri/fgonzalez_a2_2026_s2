@@ -5,10 +5,67 @@ Material complementario del estudio de modelos de ejecución secuencial, Fine-Gr
 
 ## Índice
 
+- [Repeticiones y generación de las gráficas](#metodo)
 - [Deep Learning](#dl)
 - [Simulación gravitacional N-body](#nbody)
 - [Ray Tracing](#ray)
 - [Procesamiento de imágenes Sentinel-1 SLC](#sentinel)
+
+<a id="metodo"></a>
+
+## Repeticiones y generación de las gráficas
+
+Cada configuración (modelo de ejecución y cantidad de trabajadores) se ejecutó **200 veces**, valor predeterminado de `REPETITIONS`. 
+
+| Problema | Comando | Script de repeticiones | Resultados |
+| --- | --- | --- | --- |
+| Deep Learning | `make benchmark` (en `DL/src/`) | [`scripts/benchmark.py`](DL/src/scripts/benchmark.py) | `resultdl/` |
+| N-body | `make benchmark` (en `n-body-sim/`) | [`scripts/benchmark.py`](n-body-sim/scripts/benchmark.py) | `resultnbody/` |
+| Ray Tracing | `make run-all` (en `ray tracing/`) | [`scripts/run_all.sh`](ray%20tracing/scripts/run_all.sh) -> [`raytracer --benchmark --repetitions N`](ray%20tracing/src/metrics/benchmark.cpp) | `resultsrt/` |
+| Sentinel-1 SLC | `make benchmark` (en `sentinel1-SLC/`) | [`scripts/benchmark.py`](sentinel1-SLC/scripts/benchmark.py) | `resultsen/` |
+
+Por ejemplo, en Sentinel-1 el objetivo `benchmark` del [Makefile](sentinel1-SLC/Makefile) ejecuta:
+
+```make
+benchmark: $(TARGET) smt
+	$(PYTHON) scripts/benchmark.py ./$(TARGET) --results-dir "$(OUTPUT)" \
+		--models $(BENCHMARK_MODELS) --repetitions "$(REPETITIONS)" --warmups "$(WARMUPS)" \
+		--thread-counts "$(THREAD_COUNTS)" --smt-states "$(SMT_STATES)" ... $(COMMON_ARGS)
+```
+
+y dentro de [`benchmark.py`](sentinel1-SLC/scripts/benchmark.py) cada configuración sigue este ciclo:
+
+```python
+for workers in workers_list:
+    for _ in range(args.warmups): # calentamiento, no se guarda
+        run(model, workers, label)
+    for repetition in range(1, args.repetitions + 1):
+        record, total, digest = run(model, workers, label) # una repetición medida
+        writer.writerow(...) # una fila por repetición en el CSV
+```
+
+
+**Estadística y gráficas**
+
+`scripts/plot_metrics.py` de cada proyecto ([DL](DL/src/scripts/plot_metrics.py), [N-body](n-body-sim/scripts/plot_metrics.py), [Ray Tracing](ray%20tracing/scripts/plot_metrics.py), [Sentinel-1](sentinel1-SLC/scripts/plot_metrics.py)) lee los CSV (una fila por repetición) y genera automáticamente:
+
+- **Media, desviación estándar e IC95** de tiempo, speedup y eficiencia:
+
+  $$\mathrm{IC}_{95} = \bar{x} \pm 1.96 \cdot \frac{s}{\sqrt{n}}$$
+
+  donde $\bar{x}$ es la media, $s$ la desviación estándar y $n$ la cantidad de repeticiones.
+
+- **Comparación y escalabilidad:** `comparacion-tiempo.png`, `comparacion-speedup.png`, `comparacion-eficiencia.png` y `escalabilidad.png`, que se muestran en esta página.
+- **Distribución de todas las iteraciones:** `boxplot-*.png` e `histograma-*.png` por configuración, en `plots/comparison/` dentro de la carpeta de resultados de cada proyecto.
+- **Reporte:** `reporte.md` con la tabla de $n$, $\bar{x} \pm \mathrm{IC}_{95}$ y desviación por configuración, y `amdahl.md` con el ajuste de la ley de Amdahl.
+
+Para regenerar las gráficas desde los CSV ya medidos, sin volver a ejecutar los modelos:
+
+```bash
+make plots # tiempo, speedup, eficiencia, escalabilidad, boxplots, histogramas y reporte
+make amdahl # solo el ajuste de Amdahl
+```
+
 
 <a id="dl"></a>
 

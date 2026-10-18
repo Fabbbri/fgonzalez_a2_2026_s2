@@ -339,7 +339,13 @@ En este modelo, el procesamiento se divide en tareas que avanzan en pequeños in
 
 Cada tarea corresponde a un tile y guarda la posición en la que se quedó. Todo ocurre en un único hilo del sistema operativo: alternar tareas no significa usar varios núcleos. `--quantum` controla cuántos píxeles procesa una tarea antes de ceder el turno. Un quantum pequeño aumenta las intervenciones del planificador cooperativo.
 
-![Diagrama de Fine-Grained Multithreading](../images/fine_grained.png)
+
+<p align="center">
+  <img src="../images/fine_grained.png"
+       alt="Diagrama de Fine-Grained Multithreading"
+       width="450">
+</p>
+
 
 ### Coarse-Grained Multithreading
 
