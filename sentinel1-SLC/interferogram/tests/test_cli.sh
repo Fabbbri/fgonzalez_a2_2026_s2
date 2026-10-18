@@ -3,13 +3,20 @@
 # Requiere las adquisiciones locales y devuelve un estado no nulo si falla una prueba.
 set -euo pipefail
 exe=${1:-./build/interferogram}
+# Límites tomados del TIFF A predeterminado; SLC_A permite usar otro par.
+slc=${SLC_A:-data/coregistered/P09-R2-2023-2024/A.tif}
+if [[ ! -f $slc ]]; then
+    echo "SKIP: pruebas de CLI; falta $slc (ver docs/data_acquisition.md)"
+    exit 0
+fi
+read -r width height < <(gdalinfo "$slc" | sed -n 's/^Size is \([0-9]*\), \([0-9]*\)$/\1 \2/p')
 "$exe" --help | grep -q 'Uso:'
 output=$("$exe" --width 16 --height 16 --x 12000 --y 750)
 grep -q 'Samples: 256' <<< "$output"
 grep -q 'Mode: sequential' <<< "$output"
 grep -q 'Kernel time:' <<< "$output"
-# El último píxel del burst debe poder leerse como una ventana de 1×1.
-"$exe" --width 1 --height 1 --x 24444 --y 1499 >/dev/null
+# El último píxel de la imagen debe poder leerse como una ventana de 1×1.
+"$exe" --width 1 --height 1 --x $((width - 1)) --y $((height - 1)) --allow-nodata >/dev/null
 # Ejecuta el programa con los argumentos recibidos y exige un código de error.
 # Si se aceptan, detiene la prueba con estado 1.
 fails() {
@@ -20,10 +27,10 @@ fails() {
 }
 fails --width 0
 fails --height -1
-fails --width 24446
-fails --height 1501
+fails --width $((width + 1)) --allow-nodata
+fails --height $((height + 1)) --allow-nodata
 fails --x -1
-fails --x 24445
+fails --x "$width" --width 1 --allow-nodata
 fails --width 9999999999999999999999
 fails --width 12abc
 fails --width
@@ -38,11 +45,6 @@ fails --tile-width 0
 fails --tile-height -1
 fails --tile-width
 reference=$("$exe" --x 12000 --y 750 --width 16 --height 16)
-tiled=$("$exe" --x 12000 --y 750 --width 16 --height 16 --mode tiled --tile-width 6 --tile-height 5)
-grep -q 'Mode: tiled' <<< "$tiled"
-grep -q 'Tiles: 12' <<< "$tiled"
-[[ $(grep 'Result sum' <<< "$reference") == $(grep 'Result sum' <<< "$tiled") ]]
-echo 'PASS: CLI de tiles y resultado equivalente'
 
 fails --mode fine-grained --quantum 0
 fails --mode fine-grained --quantum -1
@@ -81,10 +83,10 @@ for extra in ([], ['--threads', '3']):
     assert expected in output
     assert 'Available physical cores: 1' in output
     assert 'Workers: ' + ('3' if extra else '2') in output
-    assert 'SMT approximation' in output
+    assert 'oversubscription beyond available logical CPUs' in output
 control = subprocess.check_output(base + ['--mode', 'smt', '--threads', '1'], text=True)
 assert expected in control and 'Workers: 1' in control
-assert 'control without oversubscription' in control
+assert 'Control: one worker per selected physical core' in control
 print('PASS: SMT integración y equivalencia')
 for extra in ([], ['--threads', '1']):
     output = subprocess.check_output(base + ['--mode', 'cmp'] + extra, text=True)

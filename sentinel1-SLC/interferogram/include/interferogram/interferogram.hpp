@@ -20,8 +20,4 @@ const std::vector<Complex>& b, std::vector<Complex>& result);
 struct Tile { int xBegin, yBegin, xEnd, yEnd; };
 // Genera la partición de la ventana en tiles sin solapamientos.
 std::vector<Tile> makeTiles(int width, int height, int tileWidth, int tileHeight);
-void computeInterferogramTiled(const std::vector<Complex>& a,
-                              const std::vector<Complex>& b,
-                              std::vector<Complex>& result,
-                              int width, const std::vector<Tile>& tiles);
 } // namespace interferogram

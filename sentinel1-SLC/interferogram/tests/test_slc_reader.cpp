@@ -105,6 +105,12 @@ int main() {
         CPLPopErrorHandler();
         // Integración con las adquisiciones reales: conservar componentes imaginarias.
         Config config;
+        VSIStatBufL stat;
+        if (VSIStatL(config.a.c_str(), &stat) != 0 || VSIStatL(config.b.c_str(), &stat) != 0) {
+            std::cout << "PASS: conversión compleja, offsets y errores\n"
+                      << "SKIP: ventanas reales A/B; faltan " << config.a << " o " << config.b << '\n';
+            return 0;
+        }
         for (const auto& source : {config.a,config.b}) {
             const auto real=readSlcWindow(source,12000,750,16,16);
             require(real.size()==256,"Ventana real no tiene 256 muestras");

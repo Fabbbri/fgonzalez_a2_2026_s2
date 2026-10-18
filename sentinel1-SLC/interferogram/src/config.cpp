@@ -102,8 +102,8 @@ Config parseConfig(int argc, char* argv[]) {
 
     if (!config.help) {
         validateWindow(config.x, config.y, config.width, config.height);
-        if (config.mode != "sequential" && config.mode != "tiled" && config.mode != "fine-grained" && config.mode != "coarse-grained" && config.mode != "smt" && config.mode != "cmp")
-            throw std::invalid_argument("Modo válido: sequential, tiled, fine-grained, coarse-grained, smt o cmp.");
+        if (config.mode != "sequential" && config.mode != "fine-grained" && config.mode != "coarse-grained" && config.mode != "smt" && config.mode != "cmp")
+            throw std::invalid_argument("Modo válido: sequential, fine-grained, coarse-grained, smt o cmp.");
         if (config.threads <= 0)
             throw std::invalid_argument("La cantidad de hilos debe ser positiva.");
         if (config.quantum <= 0)
@@ -128,13 +128,13 @@ void printHelp(std::ostream& out) {
     out << "Uso: ./build/interferogram [opciones]\n"
         << "Kernel secuencial A * conjugate(B) sobre SLC complejos P09-R2.\n"
         << "  --output PATH  Exportar resultado complejo C++ (fuera del tiempo de kernel)\n"
-        << "  --a PATH       TIFF A (predeterminado: 2025-01-10, burst 179298)\n"
-        << "  --b PATH       TIFF B (predeterminado: 2025-01-22, burst 179298)\n"
-        << "  --width N      Ancho de ventana (24445)\n"
-        << "  --height N     Alto de ventana (1500)\n"
+        << "  --a PATH       TIFF A (predeterminado: corregistrado 2023-06-14)\n"
+        << "  --b PATH       TIFF B (predeterminado: corregistrado 2024-06-08)\n"
+        << "  --width N      Ancho de ventana (24444)\n"
+        << "  --height N     Alto de ventana (1499)\n"
         << "  --x N          Columna inicial, base cero (0)\n"
         << "  --y N          Fila inicial, base cero (0)\n"
-        << "  --mode MODE    sequential, tiled, fine-grained, coarse-grained, smt o cmp (sequential)\n"
+        << "  --mode MODE    sequential, fine-grained, coarse-grained, smt o cmp (sequential)\n"
         << "  --tile-width N Ancho del tile (32)\n"
         << "  --tile-height N Alto del tile (32)\n"
         << "  --quantum N    Píxeles por turno en fine-grained (1)\n"

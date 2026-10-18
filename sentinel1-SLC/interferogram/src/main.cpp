@@ -93,10 +93,6 @@ int main(int argc, char* argv[]) {
 
         // Tiempo del modelo: preparación, cálculo, sincronización y cierre.
         const auto modelStart = std::chrono::steady_clock::now();
-        const auto tiles = config.mode == "tiled"
-            ? makeTiles(config.width, config.height, config.tileWidth, config.tileHeight)
-            : std::vector<Tile>{};
-
         std::unique_ptr<FineGrained> fineGrained;
         if (config.mode == "fine-grained") {
             fineGrained = std::make_unique<FineGrained>(config.width, config.height,
@@ -134,8 +130,6 @@ int main(int argc, char* argv[]) {
             while (!fineGrained->finished()) {
                 fineGrained->runRound(a, b, result);
             }
-        } else if (config.mode == "tiled") {
-            computeInterferogramTiled(a, b, result, config.width, tiles);
         } else {
             computeInterferogramSequential(a, b, result);
         }
@@ -145,10 +139,6 @@ int main(int argc, char* argv[]) {
 
         // Conservar metadatos antes de destruir los trabajadores.
         std::ostringstream modelMetadata;
-        if (config.mode == "tiled") {
-            modelMetadata << "Tile size: " << config.tileWidth << " x " << config.tileHeight
-                      << "\nTiles: " << tiles.size() << '\n';
-        }
         if (fineGrained) {
             modelMetadata << "Execution: cooperative round-robin (1 OS thread)\n"
                       << "Tile size: " << config.tileWidth << " x " << config.tileHeight

@@ -8,15 +8,15 @@ namespace interferogram {
  * Las rutas predeterminadas se resuelven desde el directorio sentinel1-SLC/.
  */
 struct Config {
-    std::string a = "data/raw/P09-R2/S1A_SLC_20250110T112318_179298_IW2_VV_462858.SAFE/measurement/s1a-iw2-slc-vv-179298-20250110T112318-462858.tiff";
-    std::string b = "data/raw/P09-R2/S1A_SLC_20250122T112317_179298_IW2_VV_464635.SAFE/measurement/s1a-iw2-slc-vv-179298-20250122T112317-464635.tiff";
+    std::string a = "data/coregistered/P09-R2-2023-2024/A.tif";
+    std::string b = "data/coregistered/P09-R2-2023-2024/B.tif";
     // Origen en píxeles, con índices de columna y fila desde cero.
     int x = 0;
     int y = 0;
     // Tamaño de la ventana; no modifica las dimensiones de los TIFF originales.
-    int width = 24445;
-    int height = 1500;
-    bool allowNoData = false; // Conservar NoData para procesar la imagen completa.
+    int width = 24444;
+    int height = 1499;
+    bool allowNoData = false; // --allow-nodata es necesario si la ventana incluye bordes NoData.
     std::string mode = "sequential";
     int tileWidth = 32;
     int tileHeight = 32;

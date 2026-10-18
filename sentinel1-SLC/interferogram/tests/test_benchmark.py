@@ -45,14 +45,16 @@ class BenchmarkTests(unittest.TestCase):
         with (self.args.results_dir/name).open() as stream:
             return list(csv.DictReader(stream))
 
-    def test_smt_single_worker_control(self):
+    def test_smt_physical_core_control(self):
+        # benchmark.py exige al menos un trabajador SMT por núcleo físico.
         self.args.models = ['smt']
-        self.args.smt_thread_counts = '1'
-        benchmark.run_campaigns(self.args)
         _, topo = benchmark.topology()
+        physical = int(topo['physical_cores'])
+        self.args.smt_thread_counts = str(physical)
+        benchmark.run_campaigns(self.args)
         rows = self.rows('smt-' + {'1': 'on', '0': 'off'}.get(topo.get('smt_active'), 'unknown') + '.csv')
-        self.assertTrue(all(row['hilos'] == '1' for row in rows))
-        expected = str(benchmark.smt_cpus(topo, 1)[0])
+        self.assertTrue(all(row['hilos'] == str(physical) for row in rows))
+        expected = ';'.join(map(str, benchmark.smt_cpus(topo, physical)))
         self.assertTrue(all(row['afinidad_cpus'] == expected for row in rows))
 
     def test_smt_cpu_order_and_oversubscription(self):
