@@ -21,24 +21,26 @@ Menor tiempo indica mejor rendimiento.
 
 <table>
   <tr>
-    <th width="33%">Deep Learning</th>
-    <th width="33%">N-body</th>
-    <th width="33%">Ray Tracing</th>
+    <th width="50%">Deep Learning</th>
+    <th width="50%">N-body</th>
   </tr>
   <tr>
     <td><a href="defensa/resultados/dl/comparacion-tiempo.png"><img src="defensa/resultados/dl/comparacion-tiempo.png" width="100%" alt="Deep Learning: tiempo de ejecución"></a></td>
     <td><a href="defensa/resultados/nbody/comparacion-tiempo.png"><img src="defensa/resultados/nbody/comparacion-tiempo.png" width="100%" alt="N-body: tiempo de ejecución"></a></td>
+  </tr>
+  <tr>
+    <th width="50%">Ray Tracing</th>
+    <th width="50%">Sentinel-1, equipo A (3200 MT/s)</th>
+  </tr>
+  <tr>
     <td><a href="defensa/resultados/ray/comparacion-tiempo.png"><img src="defensa/resultados/ray/comparacion-tiempo.png" width="100%" alt="Ray Tracing: tiempo de ejecución"></a></td>
-  </tr>
-  <tr>
-    <th width="33%">Sentinel-1, equipo A (3200 MT/s)</th>
-    <th width="33%">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
-    <th width="33%"></th>
-  </tr>
-  <tr>
     <td><a href="defensa/resultados/sentinel/comparacion-tiempo.png"><img src="defensa/resultados/sentinel/comparacion-tiempo.png" width="100%" alt="Sentinel-1, equipo A (3200 MT/s): tiempo de ejecución"></a></td>
-    <td><a href="defensa/resultados/sentinel_equipo_b/comparacion-tiempo.png"><img src="defensa/resultados/sentinel_equipo_b/comparacion-tiempo.png" width="100%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): tiempo de ejecución"></a></td>
-    <td></td>
+  </tr>
+  <tr>
+    <th colspan="2">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="defensa/resultados/sentinel_equipo_b/comparacion-tiempo.png"><img src="defensa/resultados/sentinel_equipo_b/comparacion-tiempo.png" width="50%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): tiempo de ejecución"></a></td>
   </tr>
 </table>
 
@@ -52,24 +54,26 @@ Una aceleración mayor que 1 indica una mejora respecto a la referencia secuenci
 
 <table>
   <tr>
-    <th width="33%">Deep Learning</th>
-    <th width="33%">N-body</th>
-    <th width="33%">Ray Tracing</th>
+    <th width="50%">Deep Learning</th>
+    <th width="50%">N-body</th>
   </tr>
   <tr>
     <td><a href="defensa/resultados/dl/comparacion-speedup.png"><img src="defensa/resultados/dl/comparacion-speedup.png" width="100%" alt="Deep Learning: aceleración (speedup)"></a></td>
     <td><a href="defensa/resultados/nbody/comparacion-speedup.png"><img src="defensa/resultados/nbody/comparacion-speedup.png" width="100%" alt="N-body: aceleración (speedup)"></a></td>
+  </tr>
+  <tr>
+    <th width="50%">Ray Tracing</th>
+    <th width="50%">Sentinel-1, equipo A (3200 MT/s)</th>
+  </tr>
+  <tr>
     <td><a href="defensa/resultados/ray/comparacion-speedup.png"><img src="defensa/resultados/ray/comparacion-speedup.png" width="100%" alt="Ray Tracing: aceleración (speedup)"></a></td>
-  </tr>
-  <tr>
-    <th width="33%">Sentinel-1, equipo A (3200 MT/s)</th>
-    <th width="33%">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
-    <th width="33%"></th>
-  </tr>
-  <tr>
     <td><a href="defensa/resultados/sentinel/comparacion-speedup.png"><img src="defensa/resultados/sentinel/comparacion-speedup.png" width="100%" alt="Sentinel-1, equipo A (3200 MT/s): aceleración (speedup)"></a></td>
-    <td><a href="defensa/resultados/sentinel_equipo_b/comparacion-speedup.png"><img src="defensa/resultados/sentinel_equipo_b/comparacion-speedup.png" width="100%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): aceleración (speedup)"></a></td>
-    <td></td>
+  </tr>
+  <tr>
+    <th colspan="2">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="defensa/resultados/sentinel_equipo_b/comparacion-speedup.png"><img src="defensa/resultados/sentinel_equipo_b/comparacion-speedup.png" width="50%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): aceleración (speedup)"></a></td>
   </tr>
 </table>
 
@@ -83,24 +87,26 @@ Relaciona la aceleración con la cantidad de trabajadores utilizados.
 
 <table>
   <tr>
-    <th width="33%">Deep Learning</th>
-    <th width="33%">N-body</th>
-    <th width="33%">Ray Tracing</th>
+    <th width="50%">Deep Learning</th>
+    <th width="50%">N-body</th>
   </tr>
   <tr>
     <td><a href="defensa/resultados/dl/comparacion-eficiencia.png"><img src="defensa/resultados/dl/comparacion-eficiencia.png" width="100%" alt="Deep Learning: eficiencia paralela"></a></td>
     <td><a href="defensa/resultados/nbody/comparacion-eficiencia.png"><img src="defensa/resultados/nbody/comparacion-eficiencia.png" width="100%" alt="N-body: eficiencia paralela"></a></td>
+  </tr>
+  <tr>
+    <th width="50%">Ray Tracing</th>
+    <th width="50%">Sentinel-1, equipo A (3200 MT/s)</th>
+  </tr>
+  <tr>
     <td><a href="defensa/resultados/ray/comparacion-eficiencia.png"><img src="defensa/resultados/ray/comparacion-eficiencia.png" width="100%" alt="Ray Tracing: eficiencia paralela"></a></td>
-  </tr>
-  <tr>
-    <th width="33%">Sentinel-1, equipo A (3200 MT/s)</th>
-    <th width="33%">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
-    <th width="33%"></th>
-  </tr>
-  <tr>
     <td><a href="defensa/resultados/sentinel/comparacion-eficiencia.png"><img src="defensa/resultados/sentinel/comparacion-eficiencia.png" width="100%" alt="Sentinel-1, equipo A (3200 MT/s): eficiencia paralela"></a></td>
-    <td><a href="defensa/resultados/sentinel_equipo_b/comparacion-eficiencia.png"><img src="defensa/resultados/sentinel_equipo_b/comparacion-eficiencia.png" width="100%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): eficiencia paralela"></a></td>
-    <td></td>
+  </tr>
+  <tr>
+    <th colspan="2">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="defensa/resultados/sentinel_equipo_b/comparacion-eficiencia.png"><img src="defensa/resultados/sentinel_equipo_b/comparacion-eficiencia.png" width="50%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): eficiencia paralela"></a></td>
   </tr>
 </table>
 
@@ -114,24 +120,26 @@ Muestra el comportamiento al variar la cantidad de trabajadores.
 
 <table>
   <tr>
-    <th width="33%">Deep Learning</th>
-    <th width="33%">N-body</th>
-    <th width="33%">Ray Tracing</th>
+    <th width="50%">Deep Learning</th>
+    <th width="50%">N-body</th>
   </tr>
   <tr>
     <td><a href="defensa/resultados/dl/escalabilidad.png"><img src="defensa/resultados/dl/escalabilidad.png" width="100%" alt="Deep Learning: escalabilidad"></a></td>
     <td><a href="defensa/resultados/nbody/escalabilidad.png"><img src="defensa/resultados/nbody/escalabilidad.png" width="100%" alt="N-body: escalabilidad"></a></td>
+  </tr>
+  <tr>
+    <th width="50%">Ray Tracing</th>
+    <th width="50%">Sentinel-1, equipo A (3200 MT/s)</th>
+  </tr>
+  <tr>
     <td><a href="defensa/resultados/ray/escalabilidad.png"><img src="defensa/resultados/ray/escalabilidad.png" width="100%" alt="Ray Tracing: escalabilidad"></a></td>
-  </tr>
-  <tr>
-    <th width="33%">Sentinel-1, equipo A (3200 MT/s)</th>
-    <th width="33%">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
-    <th width="33%"></th>
-  </tr>
-  <tr>
     <td><a href="defensa/resultados/sentinel/escalabilidad.png"><img src="defensa/resultados/sentinel/escalabilidad.png" width="100%" alt="Sentinel-1, equipo A (3200 MT/s): escalabilidad"></a></td>
-    <td><a href="defensa/resultados/sentinel_equipo_b/escalabilidad.png"><img src="defensa/resultados/sentinel_equipo_b/escalabilidad.png" width="100%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): escalabilidad"></a></td>
-    <td></td>
+  </tr>
+  <tr>
+    <th colspan="2">Sentinel-1, equipo B (8533 MT/s; sin SMT)</th>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><a href="defensa/resultados/sentinel_equipo_b/escalabilidad.png"><img src="defensa/resultados/sentinel_equipo_b/escalabilidad.png" width="50%" alt="Sentinel-1, equipo B (8533 MT/s; sin SMT): escalabilidad"></a></td>
   </tr>
 </table>
 
