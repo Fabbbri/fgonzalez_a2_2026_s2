@@ -1,14 +1,10 @@
+#include "mnist.h"
+
 #include <cstdint>
-#include <fstream>
 #include <iostream>
-#include <Eigen/Dense>
+#include <stdexcept>
 
 using std::cout;
-
-struct Sample {
-    Eigen::VectorXd x;
-    Eigen::VectorXd y;
-};
 
 // ----------------------------------------------
 // LECTOR DE BINARIO BIG-ENDIAN -> LITTLE ENDIAN
@@ -18,6 +14,7 @@ uint32_t read_uint32(std::ifstream& file) {
 
     file.read(reinterpret_cast<char*>(bytes), 4);
 
+    if (!file) throw std::runtime_error("MNIST: cabecera incompleta");
     return (static_cast<uint32_t>(bytes[0]) << 24) |
            (static_cast<uint32_t>(bytes[1]) << 16) |
            (static_cast<uint32_t>(bytes[2]) << 8)  |
@@ -44,6 +41,8 @@ Eigen::VectorXd load_image(std::ifstream& file, int index) {
         reinterpret_cast<char*>(pixels),
         pixels_per_image
     );
+
+    if (!file) throw std::runtime_error("MNIST: imagen incompleta o índice fuera de rango");
 
     // Crear vector Eigen de 784 elementos
     Eigen::VectorXd image(pixels_per_image);
@@ -75,6 +74,7 @@ int load_label(std::ifstream& file, int index) {
         1
     );
 
+    if (!file || label > 9) throw std::runtime_error("MNIST: etiqueta inválida o incompleta");
     return static_cast<int>(label);
 }
 
@@ -100,88 +100,4 @@ Sample load_sample(
     sample.y(label) = 1.0;
 
     return sample;
-}
-
-// ----------------------------------------------
-// MAIN
-// ----------------------------------------------
-int main() {
-
-    // ----------------------------------------------
-    // Imagen a acceder
-    // ----------------------------------------------
-    int index = 5000;
-    cout << "Index = " << index << '\n';
-
-    // ----------------------
-    // Abrir archivos
-    // ----------------------
-
-    std::ifstream file(
-        "../data/mnist/train-images-idx3-ubyte",
-        std::ios::binary
-    );
-
-    if (!file) {
-        std::cerr << "No se pudo abrir la imagen\n";
-        return 1;
-    }
-
-    std::ifstream labels_file(
-        "../data/mnist/train-labels-idx1-ubyte",
-        std::ios::binary
-    );
-
-    if (!labels_file) {
-        std::cerr << "No se pudo abrir la etiqueta\n";
-        return 1;
-    }
-
-    // ----------------------
-    // Leer headers
-    // ----------------------
-
-    uint32_t magic = read_uint32(file);
-    uint32_t images = read_uint32(file);
-    uint32_t rows = read_uint32(file);
-    uint32_t columns = read_uint32(file);
-
-    uint32_t label_magic = read_uint32(labels_file);
-    uint32_t label_count = read_uint32(labels_file);
-
-    // ----------------------
-    // Mostrar información
-    // ----------------------
-
-    std::cout << "Magic: " << magic << '\n';
-    std::cout << "Images: " << images << '\n';
-    std::cout << "Rows: " << rows << '\n';
-    std::cout << "Columns: " << columns << '\n';
-
-    std::cout << "Label magic: " << label_magic << '\n';
-    std::cout << "Labels: " << label_count << '\n';
-
-    // ----------------------
-    // Cargar primera muestra
-    // ----------------------
-
-    Sample sample = load_sample(file, labels_file, index);
-    Eigen::VectorXd x = sample.x;
-    Eigen::VectorXd y = sample.y;
-
-    // ----------------------
-    // Mostrar resultado
-    // ----------------------
-
-    std::cout << "\nTamaño de X: " << x.size() << '\n';
-    std::cout << "Min: " << x.minCoeff() << '\n';
-    std::cout << "Max: " << x.maxCoeff() << '\n';
-
-    std::cout << "Y: " << '\n';
-    for (int i = 0; i < 10; ++i) {
-        std::cout << y(i) << ' ';
-    }
-    std::cout << '\n';
-
-    return 0;
 }

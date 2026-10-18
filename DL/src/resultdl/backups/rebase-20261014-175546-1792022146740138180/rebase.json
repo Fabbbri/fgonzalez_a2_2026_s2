@@ -1,0 +1,14 @@
+{
+  "status": "complete",
+  "baseline": "/home/jian/Desktop/fgonzalez_a2_2026_s2/DL/src/resultdl/sequential.csv",
+  "reference": "/home/jian/Desktop/fgonzalez_a2_2026_s2/DL/src/resultdl/references/sequential-rebased-20261014-175546-1792022146740138180.csv",
+  "sequential_mean_ms": 29156.52515,
+  "reference_repetitions": 20,
+  "updated_csv": [
+    "cmp.csv",
+    "coarse.csv",
+    "fine.csv",
+    "smt-off.csv",
+    "smt-on.csv"
+  ]
+}

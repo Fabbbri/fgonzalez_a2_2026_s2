@@ -1,0 +1,41 @@
+{
+  "command": [
+    "perf",
+    "stat",
+    "--no-big-num",
+    "-x",
+    ";",
+    "-e",
+    "task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,cache-references,cache-misses",
+    "-o",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/perf/raw/nbody-20261016T212339.819681Z/coarse-003.stat",
+    "--",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/n-body-sim/build/nbody",
+    "--bodies-per-galaxy",
+    "500",
+    "--steps",
+    "1000",
+    "--dt",
+    "0.002",
+    "--seed",
+    "42",
+    "--model",
+    "coarse-grained",
+    "--no-output",
+    "--trajectory",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/perf/raw/nbody-20261016T212339.819681Z/trajectory.nbody",
+    "--threads",
+    "4",
+    "--block-interval-ms",
+    "10",
+    "--block-duration-ms",
+    "1"
+  ],
+  "cwd": "/home/jian/Desktop/fgonzalez_a2_2026_s2/n-body-sim",
+  "env": {
+    "DL_QUANTUM_US": "100",
+    "DL_SAMPLES": "100",
+    "DL_SEED": "1",
+    "DL_EPOCHS": "1000"
+  }
+}

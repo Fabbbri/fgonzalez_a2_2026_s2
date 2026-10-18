@@ -1,0 +1,438 @@
+modelo,repeticion,cpu,evento,unidad,valor,estado,tiempo_contador,porcentaje_activo
+sequential,1,programa,task-clock,,1126610213.0,ok,1126610213,100.00
+sequential,1,programa,context-switches,,13.0,ok,1126610213,100.00
+sequential,1,programa,cpu-migrations,,2.0,ok,1126610213,100.00
+sequential,1,programa,cpu_atom/cycles/,,3656140930.0,ok,638564,0.00
+sequential,1,programa,cpu_core/cycles/,,4886263741.0,ok,1125971649,99.00
+sequential,1,programa,cpu_atom/instructions/,,2633254919.0,ok,638564,0.00
+sequential,1,programa,cpu_core/instructions/,,21821213255.0,ok,1125971649,99.00
+sequential,1,programa,cpu_atom/cache-misses/,,43948391.0,ok,638564,0.00
+sequential,1,programa,cpu_core/cache-misses/,,161214.0,ok,1125971649,99.00
+sequential,1,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.720227958772913,ok,,
+sequential,1,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.465827964197072,ok,,
+sequential,2,programa,task-clock,,1124068083.0,ok,1124068083,100.00
+sequential,2,programa,context-switches,,20.0,ok,1124068083,100.00
+sequential,2,programa,cpu-migrations,,3.0,ok,1124068083,100.00
+sequential,2,programa,cpu_atom/cycles/,,3657472308.0,ok,2289762,0.00
+sequential,2,programa,cpu_core/cycles/,,4856383961.0,ok,1121778321,99.00
+sequential,2,programa,cpu_atom/instructions/,,10844389936.0,ok,2289762,0.00
+sequential,2,programa,cpu_core/instructions/,,21833411641.0,ok,1121778321,99.00
+sequential,2,programa,cpu_atom/cache-misses/,,5713706.0,ok,2289762,0.00
+sequential,2,programa,cpu_core/cache-misses/,,193474.0,ok,1121778321,99.00
+sequential,2,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,2.9649957737971206,ok,,
+sequential,2,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.495816602710339,ok,,
+sequential,3,programa,task-clock,,1119191520.0,ok,1119191520,100.00
+sequential,3,programa,context-switches,,66.0,ok,1119191520,100.00
+sequential,3,programa,cpu-migrations,,2.0,ok,1119191520,100.00
+sequential,3,programa,cpu_atom/cycles/,,3576758441.0,ok,349385,0.00
+sequential,3,programa,cpu_core/cycles/,,4841706393.0,ok,1118842135,99.00
+sequential,3,programa,cpu_atom/instructions/,,1997339711.0,ok,349385,0.00
+sequential,3,programa,cpu_core/instructions/,,21817430819.0,ok,1118842135,99.00
+sequential,3,programa,cpu_atom/cache-misses/,,44225018.0,ok,349385,0.00
+sequential,3,programa,cpu_core/cache-misses/,,179467.0,ok,1118842135,99.00
+sequential,3,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.5584217508525899,ok,,
+sequential,3,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.506144951404533,ok,,
+sequential,4,programa,task-clock,,1107529733.0,ok,1107529733,100.00
+sequential,4,programa,context-switches,,21.0,ok,1107529733,100.00
+sequential,4,programa,cpu-migrations,,2.0,ok,1107529733,100.00
+sequential,4,programa,cpu_atom/cycles/,,3636530458.0,ok,8236176,0.00
+sequential,4,programa,cpu_core/cycles/,,4848658435.0,ok,1099293557,99.00
+sequential,4,programa,cpu_atom/instructions/,,6654049069.0,ok,8236176,0.00
+sequential,4,programa,cpu_core/instructions/,,21923804852.0,ok,1099293557,99.00
+sequential,4,programa,cpu_atom/cache-misses/,,25154076.0,ok,8236176,0.00
+sequential,4,programa,cpu_core/cache-misses/,,49802.0,ok,1099293557,99.00
+sequential,4,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.8297795510998027,ok,,
+sequential,4,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.521622866594025,ok,,
+sequential,5,programa,task-clock,,1127377955.0,ok,1127377955,100.00
+sequential,5,programa,context-switches,,9.0,ok,1127377955,100.00
+sequential,5,programa,cpu-migrations,,0.0,ok,1127377955,100.00
+sequential,5,programa,cpu_atom/cycles/,,,<not counted>,0,0.00
+sequential,5,programa,cpu_core/cycles/,,4885270089.0,ok,1127377955,100.00
+sequential,5,programa,cpu_atom/instructions/,,,<not counted>,0,0.00
+sequential,5,programa,cpu_core/instructions/,,21810445590.0,ok,1127377955,100.00
+sequential,5,programa,cpu_atom/cache-misses/,,,<not counted>,0,0.00
+sequential,5,programa,cpu_core/cache-misses/,,185696.0,ok,1127377955,100.00
+sequential,5,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.464532194260836,ok,,
+sequential,6,programa,task-clock,,1150117498.0,ok,1150117498,100.00
+sequential,6,programa,context-switches,,40.0,ok,1150117498,100.00
+sequential,6,programa,cpu-migrations,,1.0,ok,1150117498,100.00
+sequential,6,programa,cpu_atom/cycles/,,,<not counted>,0,0.00
+sequential,6,programa,cpu_core/cycles/,,4933619994.0,ok,1150117498,100.00
+sequential,6,programa,cpu_atom/instructions/,,,<not counted>,0,0.00
+sequential,6,programa,cpu_core/instructions/,,21811497286.0,ok,1150117498,100.00
+sequential,6,programa,cpu_atom/cache-misses/,,,<not counted>,0,0.00
+sequential,6,programa,cpu_core/cache-misses/,,231870.0,ok,1150117498,100.00
+sequential,6,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.420992559728142,ok,,
+sequential,7,programa,task-clock,,1121570481.0,ok,1121570481,100.00
+sequential,7,programa,context-switches,,33.0,ok,1121570481,100.00
+sequential,7,programa,cpu-migrations,,1.0,ok,1121570481,100.00
+sequential,7,programa,cpu_atom/cycles/,,3672295212.0,ok,2687510,0.00
+sequential,7,programa,cpu_core/cycles/,,4837424619.0,ok,1118882971,99.00
+sequential,7,programa,cpu_atom/instructions/,,2771093418.0,ok,2687510,0.00
+sequential,7,programa,cpu_core/instructions/,,21856388838.0,ok,1118882971,99.00
+sequential,7,programa,cpu_atom/cache-misses/,,38371130.0,ok,2687510,0.00
+sequential,7,programa,cpu_core/cache-misses/,,107611.0,ok,1118882971,99.00
+sequential,7,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.7545944043237229,ok,,
+sequential,7,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.518186960920166,ok,,
+sequential,8,programa,task-clock,,1107644369.0,ok,1107644369,100.00
+sequential,8,programa,context-switches,,101.0,ok,1107644369,100.00
+sequential,8,programa,cpu-migrations,,1.0,ok,1107644369,100.00
+sequential,8,programa,cpu_atom/cycles/,,3638435556.0,ok,4187123,0.00
+sequential,8,programa,cpu_core/cycles/,,4835993788.0,ok,1103457246,99.00
+sequential,8,programa,cpu_atom/instructions/,,3500844348.0,ok,4187123,0.00
+sequential,8,programa,cpu_core/instructions/,,21881675527.0,ok,1103457246,99.00
+sequential,8,programa,cpu_atom/cache-misses/,,38935187.0,ok,4187123,0.00
+sequential,8,programa,cpu_core/cache-misses/,,80347.0,ok,1103457246,99.00
+sequential,8,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.96218396454127,ok,,
+sequential,8,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.524752612647483,ok,,
+sequential,9,programa,task-clock,,1128277041.0,ok,1128277041,100.00
+sequential,9,programa,context-switches,,33.0,ok,1128277041,100.00
+sequential,9,programa,cpu-migrations,,1.0,ok,1128277041,100.00
+sequential,9,programa,cpu_atom/cycles/,,3707937122.0,ok,4846801,0.00
+sequential,9,programa,cpu_core/cycles/,,4847256605.0,ok,1123430240,99.00
+sequential,9,programa,cpu_atom/instructions/,,3501232099.0,ok,4846801,0.00
+sequential,9,programa,cpu_core/instructions/,,21889858914.0,ok,1123430240,99.00
+sequential,9,programa,cpu_atom/cache-misses/,,37235136.0,ok,4846801,0.00
+sequential,9,programa,cpu_core/cache-misses/,,67933.0,ok,1123430240,99.00
+sequential,9,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.9442533634743766,ok,,
+sequential,9,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.515927399308789,ok,,
+sequential,10,programa,task-clock,,1116744686.0,ok,1116744686,100.00
+sequential,10,programa,context-switches,,55.0,ok,1116744686,100.00
+sequential,10,programa,cpu-migrations,,3.0,ok,1116744686,100.00
+sequential,10,programa,cpu_atom/cycles/,,3668825294.0,ok,6710695,0.00
+sequential,10,programa,cpu_core/cycles/,,4846112377.0,ok,1110033991,99.00
+sequential,10,programa,cpu_atom/instructions/,,5569003397.0,ok,6710695,0.00
+sequential,10,programa,cpu_core/instructions/,,21909458250.0,ok,1110033991,99.00
+sequential,10,programa,cpu_atom/cache-misses/,,27101801.0,ok,6710695,0.00
+sequential,10,programa,cpu_core/cache-misses/,,63361.0,ok,1110033991,99.00
+sequential,10,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.5179254804276325,ok,,
+sequential,10,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.5210380085249104,ok,,
+sequential,11,programa,task-clock,,1106268115.0,ok,1106268115,100.00
+sequential,11,programa,context-switches,,74.0,ok,1106268115,100.00
+sequential,11,programa,cpu-migrations,,1.0,ok,1106268115,100.00
+sequential,11,programa,cpu_atom/cycles/,,3627049215.0,ok,3091336,0.00
+sequential,11,programa,cpu_core/cycles/,,4833161040.0,ok,1103176779,99.00
+sequential,11,programa,cpu_atom/instructions/,,3386156619.0,ok,3091336,0.00
+sequential,11,programa,cpu_core/instructions/,,21863163976.0,ok,1103176779,99.00
+sequential,11,programa,cpu_atom/cache-misses/,,39291331.0,ok,3091336,0.00
+sequential,11,programa,cpu_core/cache-misses/,,93209.0,ok,1103176779,99.00
+sequential,11,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.9335844148450575,ok,,
+sequential,11,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.523574487805604,ok,,
+sequential,12,programa,task-clock,,1107207727.0,ok,1107207727,100.00
+sequential,12,programa,context-switches,,67.0,ok,1107207727,100.00
+sequential,12,programa,cpu-migrations,,1.0,ok,1107207727,100.00
+sequential,12,programa,cpu_atom/cycles/,,3636512276.0,ok,4767002,0.00
+sequential,12,programa,cpu_core/cycles/,,4840758328.0,ok,1102440725,99.00
+sequential,12,programa,cpu_atom/instructions/,,4451078178.0,ok,4767002,0.00
+sequential,12,programa,cpu_core/instructions/,,21886485636.0,ok,1102440725,99.00
+sequential,12,programa,cpu_atom/cache-misses/,,32520119.0,ok,4767002,0.00
+sequential,12,programa,cpu_core/cache-misses/,,71533.0,ok,1102440725,99.00
+sequential,12,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.223996466992815,ok,,
+sequential,12,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.521292771300687,ok,,
+sequential,13,programa,task-clock,,1106497898.0,ok,1106497898,100.00
+sequential,13,programa,context-switches,,30.0,ok,1106497898,100.00
+sequential,13,programa,cpu-migrations,,1.0,ok,1106497898,100.00
+sequential,13,programa,cpu_atom/cycles/,,3635242140.0,ok,5890782,0.00
+sequential,13,programa,cpu_core/cycles/,,4834407703.0,ok,1100607116,99.00
+sequential,13,programa,cpu_atom/instructions/,,4664510538.0,ok,5890782,0.00
+sequential,13,programa,cpu_core/instructions/,,21902386566.0,ok,1100607116,99.00
+sequential,13,programa,cpu_atom/cache-misses/,,32291925.0,ok,5890782,0.00
+sequential,13,programa,cpu_core/cache-misses/,,59282.0,ok,1100607116,99.00
+sequential,13,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.28313613188914,ok,,
+sequential,13,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.530521195473116,ok,,
+sequential,14,programa,task-clock,,1138744176.0,ok,1138744176,100.00
+sequential,14,programa,context-switches,,12.0,ok,1138744176,100.00
+sequential,14,programa,cpu-migrations,,2.0,ok,1138744176,100.00
+sequential,14,programa,cpu_atom/cycles/,,3743752802.0,ok,4899805,0.00
+sequential,14,programa,cpu_core/cycles/,,4926793389.0,ok,1133844371,99.00
+sequential,14,programa,cpu_atom/instructions/,,4775058929.0,ok,4899805,0.00
+sequential,14,programa,cpu_core/instructions/,,21884353161.0,ok,1133844371,99.00
+sequential,14,programa,cpu_atom/cache-misses/,,31705758.0,ok,4899805,0.00
+sequential,14,programa,cpu_core/cache-misses/,,94089.0,ok,1133844371,99.00
+sequential,14,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.2754738845067581,ok,,
+sequential,14,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.441906009263747,ok,,
+sequential,15,programa,task-clock,,1128817949.0,ok,1128817949,100.00
+sequential,15,programa,context-switches,,73.0,ok,1128817949,100.00
+sequential,15,programa,cpu-migrations,,2.0,ok,1128817949,100.00
+sequential,15,programa,cpu_atom/cycles/,,3711059612.0,ok,5563141,0.00
+sequential,15,programa,cpu_core/cycles/,,4851040571.0,ok,1123254808,99.00
+sequential,15,programa,cpu_atom/instructions/,,4540331812.0,ok,5563141,0.00
+sequential,15,programa,cpu_core/instructions/,,21897571388.0,ok,1123254808,99.00
+sequential,15,programa,cpu_atom/cache-misses/,,33307706.0,ok,5563141,0.00
+sequential,15,programa,cpu_core/cache-misses/,,89425.0,ok,1123254808,99.00
+sequential,15,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.2234596817896657,ok,,
+sequential,15,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.513994691964822,ok,,
+sequential,16,programa,task-clock,,1190333197.0,ok,1190333197,100.00
+sequential,16,programa,context-switches,,4.0,ok,1190333197,100.00
+sequential,16,programa,cpu-migrations,,1.0,ok,1190333197,100.00
+sequential,16,programa,cpu_atom/cycles/,,3902208147.0,ok,2290157,0.00
+sequential,16,programa,cpu_core/cycles/,,4894435805.0,ok,1188043040,99.00
+sequential,16,programa,cpu_atom/instructions/,,2987695227.0,ok,2290157,0.00
+sequential,16,programa,cpu_core/instructions/,,21847966565.0,ok,1188043040,99.00
+sequential,16,programa,cpu_atom/cache-misses/,,42693649.0,ok,2290157,0.00
+sequential,16,programa,cpu_core/cache-misses/,,157317.0,ok,1188043040,99.00
+sequential,16,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,0.7656421990961519,ok,,
+sequential,16,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.463837597518556,ok,,
+sequential,17,programa,task-clock,,1151372472.0,ok,1151372472,100.00
+sequential,17,programa,context-switches,,30.0,ok,1151372472,100.00
+sequential,17,programa,cpu-migrations,,1.0,ok,1151372472,100.00
+sequential,17,programa,cpu_atom/cycles/,,,<not counted>,0,0.00
+sequential,17,programa,cpu_core/cycles/,,4912376401.0,ok,1151372472,100.00
+sequential,17,programa,cpu_atom/instructions/,,,<not counted>,0,0.00
+sequential,17,programa,cpu_core/instructions/,,21811371048.0,ok,1151372472,100.00
+sequential,17,programa,cpu_atom/cache-misses/,,,<not counted>,0,0.00
+sequential,17,programa,cpu_core/cache-misses/,,236818.0,ok,1151372472,100.00
+sequential,17,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.4400854632311795,ok,,
+sequential,18,programa,task-clock,,1154011450.0,ok,1154011450,100.00
+sequential,18,programa,context-switches,,50.0,ok,1154011450,100.00
+sequential,18,programa,cpu-migrations,,1.0,ok,1154011450,100.00
+sequential,18,programa,cpu_atom/cycles/,,3788485906.0,ok,5444932,0.00
+sequential,18,programa,cpu_core/cycles/,,4848157551.0,ok,1148566518,99.00
+sequential,18,programa,cpu_atom/instructions/,,4708327387.0,ok,5444932,0.00
+sequential,18,programa,cpu_core/instructions/,,21893076021.0,ok,1148566518,99.00
+sequential,18,programa,cpu_atom/cache-misses/,,33437290.0,ok,5444932,0.00
+sequential,18,programa,cpu_core/cache-misses/,,85703.0,ok,1148566518,99.00
+sequential,18,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,1.242799235320687,ok,,
+sequential,18,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.515751765633988,ok,,
+sequential,19,programa,task-clock,,1160104844.0,ok,1160104844,100.00
+sequential,19,programa,context-switches,,23.0,ok,1160104844,100.00
+sequential,19,programa,cpu-migrations,,2.0,ok,1160104844,100.00
+sequential,19,programa,cpu_atom/cycles/,,3562257923.0,ok,9094653,0.00
+sequential,19,programa,cpu_core/cycles/,,4901485002.0,ok,1151010191,99.00
+sequential,19,programa,cpu_atom/instructions/,,10891730979.0,ok,9094653,0.00
+sequential,19,programa,cpu_core/instructions/,,21897970114.0,ok,1151010191,99.00
+sequential,19,programa,cpu_atom/cache-misses/,,419413.0,ok,9094653,0.00
+sequential,19,programa,cpu_core/cache-misses/,,222199.0,ok,1151010191,99.00
+sequential,19,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.0575357580585836,ok,,
+sequential,19,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.467619528584656,ok,,
+sequential,20,programa,task-clock,,1136027136.0,ok,1136027136,100.00
+sequential,20,programa,context-switches,,46.0,ok,1136027136,100.00
+sequential,20,programa,cpu-migrations,,12.0,ok,1136027136,100.00
+sequential,20,programa,cpu_atom/cycles/,,3498095986.0,ok,6027074,0.00
+sequential,20,programa,cpu_core/cycles/,,4881227809.0,ok,1130000062,99.00
+sequential,20,programa,cpu_atom/instructions/,,11363539541.0,ok,6027074,0.00
+sequential,20,programa,cpu_core/instructions/,,21867433814.0,ok,1130000062,99.00
+sequential,20,programa,cpu_atom/cache-misses/,,1447394.0,ok,6027074,0.00
+sequential,20,programa,cpu_core/cache-misses/,,223989.0,ok,1130000062,99.00
+sequential,20,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.248492776207085,ok,,
+sequential,20,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.479904374403682,ok,,
+cmp,1,programa,task-clock,,1724281657.0,ok,1724281657,100.00
+cmp,1,programa,context-switches,,75.0,ok,1724281657,100.00
+cmp,1,programa,cpu-migrations,,8.0,ok,1724281657,100.00
+cmp,1,programa,cpu_atom/cycles/,,2405667219.0,ok,862656373,100.00
+cmp,1,programa,cpu_core/cycles/,,3926017230.0,ok,861625284,79.00
+cmp,1,programa,cpu_atom/instructions/,,7885082199.0,ok,862656373,100.00
+cmp,1,programa,cpu_core/instructions/,,17508006763.0,ok,861625284,79.00
+cmp,1,programa,cpu_atom/cache-misses/,,190382.0,ok,862656373,100.00
+cmp,1,programa,cpu_core/cache-misses/,,40582.0,ok,861625284,79.00
+cmp,1,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2777111217725747,ok,,
+cmp,1,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.459482915463415,ok,,
+cmp,2,programa,task-clock,,1743386875.0,ok,1743386875,100.00
+cmp,2,programa,context-switches,,90.0,ok,1743386875,100.00
+cmp,2,programa,cpu-migrations,,9.0,ok,1743386875,100.00
+cmp,2,programa,cpu_atom/cycles/,,2408095734.0,ok,865742381,99.00
+cmp,2,programa,cpu_core/cycles/,,3948816913.0,ok,877644494,80.00
+cmp,2,programa,cpu_atom/instructions/,,7911506702.0,ok,865742381,99.00
+cmp,2,programa,cpu_core/instructions/,,17347657580.0,ok,877644494,80.00
+cmp,2,programa,cpu_atom/cache-misses/,,36581.0,ok,865742381,99.00
+cmp,2,programa,cpu_core/cache-misses/,,204705.0,ok,877644494,80.00
+cmp,2,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.285378812103323,ok,,
+cmp,2,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.393127856318012,ok,,
+cmp,3,programa,task-clock,,1737356066.0,ok,1737356066,100.00
+cmp,3,programa,context-switches,,74.0,ok,1737356066,100.00
+cmp,3,programa,cpu-migrations,,13.0,ok,1737356066,100.00
+cmp,3,programa,cpu_atom/cycles/,,2424476543.0,ok,874116051,100.00
+cmp,3,programa,cpu_core/cycles/,,3919290717.0,ok,863240015,79.00
+cmp,3,programa,cpu_atom/instructions/,,7912770110.0,ok,874116051,100.00
+cmp,3,programa,cpu_core/instructions/,,17568872237.0,ok,863240015,79.00
+cmp,3,programa,cpu_atom/cache-misses/,,206734.0,ok,874116051,100.00
+cmp,3,programa,cpu_core/cache-misses/,,44373.0,ok,863240015,79.00
+cmp,3,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.263702481612337,ok,,
+cmp,3,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.482666254073645,ok,,
+cmp,4,programa,task-clock,,1725163968.0,ok,1725163968,100.00
+cmp,4,programa,context-switches,,76.0,ok,1725163968,100.00
+cmp,4,programa,cpu-migrations,,8.0,ok,1725163968,100.00
+cmp,4,programa,cpu_atom/cycles/,,2382555802.0,ok,859509065,100.00
+cmp,4,programa,cpu_core/cycles/,,3918778770.0,ok,865654903,79.00
+cmp,4,programa,cpu_atom/instructions/,,7791588975.0,ok,859509065,100.00
+cmp,4,programa,cpu_core/instructions/,,17562341873.0,ok,865654903,79.00
+cmp,4,programa,cpu_atom/cache-misses/,,193231.0,ok,859509065,100.00
+cmp,4,programa,cpu_core/cache-misses/,,40827.0,ok,865654903,79.00
+cmp,4,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.270265052537057,ok,,
+cmp,4,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.481585438669711,ok,,
+cmp,5,programa,task-clock,,1737978889.0,ok,1737978889,100.00
+cmp,5,programa,context-switches,,75.0,ok,1737978889,100.00
+cmp,5,programa,cpu-migrations,,7.0,ok,1737978889,100.00
+cmp,5,programa,cpu_atom/cycles/,,2433283792.0,ok,876120973,100.00
+cmp,5,programa,cpu_core/cycles/,,3907380523.0,ok,861857916,79.00
+cmp,5,programa,cpu_atom/instructions/,,7968455234.0,ok,876120973,100.00
+cmp,5,programa,cpu_core/instructions/,,17488239443.0,ok,861857916,79.00
+cmp,5,programa,cpu_atom/cache-misses/,,202168.0,ok,876120973,100.00
+cmp,5,programa,cpu_core/cache-misses/,,48405.0,ok,861857916,79.00
+cmp,5,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2747743030213714,ok,,
+cmp,5,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.475693969414814,ok,,
+cmp,6,programa,task-clock,,1733568431.0,ok,1733568431,100.00
+cmp,6,programa,context-switches,,69.0,ok,1733568431,100.00
+cmp,6,programa,cpu-migrations,,7.0,ok,1733568431,100.00
+cmp,6,programa,cpu_atom/cycles/,,2412487707.0,ok,868409788,99.00
+cmp,6,programa,cpu_core/cycles/,,3127743232.0,ok,865158643,99.00
+cmp,6,programa,cpu_atom/instructions/,,7898500091.0,ok,868409788,99.00
+cmp,6,programa,cpu_core/instructions/,,14024824905.0,ok,865158643,99.00
+cmp,6,programa,cpu_atom/cache-misses/,,202017.0,ok,868409788,99.00
+cmp,6,programa,cpu_core/cache-misses/,,26340.0,ok,865158643,99.00
+cmp,6,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2740063578694953,ok,,
+cmp,6,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.48400775406106,ok,,
+cmp,7,programa,task-clock,,1749580827.0,ok,1749580827,100.00
+cmp,7,programa,context-switches,,74.0,ok,1749580827,100.00
+cmp,7,programa,cpu-migrations,,7.0,ok,1749580827,100.00
+cmp,7,programa,cpu_atom/cycles/,,2443600594.0,ok,880870488,99.00
+cmp,7,programa,cpu_core/cycles/,,3119435451.0,ok,868710339,99.00
+cmp,7,programa,cpu_atom/instructions/,,8002827254.0,ok,880870488,99.00
+cmp,7,programa,cpu_core/instructions/,,13922677462.0,ok,868710339,99.00
+cmp,7,programa,cpu_atom/cache-misses/,,199984.0,ok,880870488,99.00
+cmp,7,programa,cpu_core/cache-misses/,,41117.0,ok,868710339,99.00
+cmp,7,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2750144494358393,ok,,
+cmp,7,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.463204217781392,ok,,
+cmp,8,programa,task-clock,,1733850373.0,ok,1733850373,100.00
+cmp,8,programa,context-switches,,73.0,ok,1733850373,100.00
+cmp,8,programa,cpu-migrations,,8.0,ok,1733850373,100.00
+cmp,8,programa,cpu_atom/cycles/,,2402408408.0,ok,865450155,99.00
+cmp,8,programa,cpu_core/cycles/,,3133853954.0,ok,868400218,99.00
+cmp,8,programa,cpu_atom/instructions/,,7853823130.0,ok,865450155,99.00
+cmp,8,programa,cpu_core/instructions/,,14073308603.0,ok,868400218,99.00
+cmp,8,programa,cpu_atom/cache-misses/,,195459.0,ok,865450155,99.00
+cmp,8,programa,cpu_core/cache-misses/,,30402.0,ok,868400218,99.00
+cmp,8,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2691457055539908,ok,,
+cmp,8,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.490735308528675,ok,,
+cmp,9,programa,task-clock,,1748006524.0,ok,1748006524,100.00
+cmp,9,programa,context-switches,,78.0,ok,1748006524,100.00
+cmp,9,programa,cpu-migrations,,9.0,ok,1748006524,100.00
+cmp,9,programa,cpu_atom/cycles/,,2437356982.0,ok,879518603,99.00
+cmp,9,programa,cpu_core/cycles/,,3887162158.0,ok,868487921,79.00
+cmp,9,programa,cpu_atom/instructions/,,7964963609.0,ok,879518603,99.00
+cmp,9,programa,cpu_core/instructions/,,17389596410.0,ok,868487921,79.00
+cmp,9,programa,cpu_atom/cache-misses/,,191269.0,ok,879518603,99.00
+cmp,9,programa,cpu_core/cache-misses/,,52719.0,ok,868487921,79.00
+cmp,9,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.267869117171446,ok,,
+cmp,9,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.47359685631103,ok,,
+cmp,10,programa,task-clock,,1861296046.0,ok,1861296046,100.00
+cmp,10,programa,context-switches,,95.0,ok,1861296046,100.00
+cmp,10,programa,cpu-migrations,,9.0,ok,1861296046,100.00
+cmp,10,programa,cpu_atom/cycles/,,3164648831.0,ok,942158457,80.00
+cmp,10,programa,cpu_core/cycles/,,3239318342.0,ok,919137589,99.00
+cmp,10,programa,cpu_atom/instructions/,,10360579735.0,ok,942158457,80.00
+cmp,10,programa,cpu_core/instructions/,,13548725139.0,ok,919137589,99.00
+cmp,10,programa,cpu_atom/cache-misses/,,348792.0,ok,942158457,80.00
+cmp,10,programa,cpu_core/cache-misses/,,73934.0,ok,919137589,99.00
+cmp,10,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2738481544968616,ok,,
+cmp,10,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.182585256697812,ok,,
+cmp,11,programa,task-clock,,1755290848.0,ok,1755290848,100.00
+cmp,11,programa,context-switches,,72.0,ok,1755290848,100.00
+cmp,11,programa,cpu-migrations,,11.0,ok,1755290848,100.00
+cmp,11,programa,cpu_atom/cycles/,,2423665111.0,ok,878436533,99.00
+cmp,11,programa,cpu_core/cycles/,,3137948838.0,ok,876854315,99.00
+cmp,11,programa,cpu_atom/instructions/,,7917978404.0,ok,878436533,99.00
+cmp,11,programa,cpu_core/instructions/,,14006813512.0,ok,876854315,99.00
+cmp,11,programa,cpu_atom/cache-misses/,,206090.0,ok,878436533,99.00
+cmp,11,programa,cpu_core/cache-misses/,,39023.0,ok,876854315,99.00
+cmp,11,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.266944087309594,ok,,
+cmp,11,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.463684475151408,ok,,
+cmp,12,programa,task-clock,,1750722545.0,ok,1750722545,100.00
+cmp,12,programa,context-switches,,69.0,ok,1750722545,100.00
+cmp,12,programa,cpu-migrations,,8.0,ok,1750722545,100.00
+cmp,12,programa,cpu_atom/cycles/,,2430157011.0,ok,880078937,99.00
+cmp,12,programa,cpu_core/cycles/,,3884737679.0,ok,870643608,79.00
+cmp,12,programa,cpu_atom/instructions/,,7966520508.0,ok,880078937,99.00
+cmp,12,programa,cpu_core/instructions/,,17414417958.0,ok,870643608,79.00
+cmp,12,programa,cpu_atom/cache-misses/,,192902.0,ok,880078937,99.00
+cmp,12,programa,cpu_core/cache-misses/,,38182.0,ok,870643608,79.00
+cmp,12,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.27819168553303,ok,,
+cmp,12,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.482778348751409,ok,,
+cmp,13,programa,task-clock,,1751310770.0,ok,1751310770,100.00
+cmp,13,programa,context-switches,,75.0,ok,1751310770,100.00
+cmp,13,programa,cpu-migrations,,7.0,ok,1751310770,100.00
+cmp,13,programa,cpu_atom/cycles/,,2425748108.0,ok,877142315,100.00
+cmp,13,programa,cpu_core/cycles/,,3894105780.0,ok,874168455,79.00
+cmp,13,programa,cpu_atom/instructions/,,7940079282.0,ok,877142315,100.00
+cmp,13,programa,cpu_core/instructions/,,17439695164.0,ok,874168455,79.00
+cmp,13,programa,cpu_atom/cache-misses/,,196577.0,ok,877142315,100.00
+cmp,13,programa,cpu_core/cache-misses/,,41941.0,ok,874168455,79.00
+cmp,13,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2732497062716455,ok,,
+cmp,13,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.478485215673828,ok,,
+cmp,14,programa,task-clock,,1734652380.0,ok,1734652380,100.00
+cmp,14,programa,context-switches,,74.0,ok,1734652380,100.00
+cmp,14,programa,cpu-migrations,,10.0,ok,1734652380,100.00
+cmp,14,programa,cpu_atom/cycles/,,2419410378.0,ok,870470455,99.00
+cmp,14,programa,cpu_core/cycles/,,3120461994.0,ok,864181925,99.00
+cmp,14,programa,cpu_atom/instructions/,,7909479522.0,ok,870470455,99.00
+cmp,14,programa,cpu_core/instructions/,,14015150656.0,ok,864181925,99.00
+cmp,14,programa,cpu_atom/cache-misses/,,191692.0,ok,870470455,99.00
+cmp,14,programa,cpu_core/cache-misses/,,30051.0,ok,864181925,99.00
+cmp,14,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2691764877599447,ok,,
+cmp,14,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.491370406993651,ok,,
+cmp,15,programa,task-clock,,1748963894.0,ok,1748963894,100.00
+cmp,15,programa,context-switches,,68.0,ok,1748963894,100.00
+cmp,15,programa,cpu-migrations,,8.0,ok,1748963894,100.00
+cmp,15,programa,cpu_atom/cycles/,,2424097617.0,ok,874124375,99.00
+cmp,15,programa,cpu_core/cycles/,,3120882590.0,ok,874839519,99.00
+cmp,15,programa,cpu_atom/instructions/,,7948562710.0,ok,874124375,99.00
+cmp,15,programa,cpu_core/instructions/,,13943119405.0,ok,874839519,99.00
+cmp,15,programa,cpu_atom/cache-misses/,,129892.0,ok,874124375,99.00
+cmp,15,programa,cpu_core/cache-misses/,,93687.0,ok,874839519,99.00
+cmp,15,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2789779810257533,ok,,
+cmp,15,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.467684702294424,ok,,
+cmp,16,programa,task-clock,,1754155075.0,ok,1754155075,100.00
+cmp,16,programa,context-switches,,74.0,ok,1754155075,100.00
+cmp,16,programa,cpu-migrations,,8.0,ok,1754155075,100.00
+cmp,16,programa,cpu_atom/cycles/,,2445266689.0,ok,883575994,99.00
+cmp,16,programa,cpu_core/cycles/,,3885825878.0,ok,870579081,79.00
+cmp,16,programa,cpu_atom/instructions/,,8008408634.0,ok,883575994,99.00
+cmp,16,programa,cpu_core/instructions/,,17415686778.0,ok,870579081,79.00
+cmp,16,programa,cpu_atom/cache-misses/,,199287.0,ok,883575994,99.00
+cmp,16,programa,cpu_core/cache-misses/,,37292.0,ok,870579081,79.00
+cmp,16,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.275065525582842,ok,,
+cmp,16,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.481849502470167,ok,,
+cmp,17,programa,task-clock,,1765026153.0,ok,1765026153,100.00
+cmp,17,programa,context-switches,,97.0,ok,1765026153,100.00
+cmp,17,programa,cpu-migrations,,10.0,ok,1765026153,100.00
+cmp,17,programa,cpu_atom/cycles/,,2443116298.0,ok,883967084,99.00
+cmp,17,programa,cpu_core/cycles/,,3146971875.0,ok,881059069,99.00
+cmp,17,programa,cpu_atom/instructions/,,7961509019.0,ok,883967084,99.00
+cmp,17,programa,cpu_core/instructions/,,13964704013.0,ok,881059069,99.00
+cmp,17,programa,cpu_atom/cache-misses/,,199965.0,ok,883967084,99.00
+cmp,17,programa,cpu_core/cache-misses/,,39079.0,ok,881059069,99.00
+cmp,17,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2587515483882217,ok,,
+cmp,17,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.437505185202839,ok,,
+cmp,18,programa,task-clock,,1754448729.0,ok,1754448729,100.00
+cmp,18,programa,context-switches,,82.0,ok,1754448729,100.00
+cmp,18,programa,cpu-migrations,,8.0,ok,1754448729,100.00
+cmp,18,programa,cpu_atom/cycles/,,2429057471.0,ok,880160314,99.00
+cmp,18,programa,cpu_core/cycles/,,3891776034.0,ok,874288415,79.00
+cmp,18,programa,cpu_atom/instructions/,,7942094152.0,ok,880160314,99.00
+cmp,18,programa,cpu_core/instructions/,,17441359997.0,ok,874288415,79.00
+cmp,18,programa,cpu_atom/cache-misses/,,199599.0,ok,880160314,99.00
+cmp,18,programa,cpu_core/cache-misses/,,46129.0,ok,874288415,79.00
+cmp,18,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2696196968655418,ok,,
+cmp,18,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.481593967542275,ok,,
+cmp,19,programa,task-clock,,1754111147.0,ok,1754111147,100.00
+cmp,19,programa,context-switches,,74.0,ok,1754111147,100.00
+cmp,19,programa,cpu-migrations,,10.0,ok,1754111147,100.00
+cmp,19,programa,cpu_atom/cycles/,,2436353801.0,ok,881575367,99.00
+cmp,19,programa,cpu_core/cycles/,,3111963762.0,ok,872535780,99.00
+cmp,19,programa,cpu_atom/instructions/,,7957471511.0,ok,881575367,99.00
+cmp,19,programa,cpu_core/instructions/,,13966442002.0,ok,872535780,99.00
+cmp,19,programa,cpu_atom/cache-misses/,,196004.0,ok,881575367,99.00
+cmp,19,programa,cpu_core/cache-misses/,,31636.0,ok,872535780,99.00
+cmp,19,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.2661395515437293,ok,,
+cmp,19,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.487983495355368,ok,,
+cmp,20,programa,task-clock,,1757822129.0,ok,1757822129,100.00
+cmp,20,programa,context-switches,,82.0,ok,1757822129,100.00
+cmp,20,programa,cpu-migrations,,9.0,ok,1757822129,100.00
+cmp,20,programa,cpu_atom/cycles/,,2431757533.0,ok,882093485,99.00
+cmp,20,programa,cpu_core/cycles/,,3894290058.0,ok,875728644,79.00
+cmp,20,programa,cpu_atom/instructions/,,7945820004.0,ok,882093485,99.00
+cmp,20,programa,cpu_core/instructions/,,17403228606.0,ok,875728644,79.00
+cmp,20,programa,cpu_atom/cache-misses/,,200883.0,ok,882093485,99.00
+cmp,20,programa,cpu_core/cache-misses/,,46382.0,ok,875728644,79.00
+cmp,20,programa,IPC derivado: cpu_atom/cycles/,instrucciones/ciclo,3.267521492653684,ok,,
+cmp,20,programa,IPC derivado: cpu_core/cycles/,instrucciones/ciclo,4.468909184165346,ok,,

@@ -1,0 +1,11 @@
+# started on Fri Oct  9 19:28:46 2026
+
+1880713220;;task-clock;1880713220;100.00;7.651;CPUs utilized
+361;;context-switches;1880713220;100.00;191.948;/sec
+8;;cpu-migrations;1880713220;100.00;4.254;/sec
+3048628972;;cpu_atom/cycles/;944898052;79.00;1.621;GHz
+3090523654;;cpu_core/cycles/;935815168;99.00;1.643;GHz
+10003467725;;cpu_atom/instructions/;944898052;79.00;3.28;insn per cycle
+13865819430;;cpu_core/instructions/;935815168;99.00;4.49;insn per cycle
+41058;;cpu_atom/cache-misses/;944898052;79.00;;
+175273;;cpu_core/cache-misses/;935815168;99.00;;

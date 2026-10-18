@@ -4,10 +4,15 @@
 #include <cpl_vsi.h>
 #include <cpl_error.h>
 #include <iostream>
+#include <limits>
+#include <cmath>
 #include <stdexcept>
 
 using namespace interferogram;
 namespace {
+// Dimensiones de los fixtures; el lector obtiene los límites de cada archivo.
+constexpr int slcWidth = 24445;
+constexpr int slcHeight = 1500;
 /* Lanza std::runtime_error con message cuando la condición ok no se cumple. */
 void require(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
@@ -66,15 +71,33 @@ int main() {
         rejects([&]{readSlcWindow(path,slcWidth-1,0,2,1);});
         rejects([&]{readSlcWindow(path,0,0,0,1);});
         VSIUnlink(path);
-        // Recrear el archivo para comprobar tipo no complejo, bandas y dimensiones.
+        // Comprobar por separado el tipo no complejo y la cantidad de bandas.
         fixture(path,slcWidth,slcHeight,1,GDT_Int16);
         rejects([&]{readSlcWindow(path,0,0,1,1);});
         VSIUnlink(path);
-        fixture(path,slcWidth,slcHeight,2,GDT_Int16);
+        fixture(path,slcWidth,slcHeight,2,GDT_CFloat32);
         rejects([&]{readSlcWindow(path,0,0,1,1);});
         VSIUnlink(path);
-        fixture(path,10,10,1,GDT_Int16);
-        rejects([&]{readSlcWindow(path,0,0,1,1);});
+        // Exportaciones SNAP: dimensiones variables y componentes Float32 fraccionarias.
+        fixture(path,32,24,1,GDT_CFloat32);
+        auto* floating = static_cast<GDALDataset*>(GDALOpen(path, GA_Update));
+        double sample[]{1.25,-2.75};
+        require(floating->GetRasterBand(1)->RasterIO(GF_Write,3,4,1,1,sample,1,1,
+                GDT_CFloat64,0,0,nullptr)==CE_None, "Escritura Float32");
+        GDALClose(floating);
+        const auto fractional=readSlcWindow(path,3,4,1,1);
+        require(fractional[0].real==1.25 && fractional[0].imag==-2.75,
+                "Componentes fraccionarias alteradas");
+        rejects([&]{readSlcWindow(path,31,23,2,1);});
+        floating=static_cast<GDALDataset*>(GDALOpen(path,GA_Update));
+        sample[0]=std::numeric_limits<double>::quiet_NaN();
+        require(floating->GetRasterBand(1)->RasterIO(GF_Write,3,4,1,1,sample,1,1,
+                GDT_CFloat64,0,0,nullptr)==CE_None, "Escritura NoData");
+        GDALClose(floating);
+        rejects([&]{readSlcWindow(path,3,4,1,1);});
+        const auto noData = readSlcWindow(path,3,4,1,1,true);
+        require(std::isnan(noData[0].real) && noData[0].imag == -2.75,
+                "NoData no conservado en lectura permisiva");
         VSIUnlink(path);
         // Suprimir el mensaje esperado de GDAL al intentar abrir un archivo inexistente.
         CPLPushErrorHandler(CPLQuietErrorHandler);
@@ -82,6 +105,12 @@ int main() {
         CPLPopErrorHandler();
         // Integración con las adquisiciones reales: conservar componentes imaginarias.
         Config config;
+        VSIStatBufL stat;
+        if (VSIStatL(config.a.c_str(), &stat) != 0 || VSIStatL(config.b.c_str(), &stat) != 0) {
+            std::cout << "PASS: conversión compleja, offsets y errores\n"
+                      << "SKIP: ventanas reales A/B; faltan " << config.a << " o " << config.b << '\n';
+            return 0;
+        }
         for (const auto& source : {config.a,config.b}) {
             const auto real=readSlcWindow(source,12000,750,16,16);
             require(real.size()==256,"Ventana real no tiene 256 muestras");

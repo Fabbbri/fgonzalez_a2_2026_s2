@@ -50,13 +50,19 @@ Config parseConfig(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
 
+        if (option == "--allow-nodata") {
+            config.allowNoData = true;
+            continue;
+        }
+
         if (option == "--help") {
             config.help = true;
             continue;
         }
 
-        if (option != "--a" && option != "--b" && option != "--width" && option != "--height" &&
-            option != "--x" && option != "--y") {
+        if (option != "--output" && option != "--a" && option != "--b" && option != "--width" && option != "--height" &&
+            option != "--x" && option != "--y" && option != "--mode" &&
+            option != "--tile-width" && option != "--tile-height" && option != "--quantum" && option != "--threads") {
             throw std::invalid_argument("Opción desconocida: " + option);
         }
 
@@ -67,7 +73,20 @@ Config parseConfig(int argc, char* argv[]) {
 
         const std::string value = argv[i];
 
-        if (option == "--a")
+        if (option == "--threads") {
+            config.threads = integer(value, option);
+            config.threadsSpecified = true;
+        } else if (option == "--quantum")
+            config.quantum = integer(value, option);
+        else if (option == "--mode")
+            config.mode = value;
+        else if (option == "--tile-width")
+            config.tileWidth = integer(value, option);
+        else if (option == "--tile-height")
+            config.tileHeight = integer(value, option);
+        else if (option == "--output")
+            config.output = value;
+        else if (option == "--a")
             config.a = value;
         else if (option == "--b")
             config.b = value;
@@ -81,8 +100,17 @@ Config parseConfig(int argc, char* argv[]) {
             config.y = integer(value, option);
     }
 
-    if (!config.help)
+    if (!config.help) {
         validateWindow(config.x, config.y, config.width, config.height);
+        if (config.mode != "sequential" && config.mode != "fine-grained" && config.mode != "coarse-grained" && config.mode != "smt" && config.mode != "cmp")
+            throw std::invalid_argument("Modo válido: sequential, fine-grained, coarse-grained, smt o cmp.");
+        if (config.threads <= 0)
+            throw std::invalid_argument("La cantidad de hilos debe ser positiva.");
+        if (config.quantum <= 0)
+            throw std::invalid_argument("El quantum debe ser positivo.");
+        if (config.tileWidth <= 0 || config.tileHeight <= 0)
+            throw std::invalid_argument("El tamaño del tile debe ser positivo.");
+    }
 
     return config;
 }
@@ -99,15 +127,22 @@ Config parseConfig(int argc, char* argv[]) {
 void printHelp(std::ostream& out) {
     out << "Uso: ./build/interferogram [opciones]\n"
         << "Kernel secuencial A * conjugate(B) sobre SLC complejos P09-R2.\n"
-        << "  --a PATH       TIFF A (predeterminado: 2025-01-10, burst 179298)\n"
-        << "  --b PATH       TIFF B (predeterminado: 2025-01-22, burst 179298)\n"
-        << "  --width N      Ancho de ventana (512)\n"
-        << "  --height N     Alto de ventana (512)\n"
+        << "  --output PATH  Exportar resultado complejo C++ (fuera del tiempo de kernel)\n"
+        << "  --a PATH       TIFF A (predeterminado: corregistrado 2023-06-14)\n"
+        << "  --b PATH       TIFF B (predeterminado: corregistrado 2024-06-08)\n"
+        << "  --width N      Ancho de ventana (24444)\n"
+        << "  --height N     Alto de ventana (1499)\n"
         << "  --x N          Columna inicial, base cero (0)\n"
         << "  --y N          Fila inicial, base cero (0)\n"
+        << "  --mode MODE    sequential, fine-grained, coarse-grained, smt o cmp (sequential)\n"
+        << "  --tile-width N Ancho del tile (32)\n"
+        << "  --tile-height N Alto del tile (32)\n"
+        << "  --quantum N    Píxeles por turno en fine-grained (1)\n"
+        << "  --threads N    Trabajadores: coarse-grained (2), smt (CPUs lógicas o 2*C automático), cmp (núcleos disponibles)\n"
+        << "  --allow-nodata Conservar NoData y excluir resultados no finitos del resumen\n"
         << "  --help         Mostrar ayuda\n"
-        << "Misma ventana para A/B, contenida en 24445 x 1500.\n"
-        << "Ejecutar desde la raíz del repositorio para usar las rutas predeterminadas.\n";
+        << "Misma ventana para A/B, contenida en las dimensiones de cada TIFF.\n"
+        << "Ejecutar desde sentinel1-SLC/ para usar las rutas predeterminadas.\n";
 }
 
 } 

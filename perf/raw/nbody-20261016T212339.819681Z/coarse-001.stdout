@@ -1,0 +1,2 @@
+model,workers,bodies,steps,dt,seed,quantum,total_seconds
+coarse-grained,4,1000,1000,0.002,42,0,1.0942263780000001

@@ -1,0 +1,66 @@
+{
+  "topology": {
+    "cpus": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "cores": [
+      [
+        0,
+        1
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        4,
+        5
+      ],
+      [
+        6,
+        7
+      ],
+      [
+        8
+      ],
+      [
+        9
+      ],
+      [
+        10
+      ],
+      [
+        11
+      ]
+    ],
+    "smt_active": "1"
+  },
+  "platform": "Linux-6.17.0-29-generic-x86_64-with-glibc2.39",
+  "scope": "process",
+  "perf": "perf",
+  "configuration": {
+    "EVENTS": "task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,cache-references,cache-misses,stalled-cycles-frontend,stalled-cycles-backend",
+    "REPETITIONS": "3",
+    "MODELS": "sequential fine coarse smt cmp",
+    "THREADS": "auto",
+    "SMT_THREADS": "auto",
+    "NBODY_ARGS": "--bodies-per-galaxy 500 --steps 1000 --dt 0.002 --seed 42",
+    "RAY_ARGS": "--width 640 --height 480 --samples 8 --bounces 12 --tile-size 32",
+    "SENTINEL_ARGS": "--width 24444 --height 1499 --tile-width 32 --tile-height 32 --allow-nodata",
+    "DL_EPOCHS": "1000",
+    "DL_SAMPLES": "100",
+    "DL_SEED": "1",
+    "DL_QUANTUM_US": "100"
+  }
+}

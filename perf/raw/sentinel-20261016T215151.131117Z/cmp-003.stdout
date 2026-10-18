@@ -1,0 +1,20 @@
+P09-R2
+A: /home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/data/coregistered/P09-R2-2023-2024/A.tif
+B: /home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/data/coregistered/P09-R2-2023-2024/B.tif
+Window: 24444 x 1499
+Offset: 0, 0
+Samples: 36641556
+Mode: cmp
+Model time: 86.795090 ms
+Kernel time: 85.408641 ms
+Export time: 0.000000 ms
+Result sum (real, imag): -26824576, -31757271
+Computational kernel; coregistration quality is not verified by this executable.
+Result hash (fnv1a64): 3b5cbee5f533d601
+Valid result samples: 20632377
+Invalid result samples: 16009179
+NoData policy: preserve; exclude nonfinite results from sum
+Execution: CMP, one worker per physical core
+Workers: 4
+Tiles: 35908
+Pinned CPU IDs: 0 2 4 6

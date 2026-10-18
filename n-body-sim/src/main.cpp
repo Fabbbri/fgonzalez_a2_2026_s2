@@ -1,53 +1,260 @@
-#include "nbody/config.hpp"
-#include "nbody/diagnostics.hpp"
-#include "nbody/native_view.hpp"
-#include "nbody/output.hpp"
-#include "nbody/simulation.hpp"
+#include "nbody.hpp"
+#include <charconv>
+#include <cmath>
+#include <limits>
+#include <ostream>
 #include <chrono>
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <stdexcept>
 #include <string>
+
+namespace nbody {
+std::size_t parse_integer(const std::string& value) {
+    std::size_t result = 0;
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), result);
+    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) {
+        throw std::invalid_argument("Entero no válido: " + value);
+    }
+    return result;
+}
+
+// Validamos los parámetros antes de reservar memoria o crear archivos.
+Config parse_arguments(int argc, char* argv[]) {
+    Config config;
+    bool quantum_given = false;
+    bool threads_given = false;
+    bool block_time_given = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string option = argv[i];
+        if (option == "--no-output") {
+            config.no_output = true;
+            continue;
+        }
+        if (option != "--bodies-per-galaxy" && option != "--steps" &&
+            option != "--dt" && option != "--seed" &&
+            option != "--trajectory" && option != "--replay" &&
+            option != "--model" && option != "--quantum" && option != "--threads" &&
+            option != "--block-interval-ms" && option != "--block-duration-ms") {
+            throw std::invalid_argument("Opción desconocida: " + option);
+        }
+        if (++i == argc) {
+            throw std::invalid_argument("Falta el valor de " + option);
+        }
+        const std::string value = argv[i];
+        if (option == "--model") {
+            config.model = value;
+        } else if (option == "--block-interval-ms" || option == "--block-duration-ms") {
+            const auto milliseconds = parse_integer(value);
+            if (milliseconds > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+                throw std::invalid_argument("Tiempo de bloqueo fuera de rango.");
+            }
+            if (option == "--block-interval-ms") config.block_interval_ms = static_cast<int>(milliseconds);
+            else config.block_duration_ms = static_cast<int>(milliseconds);
+            block_time_given = true;
+        } else if (option == "--threads") {
+            config.threads = parse_integer(value);
+            threads_given = true;
+        } else if (option == "--quantum") {
+            config.quantum = parse_integer(value);
+            quantum_given = true;
+        } else if (option == "--trajectory" || option == "--replay") {
+            if (value.empty()) throw std::invalid_argument("La ruta no puede estar vacía.");
+            if (option == "--trajectory") config.trajectory_path = value;
+            else config.replay_path = value;
+        } else if (option == "--bodies-per-galaxy") {
+            config.bodies_per_galaxy = parse_integer(value);
+        } else if (option == "--steps") {
+            config.steps = parse_integer(value);
+        } else if (option == "--seed") {
+            const std::size_t seed = parse_integer(value);
+            if (seed > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::invalid_argument("La semilla debe caber en 32 bits.");
+            }
+            config.seed = static_cast<std::uint32_t>(seed);
+        } else {
+            std::size_t consumed = 0;
+            config.dt = std::stod(value, &consumed);
+            if (consumed != value.size()) {
+                throw std::invalid_argument("dt no válido: " + value);
+            }
+        }
+    }
+    if (!config.replay_path.empty() && argc != 3) {
+        throw std::invalid_argument("Use --replay ARCHIVO sin opciones de simulación.");
+    }
+    if (config.model != "sequential" && config.model != "fine-grained" &&
+        config.model != "coarse-grained" && config.model != "smt" && config.model != "cmp") {
+        throw std::invalid_argument("Modelo no disponible: " + config.model);
+    }
+    if (config.quantum == 0 || (quantum_given && config.model != "fine-grained")) {
+        throw std::invalid_argument("--quantum debe ser positivo y requiere --model fine-grained.");
+    }
+    if (config.threads == 0 || (threads_given && config.model != "coarse-grained" &&
+                              config.model != "smt" && config.model != "cmp")) {
+        throw std::invalid_argument("--threads debe ser positivo y requiere coarse-grained, smt o cmp.");
+    }
+    if (config.model == "smt" && !threads_given) config.threads = 0;  // Automático: L o 2*C sin siblings.
+    if (block_time_given && config.model != "coarse-grained") {
+        throw std::invalid_argument("Los tiempos de bloqueo requieren --model coarse-grained.");
+    }
+    if (config.model == "cmp" && !threads_given) config.threads = 0;  // Automático: C.
+    if (config.steps == std::numeric_limits<std::size_t>::max()) {
+        throw std::invalid_argument("Demasiados pasos para guardar el estado inicial y final.");
+    }
+    if (config.bodies_per_galaxy == 0) {
+        throw std::invalid_argument("La cantidad de cuerpos debe ser positiva.");
+    }
+    if (!std::isfinite(config.dt) || config.dt <= 0.0 ||
+        !std::isfinite(config.dt * static_cast<double>(config.steps))) {
+        throw std::invalid_argument("dt debe ser positivo y el tiempo final debe ser finito.");
+    }
+    return config;
+}
+
+
+void print_usage(std::ostream& output) {
+    output << "Uso: nbody [opciones]\n"
+              "  --model MODELO         sequential (defecto), fine-grained, coarse-grained, smt o cmp\n"
+              "  --quantum N            Interacciones por turno Fine-Grained (1)\n"
+              "  --threads N            Coarse: 2; SMT: L (o 2*C sin siblings); CMP: C\n"
+              "  --block-interval-ms N  Coarse: intervalo entre bloqueos (10); 0 los desactiva\n"
+              "  --block-duration-ms N  Coarse: duración de cada espera (1)\n"
+              "  --topology             Consultar núcleos disponibles y estado SMT, sin simular\n"
+              "  --defaults             Consultar los valores de Config en JSON, sin simular\n"
+              "  --bodies-per-galaxy N  Cuerpos por galaxia (500)\n"
+              "  --steps N              Pasos; 0 = estado inicial (1000)\n"
+              "  --dt X                 Duración de cada paso (0.002)\n"
+              "  --seed N               Semilla de 32 bits (42)\n"
+              "  --trajectory ARCHIVO   Trayectoria (output/trajectory.nbody)\n"
+              "  --no-output            Guardar y medir sin abrir la ventana\n"
+              "  --replay ARCHIVO       Reproducir una trayectoria sin simular\n"
+              "Simula, cierra la trayectoria, imprime métricas CSV y abre el reproductor.\n"
+              "Espacio: pausa; N: un frame; R: volver al inicio; F: encuadrar.\n"
+              "Rueda: zoom; arrastrar: mover cámara; +/-: velocidad; Esc: salir.\n"
+              "T: estelas; G: rejilla; flechas o clic en la barra: buscar y pausar.\n"
+              "Tiempo total y parámetros en CSV por stdout, antes de visualizar.\n";
+}
+}  // namespace nbody
 
 int main(int argc, char* argv[]) try {
     using namespace nbody;
+    using Clock = std::chrono::steady_clock;
     if (argc == 2 && std::string(argv[1]) == "--help") {
         print_usage(std::cout);
         return 0;
     }
+    if (argc == 2 && std::string(argv[1]) == "--topology") {
+        print_cpu_topology(std::cout, detect_cpu_topology());
+        return 0;
+    }
+    if (argc == 2 && std::string(argv[1]) == "--defaults") {
+        const Config defaults;
+        std::cout << std::setprecision(17)
+                  << "{\"bodies_per_galaxy\":" << defaults.bodies_per_galaxy
+                  << ",\"steps\":" << defaults.steps
+                  << ",\"dt\":" << defaults.dt
+                  << ",\"seed\":" << defaults.seed
+                  << ",\"quantum\":" << defaults.quantum
+                  << ",\"threads\":" << defaults.threads
+                  << ",\"block_interval_ms\":" << defaults.block_interval_ms
+                  << ",\"block_duration_ms\":" << defaults.block_duration_ms << "}\n";
+        return 0;
+    }
     const Config config = parse_arguments(argc, argv);
+    if (!config.replay_path.empty()) {
+        TrajectoryReader trajectory(config.replay_path);
+        replay_native(trajectory);
+        return 0;
+    }
     auto bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
     std::vector<Vec2> accelerations(bodies.size());
-
-    // El diagnóstico O(N²) se calcula solo en los extremos, fuera del cronómetro.
-    const Diagnostics initial = measure_physics(bodies);
-    RunResult result;
-    if (config.no_output) {
-        // SDL no se inicializa aquí. Se mide un intervalo continuo de cálculo.
-        using Clock = std::chrono::steady_clock;
-        const auto start = Clock::now();
-        refresh_accelerations(bodies, accelerations);
-        for (std::size_t index = 0; index < config.steps; ++index) {
-            advance_one_step(bodies, accelerations, config.dt);
+    CpuTopology topology;
+    if (config.model == "smt" || config.model == "cmp") topology = detect_cpu_topology();
+    // Intervalo total continuo: apertura, cálculo, captura, flush y cierre.
+    // La generación aleatoria y la reproducción quedan fuera de este tiempo.
+    const auto total_start = Clock::now();
+    std::unique_ptr<ExecutionModel> model;
+    if (config.model == "sequential") model = make_sequential_model();
+    else if (config.model == "fine-grained") model = make_fine_grained_model(config.quantum);
+    else if (config.model == "coarse-grained") model = make_coarse_grained_model(
+        config.threads, {}, config.block_interval_ms, config.block_duration_ms);
+    else if (config.model == "smt") model = make_smt_model(config.threads);
+    else model = make_cmp_model(config.threads);
+    const std::string model_name = model->name();
+    const std::size_t workers = model->workers();
+    const auto assigned_cpus = model->assigned_cpus();
+    TrajectoryWriter writer(config.trajectory_path, config, bodies.size());
+    refresh_accelerations(bodies, accelerations, *model);
+    writer.append(bodies);
+    for (std::size_t step = 0; step < config.steps; ++step) {
+        advance_one_step(bodies, accelerations, config.dt, *model);
+        writer.append(bodies);
+    }
+    const SchedulingStats scheduling = model->scheduling_stats();
+    model.reset();  // Incluye el cierre de futuros trabajadores en el tiempo total.
+    writer.finish();
+    const double total_seconds = std::chrono::duration<double>(Clock::now() - total_start).count();
+    std::cerr << "Duración total (" << model_name << "): "
+              << std::setprecision(6) << total_seconds << " segundos\n";
+    // Una cabecera y una fila por ejecución permiten agregación externa con Make/Bash.
+    // Speedup, eficiencia y estadísticas requieren comparar varias muestras/modelos.
+    std::cout << "model,workers,bodies,steps,dt,seed,quantum,total_seconds\n"
+              << std::setprecision(17) << model_name << ',' << workers << ',' << bodies.size() << ',' << config.steps
+              << ',' << config.dt << ',' << config.seed << ','
+              << (config.model == "fine-grained" ? config.quantum : 0) << ',' << total_seconds << '\n';
+    std::cout.flush();
+    if (!std::cout) throw std::runtime_error("No se pudieron imprimir las métricas.");
+    std::cerr << "Trayectoria finalizada: " << config.trajectory_path << '\n';
+    if (config.model == "fine-grained") {
+        std::cerr << "Fine-Grained simulado: 1 hilo real, " << scheduling.tasks
+                  << " tareas, " << scheduling.rounds << " rondas y "
+                  << scheduling.dispatches << " despachos (acumulados).\n";
+    } else if (config.model == "coarse-grained") {
+        std::cerr << "Coarse-Grained: " << workers << " hilos persistentes, "
+                  << scheduling.rounds << " fases de sincronización completadas.\n"
+                  << "Intervalo de bloqueo: " << config.block_interval_ms << " ms; espera: "
+                  << config.block_duration_ms << " ms; bloqueos temporales: " << scheduling.blocks << ".\n";
+    } else if (config.model == "smt") {
+        std::cerr << "SMT: " << workers << " trabajadores; CPU fijadas y verificadas: ";
+        for (std::size_t i = 0; i < assigned_cpus.size(); ++i) {
+            if (i != 0) std::cerr << ';';
+            std::cerr << assigned_cpus[i];
         }
-        result.compute_seconds = std::chrono::duration<double>(Clock::now() - start).count();
-        result.completed_steps = config.steps;
-    } else {
-        result = run_native(bodies, accelerations, config);
+        std::cerr << "; ";
+        print_cpu_topology(std::cerr, topology);
+        if (workers > topology.logical_cpus) {
+            std::cerr << "P > L: hay sobresuscripción del SO; no añade unidades SMT.\n";
+        }
+        if (topology.logical_cpus == topology.physical_cores) {
+            std::cerr << "Sin siblings permitidos: esta ejecución no demuestra SMT de hardware.\n";
+        } else if (workers <= topology.physical_cores) {
+            std::cerr << "P <= C: se asigna una CPU por núcleo, sin ocupar siblings del mismo núcleo.\n";
+        } else {
+            std::cerr << "Se asignan CPUs hermanas del mismo núcleo; con varios núcleos se combina CMP + SMT.\n";
+        }
+    } else if (config.model == "cmp") {
+        std::cerr << "CMP: " << workers << " trabajadores; ";
+#if defined(__linux__)
+        std::cerr << "CPU fijadas por núcleo físico: ";
+        for (std::size_t i = 0; i < workers; ++i) {
+            if (i != 0) std::cerr << ';';
+            std::cerr << topology.core_cpus[i];
+        }
+        std::cerr << "; ";
+#else
+        std::cerr << "afinidad administrada por el SO; ";
+#endif
+        print_cpu_topology(std::cerr, topology);
     }
-    const Diagnostics final = measure_physics(bodies);
-    const double time = static_cast<double>(result.completed_steps) * config.dt;
-    std::cerr << std::setprecision(10)
-              << "Cuerpos: " << bodies.size() << ", pasos completados: " << result.completed_steps << '/' << config.steps
-              << ", dt: " << config.dt << ", semilla: " << config.seed << '\n'
-              << "Modo: " << (config.no_output ? "sin ventana" : "ventana nativa") << '\n'
-              << "Tiempo simulado: " << time << '\n'
-              << "Tiempo de cálculo secuencial (sin inicialización aleatoria, diagnóstico ni dibujo): "
-              << result.compute_seconds << " s\n";
+    std::cerr.flush();
+
+    // La ventana solo se crea después de cerrar el archivo e imprimir los resultados.
     if (!config.no_output) {
-        std::cerr << "Para benchmarking use --no-output: el modo visual incluye pausas entre cálculos.\n";
+        TrajectoryReader trajectory(config.trajectory_path);
+        replay_native(trajectory);
     }
-    write_physics_report(initial, final, time, std::cerr);
     return 0;
 } catch (const std::exception& error) {
     std::cerr << "Error: " << error.what() << "\nUse --help para ver las opciones.\n";

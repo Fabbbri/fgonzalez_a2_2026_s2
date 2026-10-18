@@ -1,0 +1,107 @@
+1
+00:00:00,000 --> 00:00:10,000
+¿Qué tienen en común una galaxia, una imagen realista, una red neuronal y un satélite? Todos esconden trabajo que podemos repartir. Pero repartirlo tiene un costo.
+
+2
+00:00:10,000 --> 00:00:20,000
+Imaginemos una fila de tareas. Con un trabajador avanzamos de una en una. Con varios podemos avanzar en paralelo, siempre que las tareas lo permitan.
+
+3
+00:00:20,000 --> 00:00:30,000
+En grano fino alternamos tareas en pequeños turnos. Nuestra planificación es cooperativa: intercalar tareas en un solo hilo no significa calcularlas simultáneamente en varios núcleos.
+
+4
+00:00:30,000 --> 00:00:40,000
+En grano grueso usamos hilos reales que avanzan y pueden esperar. Modelamos bloqueos en varios problemas; el sistema operativo también decide cuándo ejecutar cada hilo.
+
+5
+00:00:40,000 --> 00:00:50,000
+CMP distribuye trabajadores entre núcleos físicos. SMT aprovecha hilos lógicos que comparten un núcleo. Comparamos SMT activo e inactivo desde Linux.
+
+6
+00:00:50,000 --> 00:01:00,000
+Nuestro primer mundo es una red neuronal que reconoce dígitos. Los píxeles atraviesan capas de operaciones hasta producir una predicción. Esta es una representación conceptual.
+
+7
+00:01:00,000 --> 00:01:10,000
+Durante el entrenamiento comparamos la salida con la respuesta esperada, propagamos el error y actualizamos los pesos. Repetir este ciclo permite ajustar el comportamiento de la red.
+
+8
+00:01:10,000 --> 00:01:20,000
+En nuestra implementación, forward y backpropagation permanecen secuenciales; distribuimos las actualizaciones. Por eso sumar trabajadores no acelera todo el entrenamiento y la coordinación puede dominar.
+
+9
+00:01:20,000 --> 00:01:30,000
+Con CMP, cuatro trabajadores alcanzaron aproximadamente dos coma seis veces la velocidad secuencial. Con ocho, bajó a uno coma cinco. DL todavía tiene pocas repeticiones.
+
+10
+00:01:30,000 --> 00:01:40,000
+Ahora cambiemos de escala. En N-body, cada cuerpo recibe la atracción de todos los demás. Dibujamos dos galaxias para explicar este cálculo, sin simular aquí su trayectoria.
+
+11
+00:01:40,000 --> 00:01:50,000
+Para calcular la fuerza de un cuerpo recorremos los demás. Con este método directo, duplicar los cuerpos produce aproximadamente cuatro veces más interacciones por paso.
+
+12
+00:01:50,000 --> 00:02:00,000
+Repartimos los cuerpos entre trabajadores. Las fases deben sincronizarse para que el siguiente cálculo use un estado consistente. El trabajador más lento puede hacer esperar a los demás.
+
+13
+00:02:00,000 --> 00:02:10,000
+N-body alcanzó aproximadamente tres coma dieciséis veces la velocidad secuencial con cuatro trabajadores. Con ocho bajó a dos coma cincuenta y tres: más paralelismo no garantizó mejor rendimiento.
+
+14
+00:02:10,000 --> 00:02:20,000
+En ray tracing seguimos rayos desde la cámara. Buscamos intersecciones y calculamos rebotes para construir el color de cada píxel. Cada región puede resolverse de forma independiente.
+
+15
+00:02:20,000 --> 00:02:30,000
+Varias muestras por píxel y más rebotes aumentan el trabajo disponible. Para comparar modelos mantenemos la misma escena, resolución, semilla y calidad; así buscamos la misma imagen.
+
+16
+00:02:30,000 --> 00:02:40,000
+Dividimos la imagen en tiles. Cuando un trabajador termina una región, toma otra. Este reparto ayuda cuando algunas zonas de la escena cuestan más que otras.
+
+17
+00:02:40,000 --> 00:02:50,000
+Con ocho trabajadores CMP, ray tracing logró aproximadamente cuatro coma setenta y ocho veces la velocidad secuencial. Fue una mejora clara para esta carga y este equipo.
+
+18
+00:02:50,000 --> 00:03:00,000
+Nuestro cuarto mundo utiliza adquisiciones complejas de radar Sentinel-1. Cada píxel contiene amplitud y fase. Comparar dos adquisiciones permite construir un interferograma; aquí las imágenes son ilustrativas.
+
+19
+00:03:00,000 --> 00:03:10,000
+Multiplicamos una adquisición por el conjugado de la otra. La fase del producto expresa su diferencia de fase. Convertirla en desplazamiento requiere procesamiento e interpretación adicionales.
+
+20
+00:03:10,000 --> 00:03:20,000
+El producto se calcula píxel a píxel y se reparte en tiles. Pero tener muchos datos no basta: también importan el trabajo por píxel, la memoria y la planificación.
+
+21
+00:03:20,000 --> 00:03:30,000
+En esta carga, las configuraciones paralelas medidas de Sentinel no superaron la referencia secuencial. CMP con cuatro trabajadores quedó cerca de cero coma noventa y dos veces su velocidad.
+
+22
+00:03:30,000 --> 00:03:40,000
+Con RAM de tres mil doscientos megatransferencias por segundo, Sentinel no aceleró en el equipo de pruebas. En otro, con ocho mil quinientos treinta y tres, se observó mejora.
+
+23
+00:03:40,000 --> 00:03:50,000
+Una mayor capacidad de mover datos podría ayudar a alimentar los núcleos. Pero también cambian CPU, caché y configuración: esta comparación no aísla la RAM.
+
+24
+00:03:50,000 --> 00:04:00,000
+Ray tracing, N-body y Sentinel tienen doscientas repeticiones por configuración; DL tiene entre nueve y veinte. Calculamos intervalos de confianza y usamos perf para observar el proceso.
+
+25
+00:04:00,000 --> 00:04:10,000
+Con cuatro trabajadores CMP, ray tracing y N-body aceleraron claramente; DL mejoró en su campaña preliminar y Sentinel no superó la base. El problema cambia el resultado.
+
+26
+00:04:10,000 --> 00:04:20,000
+La conclusión es simple: el paralelismo necesita trabajo independiente suficiente para compensar sus costos. Repartir, sincronizar y compartir recursos también consume tiempo. La respuesta está en medir.
+
+27
+00:04:20,000 --> 00:04:31,000
+Gracias por ver. Arquitectura de Computadores II.
