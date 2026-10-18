@@ -1,20 +1,10 @@
 # Cálculo de interferogramas con Sentinel-1 SLC
 
-## Estado actual
+## Qué hace el proyecto
 
-La base secuencial en C++17 incluye:
+El programa calcula el producto de una adquisición SLC por el conjugado de otra, píxel a píxel. Lee las componentes complejas con GDAL, selecciona la misma ventana en ambas imágenes y permite ejecutar el cálculo con cinco modos: `sequential`, `fine-grained`, `coarse-grained`, `smt` y `cmp`.
 
-* lectura de dos adquisiciones Sentinel-1 SLC reales correspondientes a P09-R2;
-* selección de una misma ventana rectangular en ambas adquisiciones;
-* conservación de las componentes real e imaginaria de cada muestra mediante GDAL;
-* multiplicación conjugada píxel a píxel con complejidad $O(N)$;
-* almacenamiento lineal de las muestras en orden por filas;
-* validación de argumentos, dimensiones, ventanas, bandas y tipo de dato complejo;
-* medición del tiempo del kernel separada de la lectura de archivos, validaciones e impresión;
-* resumen numérico del resultado para comprobar las ejecuciones;
-* pruebas del kernel matemático, del lector SLC y de la interfaz de línea de comandos.
-
-Los modelos Fine-Grained, Coarse-Grained, SMT y CMP todavía no están implementados. Sus diagramas preliminares documentan cómo se plantea dividir y ejecutar el cálculo en cada modelo.
+Todos utilizan la misma operación matemática. Lo que cambia es cómo recorren los datos, reparten el trabajo y asignan los trabajadores al procesador. La implementación incluye validación de entradas, exportación opcional a TIFF complejo, pruebas automatizadas y scripts para repetir las mediciones y generar gráficas.
 
 ## Modelo computacional
 
@@ -82,7 +72,7 @@ $$
 (2+3i)\overline{(4+5i)} = 23+2i
 $$
 
-Cada resultado depende únicamente de `A[i]` y `B[i]`. Por esta razón, las iteraciones del kernel son independientes y constituyen la región principal que posteriormente será paralelizada.
+Cada resultado depende únicamente de `A[i]` y `B[i]`. Por esta razón, las iteraciones del kernel son independientes y constituyen la región que se distribuye entre tareas y trabajadores en los distintos modelos.
 
 Las ventanas se almacenan en vectores lineales utilizando orden por filas:
 
@@ -108,32 +98,36 @@ La implementación actual realiza esta operación sobre las mismas posiciones de
 
 ## Datos utilizados
 
+Los pasos para descargar, corregistrar y preparar los datos están en la [guía de adquisición de datos](data_acquisition.md).
+
 La pareja seleccionada corresponde al punto P09-R2 y utiliza dos adquisiciones Sentinel-1:
 
 | Campo                   | Adquisición A | Adquisición B |
 | ----------------------- | ------------- | ------------- |
-| Fecha                   | 2025-01-10    | 2025-01-22    |
+| Fecha                   | 2024-06-08    | 2024-06-20    |
 | Plataforma              | S1A           | S1A           |
 | Producto / modo         | SLC / IW      | SLC / IW      |
 | Subswath / polarización | IW2 / VV      | IW2 / VV      |
-| Dirección orbital       | DESCENDING    | DESCENDING    |
-| Órbita absoluta         | 57381         | 57556         |
-| Órbita relativa         | 84            | 84            |
-| Burst                   | 179298        | 179298        |
-| Dimensiones             | 24445 × 1500  | 24445 × 1500  |
+| Dirección orbital       | ASCENDING     | DESCENDING    |
+| Órbita absoluta         | 54239         | 54406         |
+| Órbita relativa         | 92            | 84            |
+| Burst                   | 195513        | 179298        |
+| Dimensiones originales  | 24451 × 1499  | 24444 × 1500  |
 | Tipo / bandas           | CInt16 / 1    | CInt16 / 1    |
-| Datatake                | 462858        | 464635        |
+| Datatake                | 432350        | 433836        |
+
+A es la referencia y B la secundaria del corregistro. El programa lee los TIFF corregistrados `data/coregistered/P09-R2-2023-2024/A.tif` y `B.tif`, con I/Q complejos en la geometría de A. Las mediciones usan la ventana 24444 × 1499 desde el origen; sus bordes contienen NoData, por lo que se ejecutan con `--allow-nodata`.
 
 
 La implementación actual debe considerarse un kernel computacional sobre datos Sentinel-1 SLC reales. Todavía no constituye un interferograma SAR científicamente validado ni se utiliza para estimar deformaciones del terreno.
 
 ## Requisitos
 
-* compilador compatible con C++17, como GCC o Clang;
+* compilador compatible con C++, como GCC o Clang;
 * GNU Make;
 * GDAL con archivos de desarrollo;
 * `gdal-config`;
-* los dos TIFF Sentinel-1 seleccionados disponibles localmente.
+* los dos TIFF corregistrados disponibles localmente (ver la [guía de adquisición](data_acquisition.md)).
 
 En Ubuntu:
 
@@ -156,25 +150,25 @@ gdal-config --libs
 
 ## Compilación y ejecución
 
-Desde la raíz del repositorio:
+Desde la raíz del repositorio, entra primero al proyecto:
 
 ```bash
+cd sentinel1-SLC
 make
-./build/interferogram
+./build/interferogram --help
 ```
 
 La configuración predeterminada procesa una ventana de:
 
 ```text
-512 × 512
+24444 × 1499
 ```
 
-utilizando las dos adquisiciones P09-R2 configuradas en `config.hpp`.
-
-También puede utilizarse:
+utilizando los TIFF corregistrados configurados en `config.hpp`. Las imágenes corregistradas tienen bordes NoData, así que para procesar la ventana completa se agrega `--allow-nodata`:
 
 ```bash
-make run
+./build/interferogram --allow-nodata
+make run ARGS=--allow-nodata
 ```
 
 Para ejecutar las pruebas:
@@ -188,19 +182,19 @@ make test
 Ventana de 256 × 256:
 
 ```bash
-./build/interferogram --width 256 --height 256
+./build/interferogram --width 256 --height 256 --allow-nodata
 ```
 
 Ventana de 512 × 512:
 
 ```bash
-./build/interferogram --width 512 --height 512
+./build/interferogram --width 512 --height 512 --allow-nodata
 ```
 
 Ventana de 1024 × 1024:
 
 ```bash
-./build/interferogram --width 1024 --height 1024
+./build/interferogram --width 1024 --height 1024 --allow-nodata
 ```
 
 Ventana desplazada dentro del burst:
@@ -218,33 +212,35 @@ Ventana desplazada dentro del burst:
 
 | Opción       | Descripción                      | Valor predeterminado |
 | ------------ | -------------------------------- | -------------------- |
-| `--a PATH`   | Ruta al TIFF de la adquisición A | P09-R2, 2025-01-10   |
-| `--b PATH`   | Ruta al TIFF de la adquisición B | P09-R2, 2025-01-22   |
-| `--width N`  | Ancho de la ventana              | `512`                |
-| `--height N` | Alto de la ventana               | `512`                |
+| `--a PATH`   | Ruta al TIFF de la adquisición A | `data/coregistered/P09-R2-2023-2024/A.tif` |
+| `--b PATH`   | Ruta al TIFF de la adquisición B | `data/coregistered/P09-R2-2023-2024/B.tif` |
+| `--width N`  | Ancho de la ventana              | `24444`              |
+| `--height N` | Alto de la ventana               | `1499`               |
 | `--x N`      | Columna inicial, base cero       | `0`                  |
 | `--y N`      | Fila inicial, base cero          | `0`                  |
+| `--mode MODE` | Modelo de ejecución | `sequential` |
+| `--tile-width N` | Ancho de los tiles | `32` |
+| `--tile-height N` | Alto de los tiles | `32` |
+| `--quantum N` | Píxeles por turno en fine-grained | `1` |
+| `--threads N` | Trabajadores de coarse, SMT o CMP | Según modelo |
+| `--allow-nodata` | Admite NoData; excluye resultados no finitos del resumen | Desactivado |
+| `--output PATH` | Exporta el resultado como TIFF complejo | Sin exportación |
 | `--help`     | Muestra la ayuda                 | —                    |
 
 Las dos adquisiciones utilizan exactamente la misma ventana.
 
 
-## Ejemplo de salida
+## Cómo leer los tiempos y el resultado
 
-Una ejecución presenta información similar a:
+La salida identifica ventana, modo y parámetros de ejecución. También distingue tres tiempos:
 
-```text
-P09-R2
-Window: 512 x 512
-Offset: 0, 0
-Samples: 262144
-Mode: sequential
-Kernel time: 0.445534 ms
-Result sum (real, imag): -7416021, -30561704
-Computational kernel; coregistration quality is not verified by this executable.
-```
+- `Kernel time`: cálculo y sincronización durante la ejecución, con los trabajadores ya preparados.
+- `Model time`: preparación del modelo, creación de trabajadores, cálculo, sincronización y cierre. Excluye lectura de TIFF, resumen y exportación.
+- `Export time`: escritura del TIFF cuando se solicita `--output`.
 
-`Result sum` corresponde a la suma de las componentes real e imaginaria de todos los resultados. Se utiliza como resumen de la ejecución y no representa una medida de calidad física del interferograma.
+El benchmark utiliza el tiempo del modelo como métrica principal para incluir el costo de preparar y cerrar los trabajadores. El tiempo del proceso completo, por ejemplo al instrumentar con perf, también incluye lectura e inicialización.
+
+`Result sum` resume las componentes real e imaginaria de la salida. Sirve para contrastar ejecuciones; no mide la calidad física del interferograma. 
 
 ## Opciones de Make
 
@@ -260,49 +256,24 @@ Computational kernel; coregistration quality is not verified by this executable.
 ## Estructura del proyecto
 
 ```text
-fgonzalez_a2_2026_s2/
-├── .gitignore
-├── .vscode/
-│   └── c_cpp_properties.json
-├── LICENSE
-├── README.md
-└── sentinel1-SLC/
-    ├── Makefile
-    ├── build/                       
-    ├── data/
-    │   ├── critical_points.csv
-    │   ├── P09-R2_roi.geojson
-    │   ├── sentinel1_catalog.csv
-    │   ├── metadata/
-    │   │   └── P09-R2/              
-    │   └── raw/                    
-    │       └── P09-R2/
-    ├── scripts/
-    │   └── acquire_p09.sh
-    └── interferogram/
-        ├── docs/
-        │   ├── README.md
-        │   └── data_acquisition.md
-        ├── images/
-        │   ├── cmp.png
-        │   ├── coarse_grained.png
-        │   ├── fine_grained.png
-        │   └── simultaneous.png
-        ├── include/
-        │   └── interferogram/
-        │       ├── complex.hpp
-        │       ├── config.hpp
-        │       ├── interferogram.hpp
-        │       └── slc_reader.hpp
-        ├── src/
-        │   ├── config.cpp
-        │   ├── interferogram.cpp
-        │   ├── main.cpp
-        │   └── slc_reader.cpp
-        └── tests/
-            ├── test_cli.sh
-            ├── test_interferogram.cpp
-            └── test_slc_reader.cpp
+sentinel1-SLC/
+├── Makefile
+├── build/                         # Ejecutable y pruebas compiladas
+├── data/                          # Adquisiciones, metadatos y pares preparados
+├── scripts/                       # Benchmark, gráficas y visualización
+├── resultsen/                     # CSV, capturas y reportes experimentales
+└── interferogram/
+    ├── docs/                      # Esta documentación y adquisición de datos
+    ├── images/                    # Diagramas de los modelos
+    ├── include/interferogram/     # Interfaces y configuración
+    ├── src/
+    │   ├── main.cpp
+    │   ├── config.cpp
+    │   ├── cpu_info.cpp
+    │   ├── slc_reader.cpp
+    │   ├── interferogram.cpp
+    │   └── models/                # Secuencial, fine, coarse, SMT y CMP
+    └── tests/                     # Kernel, lectura, CLI y benchmark
 ```
 
 Responsabilidades principales:
@@ -356,21 +327,25 @@ Cada muestra requiere una cantidad constante de trabajo, por lo que el costo tot
 
 Los parámetros `x` y `y`, en cambio, únicamente determinan la posición inicial de la ventana dentro del SLC. Modificarlos cambia la región que se procesa, pero no la cantidad de trabajo ni el paralelismo disponible mientras `width` y `height` permanezcan iguales.
 
-La principal región que se utilizará para implementar y comparar los diferentes modelos de ejecución es el ciclo de `computeInterferogramSequential()`, ya que sus iteraciones independientes permiten distribuir el procesamiento entre distintas unidades de ejecución.
+El ciclo de `computeInterferogramSequential()` sirve como referencia para comparar los modelos. Sus iteraciones independientes permiten repartir el cálculo sin que dos trabajadores necesiten escribir la misma posición de salida.
 
-## Diagramas de los modelos de ejecución
+## Modelos de ejecución
 
-Los siguientes diagramas presentan el diseño preliminar de los modelos de ejecución que se utilizarán para paralelizar el cálculo del interferograma. En todos los casos, el trabajo consiste en distribuir las $N$ muestras de las matrices complejas $A$ y $B$ para calcular de forma independiente $A[i] \times \operatorname{conjugate}(B[i])$.
+Los diagramas ilustran su organización general; los detalles de reparto y afinidad se describen a continuación. En todos los casos, el trabajo consiste en distribuir las $N$ muestras de las matrices complejas $A$ y $B$ para calcular de forma independiente $A[i] \times \operatorname{conjugate}(B[i])$.
 
 ### Fine-Grained Multithreading
 
 En este modelo, el procesamiento se divide en tareas que avanzan en pequeños intervalos de trabajo. Las tareas se atienden mediante una planificación *round-robin*, de manera que cada una procesa hasta $K$ muestras durante su turno y conserva su progreso para continuar en la siguiente ronda. Este esquema produce cambios frecuentes entre las tareas hasta completar las $N$ muestras.
 
+Cada tarea corresponde a un tile y guarda la posición en la que se quedó. Todo ocurre en un único hilo del sistema operativo: alternar tareas no significa usar varios núcleos. `--quantum` controla cuántos píxeles procesa una tarea antes de ceder el turno. Un quantum pequeño aumenta las intervenciones del planificador cooperativo.
+
 ![Diagrama de Fine-Grained Multithreading](../images/fine_grained.png)
 
 ### Coarse-Grained Multithreading
 
-En este modelo, las $N$ muestras se dividen en $M$ bloques de mayor tamaño y cada bloque se asigna a un hilo diferente. A diferencia de Fine-Grained, cada hilo procesa de forma continua todas las muestras correspondientes a su bloque, reduciendo la frecuencia de cambios entre unidades de trabajo.
+La ventana se divide en tiles y estos se reparten de forma estática entre los trabajadores. Cada hilo procesa completamente los tiles que tiene asignados. Los trabajadores escriben regiones disjuntas y el coordinador espera a que todos terminen.
+
+`--threads` define la cantidad de trabajadores; si se omite, se utilizan dos. El programa mantiene un pool durante la ejecución del modelo y no fija afinidad para este modo. En Sentinel, coarse-grained no introduce las pausas utilizadas en otros problemas del repositorio.
 
 <p align="center">
   <img src="../images/coarse_grained.png"
@@ -380,13 +355,19 @@ En este modelo, las $N$ muestras se dividen en $M$ bloques de mayor tamaño y ca
 
 ### SMT — Simultaneous Multithreading
 
-En este modelo se aprovechan varios hilos lógicos disponibles dentro de cada núcleo físico. Si se utilizan $C$ núcleos físicos y cada uno dispone de $H$ hilos lógicos, se pueden considerar hasta $L = C \times H$ hilos lógicos para distribuir las $N$ muestras. Los hilos pertenecientes a un mismo núcleo físico ejecutan sus respectivos bloques mientras comparten los recursos de ejecución de ese núcleo.
+SMT aprovecha las CPUs lógicas permitidas por la afinidad del proceso. El programa consulta la topología, selecciona primero una CPU por núcleo y luego sus procesadores lógicos asociados a un mismo, y fija la afinidad de cada trabajador. Los tiles se toman dinámicamente mediante un índice atómico: cuando un trabajador termina uno, solicita el siguiente.
+
+Si no se indica `--threads`, utiliza todas las CPUs lógicas disponibles cuando hay más que núcleos físicos.También se puede indicar P; si supera las CPUs disponibles, hay sobreasignación.
+
+En SMT comparten recursos del núcleo, de modo que doce trabajadores no equivalen a doce núcleos físicos. Ejecutar `--mode smt` tampoco activa SMT en el sistema: utiliza el estado que encuentre. Con SMT desactivado se puede mantener el mismo P para comparar, pero los trabajadores comparten las CPUs restantes mediante planificación del sistema operativo.
 
 ![Diagrama de Simultaneous Multithreading](../images/simultaneous.png)
 
 ### CMP — Chip Multiprocessing
 
-En este modelo, las $N$ muestras se dividen en $C$ bloques, donde $C$ representa la cantidad de núcleos físicos utilizados. Cada bloque se asigna a un hilo que ejecuta el cálculo sobre un núcleo físico diferente, permitiendo que varios bloques sean procesados simultáneamente mediante núcleos físicos independientes.
+CMP distribuye estáticamente los tiles y fija cada trabajador a una CPU lógica perteneciente a un núcleo físico distinto. Así evita asignar dos trabajadores del modelo a procesadores lógicos del mismo núcleo. Comparte el criterio de reparto estático de coarse, pero añade la selección de núcleos y la afinidad.
+
+Sin `--threads`, utiliza hasta un trabajador por núcleo disponible, limitado también por la cantidad de muestras. Si se solicita una cantidad mayor que los núcleos físicos permitidos, el programa rechaza la configuración. La afinidad de CMP y SMT requiere Linux.
 
 <p align="center">
   <img src="../images/cmp.png"
@@ -394,21 +375,73 @@ En este modelo, las $N$ muestras se dividen en $C$ bloques, donde $C$ representa
        width="450">
 </p>
 
-## Recorrido secuencial por tiles
+## Ejecutar y comparar los modelos
 
-Divide la ventana de procesamiento en bloques más pequeños (*tiles*) y los recorre utilizando un solo hilo. 
-
-Para ejecutar el modo `tiled` con las imágenes corregistradas, desde `sentinel1-SLC/`:
+Estos ejemplos se ejecutan desde `sentinel1-SLC/`. Sustituye las rutas si vas a utilizar otro par de imágenes. La ventana se mantiene fija para comparar el mismo trabajo:
 
 ```bash
-./build/interferogram \
-  --a data/coregistered/P09-R2-split/A.tif \
-  --b data/coregistered/P09-R2-split/B.tif \
-  --x 12000 --y 750 --width 16 --height 16 \
-  --mode tiled --tile-width 6 --tile-height 5
+./build/interferogram --a data/coregistered/P09-R2-2023-2024/A.tif --b data/coregistered/P09-R2-2023-2024/B.tif --width 24444 --height 1499 --allow-nodata --mode sequential
+./build/interferogram --a data/coregistered/P09-R2-2023-2024/A.tif --b data/coregistered/P09-R2-2023-2024/B.tif --width 24444 --height 1499 --allow-nodata --mode fine-grained --quantum 2
+./build/interferogram --a data/coregistered/P09-R2-2023-2024/A.tif --b data/coregistered/P09-R2-2023-2024/B.tif --width 24444 --height 1499 --allow-nodata --mode coarse-grained --threads 4
+./build/interferogram --a data/coregistered/P09-R2-2023-2024/A.tif --b data/coregistered/P09-R2-2023-2024/B.tif --width 24444 --height 1499 --allow-nodata --mode cmp --threads 4
+./build/interferogram --a data/coregistered/P09-R2-2023-2024/A.tif --b data/coregistered/P09-R2-2023-2024/B.tif --width 24444 --height 1499 --allow-nodata --mode smt
 ```
 
-En este ejemplo se generan 12 tiles (3 columnas y 4 filas), ajustando los bloques de los bordes al tamaño de la ventana. Los tiles trabajan directamente sobre los datos cargados en memoria, sin crear buffers adicionales.
+Para otras entradas, puede requerirse ajustar también el tamaño de ventana. La ejecución directa usa las rutas y dimensiones de `config.hpp`; los objetivos de benchmark tienen sus propios valores en el Makefile: ventana 24444×1499, tiles 32×32 y quantum 2.
 
-La medición del tiempo incluye únicamente el recorrido y el cálculo, excluyendo la lectura, la reserva de memoria y la generación de tiles.
+## Mediciones repetidas y gráficas
 
+Para medir todos los modelos conservando el estado SMT actual:
+
+```bash
+make benchmark SMT_STATES=keep
+```
+
+Se usan 200 repeticiones y un calentamiento por configuración. Los barridos automáticos de trabajadores se ajustan a la topología detectada. Se pueden personalizar las entradas y los barridos:
+
+```bash
+make benchmark SMT_STATES=keep \
+  SLC_A=/ruta/A.tif SLC_B=/ruta/B.tif \
+  THREAD_COUNTS=1,2,4 CMP_THREAD_COUNTS=1,2,4 SMT_THREAD_COUNTS=4,8
+```
+
+Los valores CMP deben caber en los núcleos físicos disponibles. Para medir un solo modelo:
+
+```bash
+make run-fine-grained QUANTUM=2
+make run-coarse-grained THREADS=4
+make run-cmp THREADS=4
+make run-smt THREADS=8 SMT_STATES=keep
+```
+
+`REPETITIONS=5` permite una comprobación corta, pero no equivale a una ronda final de 200 ejecuciones. Los CSV y capturas se guardan en `resultsen/`. El análisis calcula medias, desviaciones, intervalos de confianza aproximados del 95 %, speedup y eficiencia, y genera gráficas de comparación, boxplots, histogramas y ajustes de Amdahl desde las mediciones individuales.
+
+```bash
+make plots
+make amdahl
+```
+
+El speedup compara el tiempo secuencial con el del modelo: valores mayores que uno indican aceleración. Más trabajadores no garantizan mejores tiempos; el trabajo por tile, la sincronización y los recursos compartidos pueden limitar la ganancia. Consulta el [reporte de resultados](../../resultsen/plots/comparison/reporte.md) y el [análisis de Amdahl](../../resultsen/plots/comparison/amdahl.md) para la ronda de mediciones almacenada.
+
+### Comparar SMT activo e inactivo
+
+El Makefile define `SMT_STATES=on,off` por defecto para las mediciones que incluyen el modelo SMT. Este barrido cambia el estado global de SMT en Linux mediante `sudo`, conserva el mismo P entre estados y trata de restaurar el estado inicial al terminar. Afecta al equipo completo y requiere que el sistema permita ese cambio. Para solicitarlo expresamente:
+
+```bash
+make benchmark SMT_STATES=on,off
+```
+
+`SMT_STATES=keep` evita esa alternancia. Es distinto de `SMT=on` o `SMT=off`. Conviene registrar el estado real y la cantidad de trabajadores al interpretar cualquier comparación.
+
+## Perfilado con perf
+
+El perfilador común del repositorio captura ciclos, instrucciones, caché, cambios de contexto, migraciones y fallos de página. Desde la raíz del repositorio:
+
+```bash
+make perf-sentinel REPETITIONS=3 THREADS=4 SMT_THREADS=12
+make perf-report
+```
+
+Las capturas se guardan en `perf/raw/` y el resumen en `perf/reporte.md`. Estas medciones conservan el estado SMT del sistema y mide el proceso completo, incluida la lectura de archivos. Por eso sus tiempos no son intercambiables con `Kernel time` o `Model time`.
+
+La [guía de perfilado](../../../perf/README.md) explica los parámetros y el alcance de cada contador. Para separar actividad por CPU lógica se puede usar `SCOPE=cpu`, teniendo presente que ese modo también recoge actividad de otros procesos del sistema.
