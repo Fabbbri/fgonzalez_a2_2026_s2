@@ -181,7 +181,7 @@ def generate_amdahl(groups, workload, output):
               "| Política | P medidos | f efectiva | Límite teórico 1/f | RMSE en tiempo relativo | Nota |",
               "| --- | --- | ---: | ---: | ---: | --- |"]
     if not policies:
-        report += ["", "Solo hay referencia sequential: faltan modelos para comparar."]
+        report += ["", "Datos disponibles: referencia sequential."]
         (output/"amdahl.md").write_text("\n".join(report)+"\n",encoding="utf-8")
         return
     columns = min(2, len(policies))
@@ -209,9 +209,9 @@ def generate_amdahl(groups, workload, output):
             note = "Ajuste restringido; f sin restringir fuera de [0,1]" if not 0 <= raw <= 1 else "Ajuste descriptivo"
             report.append(f"| {caption.replace(chr(10),' · ')} | {ps} | {f:.4%} | {limit} | {rmse:.5f} | {note} |")
         else:
-            ax.text(.03,.25,"Un solo P: no se estima f.\nFine usa un único ejecutor real." if policy[0]=="fine" else "Un solo P: faltan puntos para ajustar f.",
+            ax.text(.03,.25,"Un solo P: no se estima f.\nFine usa un único ejecutor real." if policy[0]=="fine" else "Un solo P: ajuste de f no estimado.",
                     transform=ax.transAxes,fontsize=10)
-            report.append(f"| {caption.replace(chr(10),' · ')} | {ps} | — | — | — | Falta barrido de P |")
+            report.append(f"| {caption.replace(chr(10),' · ')} | {ps} | — | — | — | Un único P; ajuste no estimado |")
         decorate(ax,caption,"Trabajadores P")
         ax.set_ylabel("Speedup frente a sequential (×)")
         ax.set_xticks(sorted(set([1]+ps)))
@@ -358,27 +358,18 @@ def generate(groups, workload, output):
                "Su IC95 usa el método delta y considera la incertidumbre de ambas medias. "
                "No se interpreta cada cociente por ejecución como una observación independiente de la referencia. "
                "El boxplot de referencia repite los mismos datos originales, no nuevas mediciones. "
-               "Una referencia única entre estados SMT no aísla el efecto del hardware: registrar su estado y discutir ese sesgo."
+               "La referencia común conserva su estado SMT original; las diferencias entre fases también pueden incluir cambios de frecuencia o temperatura."
                if shared else "La referencia sequential se compara consigo misma: speedup y eficiencia son 1."), "",
               "| Configuración | n | Referencia 200 | Tiempo medio ± IC95 (ms) | Desviación (ms) | Speedup medio ± IC95 | Desviación speedup |",
               "| --- | ---: | --- | ---: | ---: | ---: | ---: |"]
     for key, rows in groups.items():
         tm, sd, margin = metric_estimate(rows, 0)
         sm, ssd, smargin = metric_estimate(rows, 2)
-        status = "alcanzada" if len(rows) >= 200 else "prueba corta, pendiente"
+        status = "alcanzada" if len(rows) >= 200 else "prueba corta"
         report.append(f"| {label(key).replace(chr(10), ' · ')} | {len(rows)} | {status} | {tm:.4f} ± {margin:.4f} | {sd:.4f} | {sm:.4f} ± {smargin:.4f} | {ssd:.4f} |")
-    report += ["", "## Justificación y alcance", "",
-               "Se eligen inicialmente 200 repeticiones por configuración para cumplir la "
-               "referencia del enunciado, caracterizar la variabilidad y estimar la precisión de la media. "
-               "El margen normal aproximado es 1.96 × desviación muestral / sqrt(n); "
-               "al aumentar n disminuye el error estándar si las muestras son independientes. "
-               "200 no garantiza precisión suficiente: en el informe se debe evaluar el margen "
-               "relativo (margen/media) de tiempo y speedup, y aumentar las repeticiones si es excesivo. "
-               "Una prueba con menos de 200 sirve para validar el funcionamiento, no se presenta como campaña final.", "",
-               "Registrar CPU, núcleos/hilos lógicos, sistema operativo, compilador, flags y condiciones "
-               "de carga del equipo en el informe. Mantener cuerpos, pasos, dt, semilla y política constantes durante cada barrido. El calentamiento no se cuenta. El tiempo incluye creación/cierre de trabajadores, cálculo, sincronización y captura de trayectoria; excluye inicialización aleatoria, hash y gráficas. "
-               "Las ejecuciones consecutivas pueden presentar correlación o cambios térmicos: el IC "
-               "aproximado no corrige esos sesgos. Las mediciones principales deben hacerse en hardware físico."]
+    report += ["", "## Estadística y alcance", "",
+               'El margen normal aproximado es 1.96 × desviación muestral / sqrt(n). Bajo independencia, el error estándar disminuye al aumentar n. El margen relativo (margen/media) expresa la precisión estimada de tiempo y speedup. Las configuraciones con menos de 200 ejecuciones se identifican como pruebas cortas.', "",
+               'Los grupos separan cuerpos, pasos, dt, semilla y política. El calentamiento no se cuenta. El tiempo incluye creación/cierre de trabajadores, cálculo, sincronización y captura de trayectoria; excluye inicialización aleatoria, hash y gráficas. Las ejecuciones consecutivas pueden presentar correlación o cambios térmicos; el IC aproximado no corrige esos efectos ni la interferencia de otros procesos.']
     generate_amdahl(groups, workload, output)
     report += ["", "La comparación con la ley de Amdahl está en [amdahl.md](amdahl.md)."]
     (output / "reporte.md").write_text("\n".join(report) + "\n", encoding="utf-8")

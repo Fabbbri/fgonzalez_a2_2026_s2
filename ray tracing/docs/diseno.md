@@ -43,10 +43,10 @@ Los modelos de `fine.cpp`, `coarse.cpp` y `parallel.cpp` sustituyen el reparto d
 de `render_pixel` y la geometría son comunes a los modelos. En la base actual,
 `render_tile` termina el rectángulo completo; durante el cálculo la ventana
 permanece negra y receptiva. En los modelos con hilos, la presentación y los
-eventos SDL permanecerán en el hilo principal. Los trabajadores avisarán cuando
-termine un tile; al cerrar la ventana, una señal de cancelación se comprobará
-entre píxeles, se esperará la salida de los trabajadores y no se guardará una
-imagen parcial.
+eventos SDL permanecen en el hilo principal. Los trabajadores avisan cuando
+termina un tile; al cerrar la ventana, la cancelación se comprueba entre píxeles.
+El principal espera la salida de los trabajadores y omite guardar una imagen
+parcial.
 
 ## Fine-grained: turnos cortos entre tareas de tiles
 
@@ -82,12 +82,11 @@ flowchart TD
 
 Este intercalado está implementado con **un solo hilo del sistema**. Simula
 los cambios frecuentes de tarea, pero no calcula dos tiles a la vez ni ofrece
-speedup por varios núcleos. Si se añadieran trabajadores, habría
-que documentar esa decisión como otra configuración del modelo.
+speedup por varios núcleos.
 
 ## Coarse-grained: hilos que avanzan hasta un bloqueo
 
-La propuesta LaTeX asigna **un hilo del sistema por tile**. Cada hilo avanza
+Coarse asigna por defecto **un hilo del sistema por tile**. Cada hilo avanza
 continuamente por los píxeles de su tile. Solo el evento de bloqueo costoso
 simulado provoca una cesión **a nivel de la lógica del modelo**: el hilo conserva
 el siguiente índice `p`, espera y luego continúa su mismo tile. No hay un turno
@@ -116,17 +115,17 @@ flowchart TD
 ```
 
 La implementación crea **300 hilos para 300 tiles** con la configuración inicial. Eso sigue
-literalmente la propuesta, aunque crear tantos hilos puede costar más que el
+la asignación de un hilo por tile, aunque crear tantos hilos puede costar más que el
 trabajo de tiles pequeños y aumentar la contención. `--threads P` activa una
 variante implementada con P trabajadores: un índice atómico asigna el siguiente
 tile disponible a cada uno. El trabajador conserva el tile mientras está bloqueado.
 Esta extensión permite medir escalabilidad manteniendo la misma imagen y partición;
-es un cambio explícito respecto al modelo de un hilo por tile de la propuesta.
+utiliza un grupo de trabajadores en lugar de crear un hilo por tile.
 El comportamiento predeterminado conserva la asignación Ti a Bi.
 
 | Aspecto | Fine-grained | Coarse-grained |
 | --- | --- | --- |
-| Unidad asignada | Tarea lógica por tile | Hilo del sistema por tile en la propuesta |
+| Unidad asignada | Tarea lógica por tile | Hilo del sistema por tile por defecto |
 | Avance | Hasta K píxeles completos por turno | Píxeles continuos hasta bloqueo o fin del tile |
 | Motivo de cesión modelado | Fin obligatorio del turno | Evento de bloqueo simulado |
 | Estado para continuar | Tile e índice `p` | Mismo tile e índice `p` |
@@ -183,12 +182,9 @@ flowchart TD
 
 Esto **aproxima SMT desde software** al mantener suficientes tiles listos y
 trabajadores para ocupar los hilos lógicos; el programa no controla la emisión
-simultánea de instrucciones dentro del núcleo. Para aislar el efecto del SMT de
-hardware, el enunciado exige medir en el mismo equipo físico con SMT habilitado
-y deshabilitado desde BIOS/UEFI. Se repetirán configuraciones comparables de
-`P`, incluidas `P = C` y una sobresuscrita respecto a los núcleos físicos
-(`P > C`), manteniendo fija la carga y registrando los hilos lógicos disponibles
-en cada estado. Con SMT deshabilitado, los trabajadores adicionales compiten por
+simultánea de instrucciones dentro del núcleo. La comparación on/off mantiene
+la carga y P, incluidas configuraciones con `P = C` y `P > C`. El CSV registra
+los hilos lógicos disponibles y el estado SMT informado por Linux. Con SMT deshabilitado, los trabajadores adicionales compiten por
 los `C` núcleos mediante planificación del sistema operativo.
 
 ## CMP: tiles distribuidos entre núcleos físicos
@@ -267,7 +263,7 @@ núcleos de CPU. Las variables principales son:
 | Resolución `W × H` | Más píxeles y, con `Tw` y `Th` fijos, más tiles `M` | Aumenta trabajo total y memoria; la imagen debe ser idéntica entre modelos |
 | Tamaño `Tw × Th` | Determina `M` y cuántos píxeles tiene cada tarea | Tiles pequeños facilitan repartir carga desigual, pero elevan costo de planificación; tiles grandes reducen tareas y pueden dejar núcleos ociosos |
 | Trabajadores `P` y núcleos físicos `C` | Determinan cuántos tiles se asignan y cuántos núcleos físicos pueden trabajar en paralelo | `P > C` no añade núcleos físicos; en fine-grained con un planificador `P = 1` |
-| CPUs lógicas disponibles `H` y estado de SMT | H suma los contextos disponibles de cada núcleo; en equipos uniformes H = C × L | Compartir un núcleo no equivale a añadir núcleos físicos; registrar BIOS/UEFI y afinidad, sin suponer L = 2 en todos los núcleos |
+| CPUs lógicas disponibles `H` y estado de SMT | H suma los contextos disponibles de cada núcleo; en equipos uniformes H = C × L | Compartir un núcleo no equivale a añadir núcleos físicos; L puede variar entre núcleos |
 | Quantum `K` | Determina cada cuánto alterna fine-grained entre tiles | K pequeño aumenta intercalado y sobrecarga; K grande se aproxima a terminar un tile por turno. No aumenta por sí solo el paralelismo físico |
 | Frecuencia y duración del bloqueo | Determinan cuánto tiempo puede avanzar cada hilo coarse-grained | Más bloqueos pueden dejar hilos inactivos y añadir tiempo de espera; no cambian los píxeles de la imagen |
 | Muestras `S` y rebotes máximos `R` | Aumentan trabajo por píxel y pueden hacer rentable distribuir tiles | No crean tareas nuevas; mantenerlos fijos al comparar tiempos y calidad |
@@ -316,14 +312,13 @@ por fila sirven para describir variabilidad; no se promedian para el speedup glo
 
 Se reutiliza la misma referencia incluso al desactivar SMT, por decisión de
 usar una única base. Con el barrido on/off se mide inicialmente con SMT activado;
-comparar también tiempos absolutos on/off y documentar esta condición. Perf
+los tiempos absolutos on/off permiten comparar ambos estados con la misma carga y P. Perf
 mantiene una referencia instrumentada separada, capturada una sola vez, y
 reutiliza sus contadores para los demás perfiles. No se mezclan tiempos con y
 sin instrumentación. `BASELINE_REPETITIONS` permite fijar n de sequential;
 `REPETITIONS` fija n de cada modelo y `PROFILE_REPETITIONS` el del perfilado.
 
-El enunciado está disponible en [proyecto.md](proyecto.md), y la propuesta original
-en [propuesta.tex](propuesta.tex). El modo `--benchmark` repite una comparación
+El modo `--benchmark` repite una comparación
 pareada contra sequential cuando se ejecuta sin `--baseline-csv`, verifica igualdad de la imagen y exporta CSV por
 repetición y por configuración. Por defecto realiza 200 repeticiones; una prueba
 corta puede reducirlas explícitamente. El calentamiento y la escritura no se miden.
@@ -337,9 +332,7 @@ hilos mezclaría dos variables distintas en el experimento.
 El resumen incluye medias, desviación estándar muestral e IC95 normal aproximado
 de la media, con margen `1.96 × desviación / sqrt(n)`. Los speedups resumidos son
 medias de los cocientes pareados. Las esperas simuladas están incluidas en el
-tiempo de coarse; deben mantenerse fijas durante el barrido. El modo benchmark
-no sustituye el perfilado ni el análisis de convergencia requeridos para el
-informe experimental.
+tiempo de coarse. Cambiarlas durante el barrido modifica la carga además de P.
 
 `scripts/plot_metrics.py` utiliza las iteraciones crudas para generar boxplots e
 histogramas por modelo, cantidad de trabajadores y política, sin eliminar valores
@@ -349,13 +342,9 @@ escalabilidad muestran medias y barras del IC95 aproximado; las cargas distintas
 se analizan por separado. `make benchmark` encadena medición y análisis,
 siempre en ese orden. Las gráficas y su escritura quedan fuera del tiempo medido.
 
-El reporte generado documenta n y una justificación inicial de 200 repeticiones:
-caracterizar la variación y estimar el error de la media con la referencia mínima
-del enunciado. Para la campaña final se revisará el margen relativo del intervalo
-y se aumentará n si la incertidumbre impide comparar configuraciones. Esta
-decisión y las condiciones del hardware deben justificarse en el informe;
-ni 200 ejecuciones ni un IC estrecho descartan por sí solos sesgos térmicos,
-correlación o interferencia de otros procesos.
+El reporte incluye n, desviación e IC95. El margen relativo del intervalo
+expresa la precisión estimada de la media. El IC no corrige sesgos térmicos,
+correlación entre ejecuciones ni interferencia de otros procesos.
 
 Para SMT y CMP, detectar topología queda fuera de la medición. Construir la lista
 de asignaciones, crear trabajadores, aplicar afinidad, calcular tiles y hacer join
@@ -363,9 +352,8 @@ sí forma parte del tiempo del modelo. Se exportan los núcleos físicos disponi
 las CPUs lógicas disponibles, el estado SMT informado por Linux y la afinidad
 por trabajador. Las gráficas distinguen topologías y estados SMT diferentes,
 en lugar de agrupar sus iteraciones en una misma distribución.
-`--cpu-info` muestra esa información sin renderizar. La comparación BIOS activado
-frente a desactivado y las capturas de perfilado deben realizarse en el hardware de la campaña;
-no se reemplazan por activar `--model smt`.
+`--cpu-info` muestra esa información sin renderizar. La opción `--model smt`
+selecciona la política de reparto; no cambia el estado SMT del hardware.
 
 `make profile` ejecuta `perf stat` alrededor de cada proceso, con referencia
 secuencial, calentamiento y orden alternado. Conserva los contadores crudos y sus

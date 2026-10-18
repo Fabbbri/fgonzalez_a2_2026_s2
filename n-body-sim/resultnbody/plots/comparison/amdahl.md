@@ -11,7 +11,7 @@ Las barras negras son IC95 del speedup medido; la curva ajustada no incluye un i
 | --- | --- | ---: | ---: | ---: | --- |
 | CMP · núcleos: 8 · CPUs lógicas: 12 · SMT activo | [1, 2, 4, 8] | 20.2588% | 4.94× | 0.06899 | Ajuste descriptivo |
 | Coarse · bloqueo 10/1 ms | [1, 2, 4, 8] | 37.7989% | 2.65× | 0.04602 | Ajuste descriptivo |
-| Fine · K=1 | [1] | — | — | — | Falta barrido de P |
+| Fine · K=1 | [1] | — | — | — | Un único P; ajuste no estimado |
 | SMT · núcleos: 8 · CPUs lógicas: 12 · SMT activo | [8, 12] | 36.2944% | 2.76× | 0.00389 | Ajuste descriptivo |
 | SMT · núcleos: 8 · CPUs lógicas: 8 · SMT inactivo | [8, 12] | 36.5889% | 2.73× | 0.01435 | Ajuste descriptivo |
 

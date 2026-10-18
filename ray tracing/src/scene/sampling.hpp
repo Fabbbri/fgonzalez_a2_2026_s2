@@ -7,8 +7,8 @@
 namespace rt {
 // Generador local SplitMix64: no hay estado global compartido entre píxeles.
 // Las operaciones enteras fijas hacen reproducibles las muestras por semilla.
-// FUTURA PARALELIZACIÓN: cada píxel crea su Sampler. No usar el identificador
-// del hilo como semilla: cambiar los trabajadores debe conservar la imagen.
+// Cada píxel crea su Sampler con una semilla independiente del hilo,
+// por lo que cambiar la cantidad de trabajadores conserva la imagen.
 class Sampler {
 public:
     explicit Sampler(std::uint64_t seed) : state_(seed) {}

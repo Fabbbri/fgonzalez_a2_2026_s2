@@ -14,16 +14,8 @@ RenderStats render_sequential(const Scene& scene, const Camera& camera, Image& i
     };
     RenderStats stats;
     const auto loop_start = Clock::now();
-    // PARTE QUE VAMOS A PARALELIZAR: el recorrido de tiles de este for.
-    // Ejemplo: un trabajador calcula el tile 0 mientras otro calcula el tile 1.
-    // Cada tile conserva su región exclusiva de píxeles en la misma imagen.
-    // Esta referencia termina un tile antes de comenzar el siguiente.
-    // fine.cpp intercala K píxeles por tarea; coarse.cpp crea un hilo por tile.
-    // El intercalado cooperativo de fine no implica paralelismo entre núcleos.
-    // No paralelizar este for sin coordinar estadísticas y notificaciones.
-    // Conservar este recorrido como baseline; implementar el reparto en otro
-    // modelo. Coarse-grained conserva el progreso ante bloqueos simulados;
-    // CMP/SMT se evaluarán con sus respectivos trabajadores/configuraciones.
+    // Referencia secuencial: termina un tile antes de comenzar el siguiente.
+    // Cada tile escribe una región exclusiva de la imagen.
     for (std::size_t i = 0; i < tiles.size(); ++i) {
         const Tile tile = tiles.at(i);
         const auto events_before = event_time;

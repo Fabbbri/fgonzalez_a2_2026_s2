@@ -13,7 +13,7 @@ Estimate estimate(const std::vector<double>& values) {
     for (double value : values) sum_squared += (value - mean) * (value - mean);
     const double deviation = std::sqrt(sum_squared / (n - 1.0));
     // IC normal aproximado del 95 % para la MEDIA, no rango de ejecuciones.
-    // Con pocas muestras es solo diagnóstico; la referencia del enunciado es 200.
+    // Con pocas muestras, la aproximación normal tiene precisión limitada.
     const double margin = 1.96 * deviation / std::sqrt(n);
     return {mean, deviation, mean - margin, mean + margin};
 }

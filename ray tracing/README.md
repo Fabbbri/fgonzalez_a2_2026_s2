@@ -1,7 +1,8 @@
 # Ray Tracing
 
-Para conocer el diseño del proyecto y ver los diagramas de ejecución por tiles,
-consulta [docs/diseno.md](docs/diseno.md).
+Implementación del problema de ray tracing para el [proyecto de Arquitectura de
+Computadores II](../proyecto.md). Los diagramas y las decisiones de ejecución
+están en [docs/diseno.md](docs/diseno.md).
 
 Proyecto de Arquitectura de Computadores II en C++17. La escena contiene esferas
 mates, metálicas y de vidrio sobre un suelo, iluminadas por el cielo mediante
@@ -54,7 +55,7 @@ make smt SMT=on
 `SMT=on/off` afecta **a todo el sistema**, puede solicitar `sudo` y permanece
 después de terminar. Si omites la variable, se conserva el estado actual;
 `--model smt` por sí solo no activa el SMT de hardware. Este control no modifica
-BIOS/UEFI; consulta los detalles y el requisito del enunciado en
+BIOS/UEFI; los detalles están en
 [SMT y CMP en Linux](#smt-y-cmp-en-linux).
 
 Las cantidades de trabajadores son ejemplos para el equipo de 8 núcleos físicos
@@ -74,7 +75,7 @@ make run ARGS="--model cmp --threads 4 --samples 8 --output escena.ppm"
 make run ARGS="--headless --model fine --quantum 64 --samples 8 --output fine.ppm"
 ```
 
-### Comparar contra sequential y generar gráficas
+### Comparar resultados con la ley de Amdahl
 
 Para comparar los speedups guardados con la **ley de Amdahl**, sin ejecutar
 renders nuevos:
@@ -91,7 +92,9 @@ esperas y contención. Con un solo P, como fine, no se estima esa fracción.
 `make benchmark`, `make plots` y `make run-all` también la generan al graficar.
 Puedes seleccionar archivos con `AMDAHL_CSV="resultsrt/cmp.csv"`.
 
-Para ejecutar la campaña completa con **un solo comando**:
+### Ejecutar la campaña de mediciones
+
+Para ejecutar los benchmarks y el perfilado:
 
 ```sh
 make run-all
@@ -109,7 +112,7 @@ de trabajadores, siempre con referencia sequential. El perfilado usa
 `PROFILE_REPETITIONS=5` por defecto y está separado de los tiempos del benchmark.
 Perf obtiene una referencia instrumentada propia una sola vez en
 `resultsrt/perf/sequential/`; los demás perfiles reutilizan esos contadores.
-Antes de empezar comprueba que perf pueda abrir los contadores solicitados.
+El script comprueba el acceso a los contadores antes de iniciar las mediciones.
 
 El speedup global es `media(sequential) / media(modelo)`, y la eficiencia es
 `speedup / trabajadores`. El IC95 aproximado usa el método delta y considera
@@ -117,9 +120,8 @@ la incertidumbre de ambas medias. Los cocientes de cada fila del CSV son
 descriptivos; su promedio no es el speedup global. Los boxplots de sequential
 usan sus tiempos originales, sin repetir artificialmente una media constante.
 El CSV registra el estado SMT de la referencia: con `SMT_STATES=on,off` se toma
-con SMT activado y se reutiliza también para SMT desactivado. Esta referencia
-común no aísla por sí sola el efecto de SMT; comparar además los tiempos on/off
-con la misma carga y P, y discutir cambios térmicos o de frecuencia entre fases.
+con SMT activado y se reutiliza también para SMT desactivado. La comparación on/off usa la misma carga y P. La referencia común no aísla
+los cambios térmicos o de frecuencia entre fases.
 
 El cambio de SMT afecta a todo el sistema y requiere `sudo`. La campaña intenta
 restaurar el estado inicial al terminar, incluso ante un error o Ctrl+C; puede
@@ -127,7 +129,7 @@ volver a pedir la contraseña. Si la restauración falla, muestra el comando par
 recuperarlo. Un cierre forzado del proceso o del equipo puede impedirla.
 
 ```sh
-# Campaña de referencia: justificar también convergencia y número de iteraciones
+# Campaña de 200 repeticiones por configuración
 make run-all REPETITIONS=200
 
 # Si perf requiere permisos de administrador
@@ -160,15 +162,12 @@ Puedes elegir otra carpeta con `RESULTS_DIR=otra-carpeta`. Los archivos de otros
 modelos no ejecutados y las capturas históricas guardadas aparte se conservan.
 No abre ventanas ni guarda imágenes de la escena. Para perfilar una configuración
 individual también puedes usar los comandos de la siguiente sección.
-El nombre del objetivo es **`make run-all`**: `make run all` ejecutaría dos
-objetivos distintos.
-
-Para ejecutar benchmarks individuales:
+### Ejecutar benchmarks individuales
 
 Cada comando realiza **5 repeticiones por configuración**, incluye su referencia
 sequential con la misma carga y genera CSV, reportes y gráficas automáticamente.
 Son pruebas cortas; para la campaña de referencia cambia `--repetitions 5` por
-`--repetitions 200` y justifica la cantidad final.
+`--repetitions 200`.
 
 ```sh
 make benchmark ARGS="--model fine --quantum 64 --samples 8 --repetitions 5 --metrics-output results/fine.csv"
@@ -215,8 +214,8 @@ al tiempo completo del proceso. Ciclos, instrucciones y caché se agrupan por
 PMU (`cpu_core` y `cpu_atom` por separado). Un porcentaje bajo puede indicar
 poca residencia en ese tipo de núcleo; no se elimina automáticamente un conteo
 observado por ese motivo. Se conserva el porcentaje en los reportes. Si hay
-multiplexado, los conteos pueden ser parciales: revisa el tiempo de contador y
-la captura cruda, y no los presentes como totales completos garantizados.
+multiplexado, los conteos pueden ser parciales. El tiempo de contador y la
+captura cruda permiten identificar esa cobertura.
 
 Por defecto `PROFILE_LOGS=0` evita crear los archivos `.stdout.txt` y
 `.stderr.txt` por cada ejecución correcta. Solo guarda `.stderr.txt` si hay
@@ -436,14 +435,12 @@ make smt SMT=on
 
 Con SMT desactivado, `--model smt` sigue funcionando mediante sobresuscripción;
 no reactiva el SMT de hardware. Las cinco repeticiones del ejemplo son una
-prueba corta. Este control no modifica BIOS/UEFI y su uso como sustituto del
-procedimiento exigido por el enunciado debe acordarse con el profesor.
+prueba corta. Este control modifica sysfs, no la configuración de BIOS/UEFI.
 
 La aproximación de SMT desde software no controla la emisión de instrucciones
-dentro de un núcleo. Para aislar el SMT de hardware, el enunciado exige repetir
-las mediciones en el mismo equipo físico con SMT habilitado y deshabilitado en
-BIOS/UEFI, conservando la carga y las mismas cantidades P explícitas (incluida
-alguna P > C). El programa no cambia BIOS. El CSV registra C, CPUs lógicas,
+dentro de un núcleo. La comparación de SMT de hardware utiliza el mismo equipo,
+carga y cantidades P en ambos estados, incluida alguna P > C. El programa no
+cambia BIOS/UEFI. El CSV registra C, CPUs lógicas,
 estado `/sys/devices/system/cpu/smt/active` y la CPU asignada a cada trabajador.
 Ese estado describe lo informado por Linux; no prueba por sí solo cómo se
 configuró BIOS. Si la afinidad falla, se cancela y se informa el error.
@@ -452,8 +449,7 @@ En equipos híbridos, núcleos de distinto tipo pueden tener rendimientos difere
 ## Calidad y tiempo de espera
 
 `make run` usa 128 muestras por píxel y hasta 12 rebotes. La ventana permanece
-negra mientras calcula; ahora puede tardar varias decenas de segundos según el
-CPU. En sequential no se añaden pausas artificiales. Para probar la composición rápido:
+negra mientras calcula; la duración depende del procesador y de la calidad elegida. En sequential no se añaden pausas artificiales. Para probar la composición rápido:
 
 ```sh
 make run ARGS="--samples 8 --bounces 6"
@@ -473,8 +469,8 @@ siendo muestreados. No se implementa desenfoque de cámara ni eliminación de ru
 
 ## Estructura y cálculo
 
-`src` está organizado por responsabilidad. `main.cpp` conecta los módulos;
-cada subcarpeta conserva sus interfaces `.hpp` y sus implementaciones `.cpp`:
+`main.cpp` conecta los módulos. Cada subcarpeta contiene las interfaces `.hpp`
+y sus implementaciones `.cpp`:
 
 ```text
 src/
@@ -487,8 +483,7 @@ src/
 ```
 
 Los modelos que recorren y reparten tiles están en `src/execution/`.
-Todos reutilizan el cálculo de `src/render/`; la organización no cambia
-los algoritmos ni los comandos de ejecución.
+Todos reutilizan el cálculo de `src/render/`.
 
 | Archivo | Responsabilidad |
 | --- | --- |
@@ -511,7 +506,7 @@ los algoritmos ni los comandos de ejecución.
 | `src/app/options.hpp`, `src/app/options.cpp` | Configuración y validación de argumentos |
 | `src/app/display.hpp`, `src/app/display.cpp` | Recursos SDL2, presentación y eventos |
 | `src/main.cpp` | Conectar módulos, mostrar resultados y controlar la salida |
-| `docs/diseno.md` | Diagramas y variables para próximas etapas |
+| `docs/diseno.md` | Diagramas, políticas de ejecución y sincronización |
 
 La escena se modifica en `default_scene()` de `src/scene/scene.cpp`. Las dimensiones
 predeterminadas están en `Options`, en `src/app/options.hpp`. La cámara está en
@@ -531,8 +526,7 @@ las esferas. En cada impacto, `transport.cpp` calcula el siguiente segmento:
   incluyendo reflexión interna total. Se modela vidrio sólido en aire, sin absorción.
 
 Cuando el rayo sale de la escena, recoge luz del cielo. Los objetos bloquean
-parte de esa luz y generan sombras suaves de contacto. Ya no se usa el término
-ambiental constante ni la luz puntual de la primera versión. Las trayectorias
+parte de esa luz y generan sombras suaves de contacto. Las trayectorias
 que alcanzan el límite de rebotes sin escapar aportan negro. Se desplaza el origen
 de cada rebote ligeramente al lado de salida para evitar autoimpactos numéricos.
 
@@ -596,7 +590,7 @@ está pensada para valores entre 0 y 1, y el índice de refracción debe ser pos
 
 ## Métricas del proyecto
 
-Según [docs/proyecto.md](docs/proyecto.md), se reportan estas métricas:
+El benchmark calcula estas métricas:
 
 | Métrica | Cálculo |
 | --- | --- |
@@ -612,43 +606,10 @@ cámara y buffers antes de medir. El tiempo incluye planificación, creación de
 hilos, esperas simuladas y finalización dentro del modelo. Las comparaciones de
 píxeles, escritura CSV y presentación quedan fuera del intervalo.
 
-### Ejecución rápida de los cuatro modelos
-
-Estos comandos hacen **cinco repeticiones por configuración**, sin ventana,
-y generan CSV, reportes y gráficas automáticamente. Todos comparan el modelo
-elegido contra **sequential con la misma carga**; no necesitas ejecutar la
-referencia aparte. Ejecutarlos desde la carpeta `ray tracing`.
-
-```sh
-# Fine: un hilo real, round-robin cada K = 1 píxel completo
-make benchmark ARGS="--model fine --quantum 1 --samples 8 --repetitions 5 --metrics-output results/fine.csv"
-
-# Coarse: barrido de 1, 2, 4 y 8 trabajadores
-make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repetitions 5 --metrics-output results/coarse.csv"
-
-# CMP: trabajadores en núcleos físicos distintos
-make benchmark ARGS="--model cmp --thread-counts 1,2,4,8 --samples 8 --repetitions 5 --metrics-output results/cmp.csv"
-
-# SMT: comparar 8 y 12 trabajadores
-make benchmark ARGS="--model smt --thread-counts 8,12 --samples 8 --repetitions 5 --metrics-output results/smt.csv"
-
-# Comparar todos los CSV anteriores en las mismas gráficas
-make plots CSV="results/*.csv"
-```
-
-Las listas anteriores son un ejemplo para un equipo de **8 núcleos físicos y
-12 CPUs lógicas**. Consulta `make run ARGS="--cpu-info"` y ajústalas si tu equipo
-es distinto; CMP no permite P mayor que los núcleos físicos disponibles.
-Para comparar políticas con igual cantidad de trabajadores, coarse, CMP y SMT
-incluyen P = 8. Cambiar P dentro de un modelo estudia escalabilidad, conservando
-la misma imagen y los mismos tiles. Fine usa un hilo real y permite variar K.
-`--samples 8` son ocho muestras por píxel, no ocho repeticiones del experimento.
-
-Para la campaña final, sustituye `--repetitions 5` por `--repetitions 200` en
-cada comando. Mantén iguales escena, resolución, tiles, muestras, rebotes y
-semilla entre modelos. Las gráficas individuales quedan en
-`results/plots/fine/`, `coarse/`, `cmp/` y `smt/`; la comparación conjunta se
-guarda en `results/plots/`.
+Los comandos de [benchmarks individuales](#ejecutar-benchmarks-individuales)
+permiten variar P con la misma carga. Para fine, `--quantum 1` usa el mínimo
+implementado: un píxel completo por turno. La campaña guardada usa K = 64;
+es una simulación de turnos cooperativos, no de ciclos de CPU.
 
 `--benchmark` activa `--headless` automáticamente. También puede usarse dentro de
 `make run ARGS="--benchmark ..."` para obtener solo CSV. `make benchmark` genera
@@ -688,47 +649,10 @@ de los cocientes por fila. Las columnas
 el método y la procedencia. Conserva `sequential.csv` junto a los CSV de los
 modelos para poder regenerar las gráficas.
 
-Los intervalos y las esperas de coarse forman parte de su configuración y deben
-mantenerse fijos al comparar P. Las mediciones finales deben hacerse en hardware
-físico, con la justificación de repeticiones y análisis que pide el enunciado.
-`make profile` incorpora perfilado con perf. La campaña física con SMT
-activado/desactivado y su análisis siguen pendientes.
-
-### Perfilado con perf
-
-Para observar ciclos, instrucciones, IPC, fallos de caché y cambios de contexto
-conservando una referencia secuencial y gráficas por evento:
-
-```sh
-# Cada comando incluye cinco perfiles del modelo y cinco de sequential
-make profile ARGS="--model fine --quantum 1 --samples 8" PROFILE_REPETITIONS=5
-make profile ARGS="--model coarse --threads 4 --samples 8" PROFILE_REPETITIONS=5
-make profile ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
-make profile ARGS="--model cmp --threads 4 --samples 8" PROFILE_REPETITIONS=5
-```
-
-Opciones adicionales de perfilado:
-
-```sh
-# Contadores separados por CPU lógica; incluye otras tareas del sistema
-make profile PROFILE_SCOPE=cpu ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
-
-# Si Linux deniega acceso a los contadores y tienes permiso de administrador
-make profile PERF="sudo perf" ARGS="--model smt --threads 12 --samples 8" PROFILE_REPETITIONS=5
-
-# Regenerar gráficas de una captura existente, sin volver a perfilar
-# Sustituye nombre-de-campaña por la carpeta creada en results/perf/
-make profile-plots PROFILE_CAPTURE=results/perf/nombre-de-campaña
-```
-
-Ajusta P a tu topología (`make run ARGS="--cpu-info"`). Cada comando perfila el
-modelo y sequential por separado; guarda capturas, CSV, metadata, reporte y
-boxplots en una nueva carpeta de `results/perf/`. Para ver contadores por CPU
-lógica añade `PROFILE_SCOPE=cpu`; ese alcance incluye actividad ajena al programa.
-No sustituye las 200 repeticiones de `make benchmark` sin perf.
-
-El significado de los eventos, permisos, alcance, multiplexación y el procedimiento
-SMT activado/desactivado están en [docs/perfilado.md](docs/perfilado.md).
+Los intervalos y las esperas de coarse forman parte de su configuración;
+cambiarlos durante el barrido modifica la carga además de P.
+`make profile` incorpora perfilado con perf. Los datos guardados están en
+[resultados disponibles](#resultados-disponibles).
 
 ### Gráficas y repeticiones
 
@@ -747,7 +671,7 @@ make benchmark ARGS="--model coarse --thread-counts 1,2,4,8 --samples 8 --repeti
 
 `make benchmark` guarda las gráficas en `results/plots/<nombre-del-csv>/`:
 por ejemplo, `results/plots/fine/`, `results/plots/coarse/`, `results/plots/smt/`, `results/plots/cmp/` o
-`results/plots/metrics/`. Así se conservan las gráficas de ambos modelos.
+`results/plots/metrics/`. Cada archivo conserva sus gráficas en una carpeta propia.
 `make plots` permite volver a graficar CSV existentes o compararlos juntos y
 guarda esa comparación en `results/plots/`. `make benchmark-plots` sigue
 disponible como alias de `make benchmark`. Se generan:
@@ -762,9 +686,9 @@ disponible como alias de `make benchmark`. Se generan:
 - Boxplot de los tiempos de la referencia secuencial de cada comparación.
 - `escalabilidad.png`: speedup al variar trabajadores, con línea ideal S = P.
   Tiempo y eficiencia se muestran en `escalabilidad-tiempo.png` y
-  `escalabilidad-eficiencia.png`; cada imagen responde una pregunta.
+  `escalabilidad-eficiencia.png`.
 - `reporte.md`: cantidad de repeticiones, medias, desviaciones, intervalos y
-  justificación inicial del número de ejecuciones. Indica si n es menor que 200.
+  cantidad de ejecuciones. Indica si n es menor que 200.
 
 Todas usan colores consistentes: gris para sequential, violeta para fine,
 naranja para coarse, turquesa para CMP y rosa para SMT. Las barras principales
@@ -775,7 +699,7 @@ línea = mediana y puntos = valores atípicos. Las unidades de los tiempos
 en las gráficas son segundos; los CSV y el reporte conservan milisegundos.
 
 Para comparar los cuatro modelos, usa los comandos de
-[ejecución rápida](#ejecución-rápida-de-los-cuatro-modelos), conserva un archivo
+[benchmarks individuales](#ejecutar-benchmarks-individuales), conserva un archivo
 por modelo y genera la comparación conjunta con `make plots CSV="results/*.csv"`.
 
 El script omite los CSV de resumen y rechaza cargas diferentes (resolución,
@@ -787,15 +711,12 @@ Puedes cambiar `CSV`, `PLOT_DIR` y `PYTHON` en los comandos Make. Los archivos C
 y las gráficas se sobrescriben al volver a usar la misma ruta: conserva campañas
 distintas en rutas diferentes.
 
-Se toman **200 repeticiones por configuración** como punto de partida para
-cumplir la referencia del enunciado y estimar variabilidad y precisión. El error
-estándar disminuye como `desviación / sqrt(n)` bajo independencia. Para justificar
-la cantidad final, evalúa el margen relativo del IC95 (`margen / media`) de tiempo
-y speedup; si resulta demasiado grande para tu comparación, aumenta n. No basta
-con alcanzar 200 para garantizar una conclusión: documenta hardware, carga del
-equipo y posibles cambios térmicos o correlación entre ejecuciones.
-Las pruebas cortas con `--repetitions 5` generan las mismas gráficas, pero el
-reporte las marca como pendientes de la campaña final.
+La campaña usa **200 repeticiones por configuración**. El error estándar
+disminuye como `desviación / sqrt(n)` bajo independencia. El margen relativo
+del IC95 (`margen / media`) expresa la precisión estimada de tiempo y speedup.
+Ese intervalo no corrige cambios térmicos, actividad externa ni correlación
+entre ejecuciones. Las pruebas con `--repetitions 5` generan las mismas gráficas
+y se identifican en el reporte como pruebas cortas.
 
 ## Verificación
 
@@ -819,41 +740,69 @@ cancelación durante esperas largas. El controlador SDL `dummy` permite probar
 eventos y presentación sin un escritorio real.
 Los resultados y las limitaciones del entorno están en [docs/validacion.md](docs/validacion.md).
 
-## Referencias y asistencia
+## Decisiones de implementación
 
-Se consultaron las secciones de geometría, antialiasing, materiales difusos,
-metales, dieléctricos, gamma y escena final de
-[Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html)
-y los parámetros de presentación con
+C++17 permite ejecutar `std::thread` en varios núcleos y controlar la afinidad
+mediante la API de Linux. La escena y la cámara se comparten para lectura;
+cada tile escribe una región exclusiva de la imagen. Los contadores atómicos
+coordinan el reparto y la finalización. Coarse utiliza además un mutex y una
+variable de condición para las esperas interrumpibles. El hilo principal atiende
+SDL y espera a los trabajadores antes de presentar el buffer.
+
+Se comparan dos formas de asignar tiles:
+
+| Criterio | Un hilo por tile | Grupo de P trabajadores |
+| --- | --- | --- |
+| Creación de hilos | 300 con la imagen y tiles predeterminados | P, independiente de la cantidad de tiles |
+| Reparto | Cada hilo conserva su tile | Un contador atómico entrega el siguiente tile libre |
+| Costo | Más creación de hilos y posible contención | Sincronización al reclamar cada tile |
+| Escalabilidad | Cambiar los tiles cambia también los hilos | Permite variar P con la partición fija |
+| Uso | Coarse predeterminado | Coarse con `--threads`, SMT y CMP |
+
+El grupo de trabajadores permite estudiar escalabilidad con carga fija. Fine
+utiliza otra política: una cola de tareas lógicas sobre un hilo real. Los
+[diagramas de diseño](docs/diseno.md) detallan el avance y la sincronización.
+Python se utiliza únicamente para procesar CSV y generar gráficas después de
+medir; el renderizador y los modelos de ejecución están escritos en C++.
+
+## Resultados disponibles
+
+La campaña guardada en [resultsrt/benchmark.txt](resultsrt/benchmark.txt) usa
+640 × 480 píxeles, tiles de 32 × 32, 8 muestras, 12 rebotes y semilla 2026.
+Contiene 200 ejecuciones por configuración y una referencia secuencial compartida
+de 200 ejecuciones. El [reporte conjunto](resultsrt/plots/comparison/reporte.md)
+incluye tiempos, desviaciones e IC95. Estos son algunos de sus resultados:
+
+| Configuración | Tiempo medio (ms) | Speedup | Eficiencia |
+| --- | ---: | ---: | ---: |
+| Sequential | 1115.26 | 1.000 | 100.0 % |
+| Fine, K = 64, P = 1 | 1116.60 | 0.999 | 99.9 % |
+| Coarse, P = 8 | 252.17 | 4.423 | 55.3 % |
+| CMP, P = 8 | 233.26 | 4.781 | 59.8 % |
+| SMT activado, P = 12 | 229.23 | 4.865 | 40.5 % |
+| SMT desactivado, P = 12 | 245.82 | 4.537 | 37.8 % |
+
+Fine tiene un tiempo cercano al secuencial porque intercala tareas sin
+paralelismo real. CMP reduce el tiempo al repartir tiles entre núcleos, aunque
+con P = 8 el speedup queda por debajo del ideal 8×. En coarse, las esperas
+simuladas y la planificación forman parte del tiempo medido. Con SMT activado,
+P = 8 y P = 12 registran medias casi iguales (229.19 y 229.23 ms); esta campaña
+no muestra una mejora clara al añadir esos cuatro trabajadores. Al comparar
+on/off con P = 12, la media con SMT activado es aproximadamente un 6.7 % menor.
+La referencia común, el orden de las fases y la mezcla de núcleos P/E limitan
+la atribución de esa diferencia exclusivamente al SMT.
+
+Las capturas de [perf](resultsrt/perf/comparison/README.md) incluyen 20
+repeticiones por configuración en la campaña guardada. El valor predeterminado
+para campañas nuevas sigue siendo 5. Los metadatos identifican un Intel Core
+i5-12450H, Linux y una topología de 8 núcleos físicos y 12 CPUs lógicas con SMT
+activado. Los reportes conservan las advertencias sobre tiempo de contador y
+separan las PMU de P-cores y E-cores.
+
+## Referencias
+
+Los fundamentos de geometría, antialiasing, materiales difusos, metales,
+dieléctricos, gamma y escena final se describen en
+[Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html).
+La presentación del buffer utiliza
 [SDL_UpdateTexture](https://wiki.libsdl.org/SDL2/SDL_UpdateTexture).
-
-
-## Dependencias entre módulos
-
-Cada `.hpp` declara la interfaz y su `.cpp` implementa el comportamiento.
-`main` conecta las opciones, la presentación y el modelo de ejecución elegido.
-`sequential` utiliza `raytracer`, que calcula píxeles a partir de la escena,
-la cámara y la geometría y los escribe en `image` según los límites de `tiles`.
-`display` solo necesita imagen y tiles; el núcleo no incluye SDL.
-
-`RenderHooks` permite notificar tiles terminados y consultar cancelación sin
-acoplar el recorrido a una ventana. Sin callbacks, funciona sin interfaz gráfica.
-`fine.cpp` planifica tareas de tiles y `coarse.cpp` asigna los tiles a hilos.
-`parallel.cpp` distribuye los tiles de SMT/CMP y `cpu.cpp` define su asignación a CPUs.
-Los comentarios de estos módulos señalan el reparto, el progreso y la sincronización.
-`sequential.cpp` conserva el recorrido de referencia para comparar.
-
-La ampliación visual implementa esos fundamentos con nuestros módulos, un bucle
-iterativo de rebotes y muestras locales por píxel. No se importó el código fuente
-del libro. Es una ampliación del alcance inicial solicitada para mejorar la escena;
-el proyecto conserva su referencia secuencial y la partición común entre modelos.
-
-## Tiles y avance respecto a la propuesta
-
-La unidad de trabajo sigue siendo el tile: con 640×480 y tiles 32×32 hay 300
-regiones. Los rayos secundarios consultan la geometría, sin depender del buffer
-de otros píxeles. Por ello la ampliación visual conserva la independencia de tiles.
-
-Los diagramas y las decisiones para los modelos de ejecución están en
-[el documento de diseño](docs/diseno.md). Allí se explica cómo se reparten los
-tiles, qué significa K píxeles completos y qué falta implementar.

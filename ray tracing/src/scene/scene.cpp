@@ -53,7 +53,7 @@ Scene default_scene() {
     add_sphere(0.0, -11.5, 1.15, {1, 1, 1}, {MaterialType::glass, 0.0, 1.5});
     add_sphere(3.2, -11.2, 1.5, {0.88, 0.72, 0.42}, {MaterialType::metal, 0.03});
 
-    // Antes había 75 decorativas. La semilla fija permite repetir exactamente
+    // La semilla fija permite repetir exactamente
     // la escena en cada ejecución y comparar modelos con la misma carga.
     std::mt19937 random(2026);
     const auto sample = [&] { return static_cast<double>(random()) / 4294967296.0; };

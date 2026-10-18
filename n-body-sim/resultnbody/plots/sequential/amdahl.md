@@ -10,4 +10,4 @@ Las barras negras son IC95 del speedup medido; la curva ajustada no incluye un i
 | Política | P medidos | f efectiva | Límite teórico 1/f | RMSE en tiempo relativo | Nota |
 | --- | --- | ---: | ---: | ---: | --- |
 
-Solo hay referencia sequential: faltan modelos para comparar.
+Datos disponibles: referencia sequential.

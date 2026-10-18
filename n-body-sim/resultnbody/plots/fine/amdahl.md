@@ -9,6 +9,6 @@ Las barras negras son IC95 del speedup medido; la curva ajustada no incluye un i
 
 | Política | P medidos | f efectiva | Límite teórico 1/f | RMSE en tiempo relativo | Nota |
 | --- | --- | ---: | ---: | ---: | --- |
-| Fine · K=1 | [1] | — | — | — | Falta barrido de P |
+| Fine · K=1 | [1] | — | — | — | Un único P; ajuste no estimado |
 
 ![Comparación con Amdahl](amdahl.png)

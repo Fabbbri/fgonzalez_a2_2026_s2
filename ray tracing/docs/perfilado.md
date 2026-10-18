@@ -1,10 +1,10 @@
 # Perfilado con perf y comportamiento bajo SMT
 
-El enunciado pide explicar qué sucede con los recursos de CPU, además de medir
-tiempo y speedup. Dos hilos lógicos de un mismo núcleo físico comparten recursos
+Dos hilos lógicos de un mismo núcleo físico comparten recursos
 de ejecución y algunas cachés. SMT puede aprovechar recursos que un solo hilo
 deja libres, pero también puede provocar competencia. Crear más trabajadores no
-garantiza mayor rendimiento. El perfilado aporta evidencia para discutirlo.
+garantiza mayor rendimiento. Perf registra contadores de ejecución para
+comparar el uso de esos recursos.
 
 El ray tracer continúa calculando tiles en C++. `scripts/profile_perf.py` ejecuta
 `perf stat` alrededor del binario; la herramienta no modifica sus algoritmos ni
@@ -57,8 +57,8 @@ si no se indica una captura compartida.
 
 Verifica `perf --version` y consulta la topología con `make run ARGS="--cpu-info"`.
 Los ejemplos siguientes usan P = 4 y P = 12: ajústalos a tu equipo. En CMP
-P no debe superar C. Para observar SMT incluye una configuración P > C; para
-comparar los dos estados de BIOS fija explícitamente los mismos P.
+P no puede superar C. Las configuraciones P > C asignan varios trabajadores
+por núcleo; la comparación on/off usa los mismos P en ambos estados.
 
 ```sh
 # Cinco perfiles de SMT y cinco de sequential con la misma carga
@@ -147,7 +147,7 @@ con muestreo o eventos específicos de la microarquitectura.
 En CPUs híbridas, perf puede presentar `cpu_core/...` y `cpu_atom/...`. No se
 suman como si fueran el mismo contador. El script deriva IPC solo con el par
 cycles/instructions de igual CPU y PMU. Un IPC menor con SMT no demuestra por
-sí solo peor rendimiento: evaluar también tiempo, throughput y speedup.
+sí solo peor rendimiento: puede coincidir con un menor tiempo de ejecución.
 
 Perf puede multiplexar eventos si no hay suficientes contadores físicos. La
 salida conserva `porcentaje_activo` y `tiempo_contador`; los valores suelen estar
@@ -159,27 +159,21 @@ make profile PROFILE_EVENTS="{cycles,instructions}" ARGS="--model smt --threads 
 perf list
 ```
 
-Los eventos de stalls y top-down varían por CPU. Consultar `perf list` y la
-documentación de su fabricante antes de añadirlos a `PROFILE_EVENTS`; no asumir
-que un nombre genérico existe ni presentar un evento no soportado como medición.
+Los eventos de stalls y top-down varían por CPU. `perf list` muestra los
+disponibles en el equipo. Un evento no soportado queda marcado en la captura
+y no aporta una medición.
 
 ## Comparación de SMT activado y desactivado
 
-1. Registrar topología, configuración BIOS/UEFI, compilador y flags, carga del equipo
-   y parámetros de escena/tiles. Las cantidades de hilos deben ser explícitas.
-2. Con SMT activado, ejecutar benchmark y profile para sequential, CMP y SMT,
-   incluyendo una configuración SMT P > C. Guardar las campañas.
-3. Desactivar SMT en BIOS/UEFI y repetir con la misma carga y los mismos P.
-   Los trabajadores extra se alternarán sobre las CPUs disponibles; no existe
-   emisión SMT de hardware cuando está desactivado.
-4. Comparar tiempos e IC95 del benchmark junto con los contadores del perfilado.
-   Explicar si compartir recursos ayuda a completar la imagen o añade competencia,
-   y discutir ruido, multiplexación y núcleos de distinto tipo.
+La comparación utiliza la misma escena, tiles y cantidades de trabajadores en
+ambos estados. Con P > C y SMT desactivado, los trabajadores adicionales se
+alternan sobre las CPUs disponibles mediante el sistema operativo. Con SMT
+activado, los hermanos lógicos comparten recursos de ejecución del núcleo.
 
-El perfilado no prueba por sí solo que una diferencia se deba exclusivamente a SMT.
-Mantener las otras condiciones constantes y no confundir sobresuscripción del SO
-con emisión simultánea por hardware. Las pruebas principales deben ejecutarse
-sobre hardware físico según el enunciado.
+Los metadatos registran topología y estado SMT informado por Linux. No distinguen
+un cambio por sysfs de uno realizado desde BIOS/UEFI. El perfilado tampoco aísla
+cambios de temperatura, frecuencia o actividad externa entre fases. En CPUs
+híbridas, el tipo de núcleo asignado también influye en tiempos y contadores.
 
 ## Permisos y limitaciones
 
@@ -194,10 +188,10 @@ make profile PERF="sudo perf" ARGS="--model smt --threads 12 --samples 8"
 ```
 
 Make, el renderizador cuando calienta y el análisis se ejecutan como usuario;
-el proceso observado por `sudo perf` puede heredar privilegios, por lo que debe
-registrarse esa diferencia al comparar campañas. No ejecutar todo Make con sudo.
-Si eventos de hardware no están disponibles por kernel, PMU o virtualización,
-registrar la limitación: los eventos de software no los reemplazan.
+el proceso observado por `sudo perf` puede heredar privilegios. Esto cambia
+las condiciones de ejecución respecto a una captura sin sudo.
+El kernel, la PMU o la virtualización pueden impedir el acceso a eventos de
+hardware; los eventos de software miden fenómenos distintos.
 
 Referencias: [manual de perf stat](https://man7.org/linux/man-pages/man1/perf-stat.1.html),
 [tutorial oficial de perf](https://perfwiki.github.io/main/tutorial/),

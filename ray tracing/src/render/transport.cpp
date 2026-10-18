@@ -19,7 +19,7 @@ bool refract(Vec3 direction, Vec3 normal, double eta, Vec3& transmitted) {
 
 Vec3 trace_path(const Scene& scene, Ray ray, Sampler& sampler) {
     Vec3 throughput{1, 1, 1}; // Fracción de luz que sobrevive a cada interacción.
-    // FUTURA PARALELIZACIÓN: este cálculo lo ejecutará el dueño del píxel.
+    // El trabajador dueño del píxel calcula la trayectoria completa.
     // Los rebotes de UNA trayectoria dependen del impacto anterior: este bucle
     // permanece secuencial. Distintos trabajadores sí pueden seguir trayectorias
     // de píxeles diferentes a la vez, leyendo la misma escena inmutable.

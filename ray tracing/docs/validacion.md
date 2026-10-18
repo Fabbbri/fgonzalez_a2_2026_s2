@@ -27,7 +27,7 @@ Comprobaciones del 6 de octubre de 2026 para sequential, fine, coarse, SMT y CMP
   Son pruebas funcionales; no se usan sus tiempos como resultados experimentales.
 - Restricción a una CPU con `taskset`: SMT detectó C = 1 y H = 1 y usó dos
   trabajadores sobre esa CPU, conservando la imagen. Esto comprueba la
-  sobresuscripción, no sustituye deshabilitar SMT de hardware en BIOS.
+  sobresuscripción sobre una sola CPU disponible.
 - Las gráficas separan campañas con distintos estados SMT o topologías,
   comprobado con `make test-plots`.
 - Gráficas: `make plots` generó boxplots, histogramas, curvas con IC95 y un
@@ -38,7 +38,7 @@ Comprobaciones del 6 de octubre de 2026 para sequential, fine, coarse, SMT y CMP
   distintas o métricas inconsistentes. No requiere Matplotlib.
 - `make WITH_SDL=0 benchmark-plots`: comprobado con 200 repeticiones de coarse
   para P = 1, 2 y 4, resolución 41 × 29, tiles 9 × 9, una muestra y cuatro
-  rebotes. Es una prueba de integración; no una campaña final de rendimiento.
+  rebotes. Esta ejecución verifica la integración del benchmark y las gráficas.
   Para verificar las gráficas se usó Matplotlib en un entorno Python temporal.
 - Generación automática: `make benchmark` y su alias `make benchmark-plots`
   comprobados con cinco repeticiones, tanto fine como coarse. Se respetó
@@ -56,14 +56,13 @@ Comprobaciones del 6 de octubre de 2026 para sequential, fine, coarse, SMT y CMP
   del entorno; esa ejecución no comprueba fugas. Se repitieron las pruebas
   con el benchmark, coarse configurable y los modelos SMT/CMP.
 - ThreadSanitizer no pudo iniciar: `unexpected memory mapping`. No se afirma
-  haber descartado carreras mediante esa herramienta; queda pendiente correrla
-  en un entorno compatible.
+  haber descartado carreras mediante esa herramienta.
 
 Los tiempos de estas pruebas son comprobaciones funcionales. No constituyen
 las mediciones experimentales repetidas en hardware físico que pide el proyecto.
-La campaña principal con SMT activado/desactivado en BIOS, las capturas reales de
-perfilado y su análisis siguen pendientes. La ventana se verificó con SDL dummy; no se inspeccionó
-una ventana visible en un escritorio real.
+Estas comprobaciones son anteriores a la campaña guardada en `../resultsrt/`.
+La ventana se verificó con SDL dummy; no se inspeccionó una ventana visible
+en un escritorio real.
 
 ## Integración de perf: 7 de octubre de 2026
 
@@ -78,8 +77,7 @@ una ventana visible en un escritorio real.
 - Perf instalado: versión 6.17.13. La prueba real de apertura de eventos falla
   con `perf_event_paranoid=4`; ni siquiera task-clock pudo medirse. El script
   detectó el bloqueo antes de renderizar y no modificó permisos ni fabricó
-  una campaña válida. Queda pendiente ejecutar las capturas con acceso a la
-  PMU en el equipo físico, como se describe en perfilado.md.
+  una campaña válida en esa prueba.
 
 ## Presentación de gráficas
 

@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 namespace rt {
-// FUTURA PARALELIZACIÓN (2): cálculo independiente que compartirán las tareas.
+// Cálculo de píxel común a todos los modelos de ejecución.
 // Solo lee escena y cámara; usa variables locales y no lee píxeles vecinos.
 // Distintos trabajadores pueden calcular distintos píxeles simultáneamente
 // siempre que escena y cámara permanezcan inmutables durante el renderizado.
@@ -16,10 +16,8 @@ Pixel render_pixel(const Scene& scene, const Camera& camera, int x, int y) {
                           | static_cast<std::uint32_t>(x);
     Sampler sampler(coordinate ^ scene.settings.seed);
     Vec3 sum{0, 0, 0};
-    // FUTURA PARALELIZACIÓN: cada trabajador completa las muestras de su píxel
-    // en este orden. sum y sampler son locales y no deben compartirse con otro.
-    // Repartiremos tiles, manteniendo las muestras internas secuenciales para
-    // conservar tanto la secuencia aleatoria como el orden de suma de colores.
+    // Las muestras de cada píxel se calculan en orden, con sum y sampler locales.
+    // El reparto de tiles conserva la secuencia aleatoria y el orden de suma.
     for (int sample = 0; sample < scene.settings.samples; ++sample) {
         const double ox = scene.settings.samples == 1 ? 0.5 : sampler.uniform();
         const double oy = scene.settings.samples == 1 ? 0.5 : sampler.uniform();
