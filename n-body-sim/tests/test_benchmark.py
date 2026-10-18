@@ -1,3 +1,7 @@
+# Ensayos de coordinación con ejecutable y topología simulados.
+# Los tiempos y bytes de trayectoria de fixture tienen valores conocidos.
+# Se verifican estadísticas, referencias inmutables, fases SMT y restauración
+# sin ejecutar cambios de hardware ni sudo real.
 """Valida campañas, referencias, métricas y rechazos sin mediciones de rendimiento."""
 import argparse
 import csv
@@ -17,7 +21,9 @@ import benchmark
 import plot_metrics
 
 
+# Propiedades de la campaña y sus efectos en archivos y configuración.
 class BenchmarkTests(unittest.TestCase):
+    # Crea ejecutable temporal que emite métricas controladas y simula on/off mediante un archivo.
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="nbody-benchmark-test-")
         self.addCleanup(self.temp.cleanup)
@@ -69,10 +75,12 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         quiet.__enter__()
         self.addCleanup(quiet.__exit__, None, None, None)
 
+    # Lee un CSV generado en la carpeta de ensayo como registros por nombre de columna.
     def rows(self, name):
         with (self.args.results_dir / name).open(newline="") as stream:
             return list(csv.DictReader(stream))
 
+    # Valida cantidad de repeticiones, calentamientos, S/E y estructura de resultados.
     def test_campaign_metrics_warmups_and_layout(self):
         benchmark.campaign(self.args)
         expected = {"sequential": 2, "fine": 2, "coarse": 4, "smt-on": 4, "cmp": 4}
@@ -97,6 +105,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual(workload, ("10", "3", "0.002", "42"))
         self.assertEqual(next(self.args.results_dir.glob("logs/*/status.txt")).read_text(), "complete\n")
 
+    # Una campaña posterior no puede alterar la referencia que importan CSV anteriores.
     def test_immutable_reference_survives_later_campaign(self):
         benchmark.campaign(self.args)
         row = self.rows("coarse.csv")[0]
@@ -109,6 +118,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual(json.loads(self.binary.with_suffix(".json").read_text())["sequential"], 3)
         plot_metrics.load([str(self.args.results_dir / "*.csv")])
 
+    # Un hash de trayectoria diferente al secuencial impide exportar mediciones válidas.
     def test_mismatching_trajectory_is_rejected(self):
         with patch.dict(os.environ, BAD_MODEL="coarse-grained"):
             with self.assertRaisesRegex(ValueError, "trayectoria difiere"):
@@ -116,6 +126,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual(self.rows("coarse.csv"), [])
         self.assertEqual(next(self.args.results_dir.glob("logs/*/status.txt")).read_text(), "incomplete\n")
 
+    # El analizador detecta cocientes inconsistentes y cargas incompatibles.
     def test_plot_rejects_bad_speedup_and_mixed_workloads(self):
         benchmark.campaign(self.args)
         path = self.args.results_dir / "coarse.csv"
@@ -134,6 +145,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         with self.assertRaisesRegex(ValueError, "cargas diferentes"):
             plot_metrics.load([str(path)])
 
+    # Verifica barridos automáticos por C,L y rechazo de cantidades no positivas o mal formadas.
     def test_counts(self):
         self.assertEqual(benchmark.counts("auto", 8, 12), [1, 2, 4, 8])
         self.assertEqual(benchmark.counts("auto", 8, 12, True), [8, 12])
@@ -142,6 +154,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
             with self.assertRaises(ValueError):
                 benchmark.counts(value, 8, 12)
 
+    # Consulta --defaults sin sustituir un valor explícito del usuario.
     def test_defaults_come_from_binary_and_preserve_overrides(self):
         values = dict(bodies_per_galaxy=123, steps=77, dt=0.125, seed=987,
                       quantum=9, block_interval_ms=21, block_duration_ms=3)
@@ -154,10 +167,12 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         for key, value in values.items():
             self.assertEqual(getattr(self.args, key), 4 if key == "steps" else value)
 
+    # Fixture de fases SMT con estado inicial configurable y fallo opcional de trayectoria.
     def automatic_campaign(self, original="on", failure=None, states="on,off"):
         state_file = self.binary.with_suffix(".state")
         state_file.write_text(original)
         calls = []
+        # Sustituye el control de hardware por escritura de un archivo temporal y registro de llamadas.
         def change(state, make_command):
             calls.append(state)
             state_file.write_text(state)
@@ -178,6 +193,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual(calls[-1], original)
         return calls
 
+    # Medir solo off conserva los archivos secuenciales anteriores y usa base con etiqueta propia.
     def test_off_only_preserves_existing_sequential(self):
         benchmark.campaign(self.args)
         path = self.args.results_dir / "sequential.csv"
@@ -188,6 +204,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual((path.read_bytes(), summary.read_bytes()), before)
         self.assertEqual({r["smt_activo_linux"] for r in self.rows("sequential-off.csv")}, {"0"})
 
+    # Ambos estados usan los mismos P, bases de su estado y grupos de presentación separados.
     def test_automatic_on_off_same_workers_and_references(self):
         self.automatic_campaign(original="off")
         on, off = self.rows("smt-on.csv"), self.rows("smt-off.csv")
@@ -205,11 +222,13 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual(manifest["restored_smt"], "off")
         self.assertEqual(manifest["status"], "complete")
 
+    # El fallo de una fase restaura estado inicial y conserva el lote como incompleto.
     def test_automatic_restores_on_failure(self):
         self.automatic_campaign(failure=True)
         self.assertEqual(self.rows("smt-off.csv"), [])
         self.assertNotEqual(json.loads((self.args.results_dir / "benchmark.txt").read_text())["status"], "complete")
 
+    # Campañas sin SMT o keep no invocan control global de hardware.
     def test_no_hardware_control_without_smt_or_when_keep(self):
         with patch.object(benchmark, "campaign") as campaign, \
              patch.object(benchmark, "set_smt_state") as change:
@@ -221,6 +240,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
         self.assertEqual(campaign.call_count, 2)
         change.assert_not_called()
 
+    # KeyboardInterrupt recorre finally y restaura SMT antes de propagarse.
     def test_restores_after_interruption(self):
         self.args.smt_states = "on,off"
         self.args.make_command = "make"
@@ -232,6 +252,7 @@ out.writerow([model,p,int(get("--bodies-per-galaxy"))*2,get("--steps"),get("--dt
                 benchmark.run_campaigns(self.args)
         self.assertEqual(change.call_args.args, ("off", "make"))
 
+    # Un fallo de restauración conserva diagnóstico con el comando de recuperación.
     def test_failed_restoration_reports_recovery_command(self):
         self.args.smt_states = "on,off"
         self.args.make_command = "make"

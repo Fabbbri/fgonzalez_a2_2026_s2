@@ -1,3 +1,9 @@
+/**
+ * @file test_physics.cpp
+ * Ensayos de ecuaciones, integrador y modelos con oráculos analíticos y secuenciales.
+ * Incluye diagnóstico local de conservación, particiones con residuos y grupos
+ * persistentes reutilizados. Las topologías sintéticas no requieren cambiar SMT real.
+ */
 #include "nbody.hpp"
 #include <algorithm>
 #include <cmath>
@@ -9,6 +15,7 @@
 #endif
 
 namespace nbody {
+// Magnitudes locales del ensayo: masa, energías, momento y centro de masa.
 struct Diagnostics {
     double mass = 0.0;
     double kinetic_energy = 0.0;
@@ -20,6 +27,7 @@ struct Diagnostics {
 };
 
 // Diagnóstico independiente usado solo para validar el motor en las pruebas.
+// Diagnóstico independiente del modelo que calcula fuerzas, usado como oráculo físico.
 Diagnostics measure_physics(const std::vector<Body>& bodies) {
     Diagnostics result;
     for (std::size_t i = 0; i < bodies.size(); ++i) {
@@ -37,6 +45,7 @@ Diagnostics measure_physics(const std::vector<Body>& bodies) {
 
         // Cada pareja se cuenta una vez. El potencial usa el mismo suavizado
         // que las fuerzas: U_ij = -G*m_i*m_j / sqrt(r_ij² + epsilon²).
+        // Cada pareja aporta una vez al potencial; no es el kernel i,j de aceleraciones.
         for (std::size_t j = i + 1; j < bodies.size(); ++j) {
             const double dx = bodies[j].position.x - body.position.x;
             const double dy = bodies[j].position.y - body.position.y;
@@ -47,6 +56,7 @@ Diagnostics measure_physics(const std::vector<Body>& bodies) {
     if (result.mass == 0.0) {
         throw std::runtime_error("No hay cuerpos para calcular el centro de masa.");
     }
+    // Normaliza sum(m_i*r_i) por la masa total validada.
     result.center_of_mass.x /= result.mass;
     result.center_of_mass.y /= result.mass;
     if (!std::isfinite(result.mass) || !std::isfinite(result.energy()) ||
@@ -63,22 +73,27 @@ Diagnostics measure_physics(const std::vector<Body>& bodies) {
 
 using namespace nbody;
 
+// Aserción activa aunque se compile con NDEBUG: propaga excepción si falla una propiedad.
 void check(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
 
+// Comparación absoluta con tolerancia explícita para resultados flotantes analíticos.
 bool near(double actual, double expected, double tolerance = 1e-11) {
     return std::abs(actual - expected) < tolerance;
 }
 
+// Integra dos masas durante un tiempo dado y devuelve la máxima deriva relativa de energía.
 double orbit_drift(double dt, std::size_t steps) {
     auto model = make_sequential_model();
+    // Velocidad circular para dos masas iguales con el mismo suavizado de la fuerza.
     const double speed = std::sqrt(0.25 / std::pow(1 + softening * softening, 1.5));
     std::vector<Body> bodies{{0.5, {-0.5, 0}, {0, -speed}, {}, 0},
                              {0.5, {0.5, 0}, {0, speed}, {}, 1}};
     std::vector<Vec2> accelerations;
     refresh_accelerations(bodies, accelerations, *model);
     const double initial_energy = measure_physics(bodies).energy();
+    // Máximo observado durante todos los pasos, no solo diferencia de estados extremos.
     double max_drift = 0;
     for (std::size_t i = 0; i < steps; ++i) {
         advance_one_step(bodies, accelerations, dt, *model);
@@ -89,6 +104,8 @@ double orbit_drift(double dt, std::size_t steps) {
     return max_drift;
 }
 
+// Compara exactamente a_i con sequential para K variados y cantidades 0,1 y mayores.
+// Valida reinicio de contextos, rondas y rechazo de K=0.
 void test_fine_grained() {
     auto reference = make_sequential_model();
     for (std::size_t quantum : {std::size_t{1}, std::size_t{2}, std::size_t{3},
@@ -106,6 +123,7 @@ void test_fine_grained() {
                 check(actual[i].x == expected[i].x && actual[i].y == expected[i].y,
                       "Fine-Grained altera el orden de suma o pierde interacciones");
             }
+            // Oráculo de rondas: ceil((N-1)/K), con casos degenerados N=0 y N=1.
             const std::size_t rounds = count == 0 ? 0 : count == 1 ? 1 : 1 + (count - 2) / quantum;
             const auto after = fine->scheduling_stats();
             check(after.tasks == count && after.rounds - before.rounds == rounds &&
@@ -118,8 +136,10 @@ void test_fine_grained() {
     check(rejected, "Admite quantum cero");
 }
 
+// Reutiliza el grupo en múltiples generaciones con residuos e intervalos vacíos P>N.
 void test_coarse_grained() {
     auto reference = make_sequential_model();
+    // Ejercita CMP con P=1 y P=C, verificando salidas idénticas a la base.
     for (std::size_t workers : {1, 2, 3, 12}) {
         auto coarse = make_coarse_grained_model(workers);
         check(coarse->workers() == workers, "Cantidad de hilos incorrecta");
@@ -127,6 +147,7 @@ void test_coarse_grained() {
         for (std::size_t count : {0, 1, 2, 7, 12, 3, 0}) {
             auto bodies = create_galaxies(6, 19);
             bodies.resize(count);
+            // Cambia parámetros físicos entre fases para detectar lectura de generaciones anteriores.
             for (int phase = 0; phase < 20; ++phase) {
                 std::vector<Vec2> expected, actual;
                 const double gravity = 0.7 + phase * 0.01;
@@ -153,6 +174,7 @@ void test_coarse_grained() {
     check(rejected, "Admite cero hilos");
 }
 
+// Una carga mayor provoca esperas; comprueba continuidad, desactivación y duraciones inválidas.
 void test_coarse_timed_blocks() {
     auto reference = make_sequential_model();
     auto bodies = create_galaxies(2048, 19);
@@ -187,6 +209,7 @@ void test_coarse_timed_blocks() {
     }
 }
 
+// Topologías híbridas e IDs no contiguos comprueban rondas de hermanos y sobresuscripción.
 void test_smt_cpu_selection() {
     CpuTopology mixed;
     // IDs no consecutivos, núcleos con y sin siblings (como una CPU híbrida).
@@ -207,6 +230,7 @@ void test_smt_cpu_selection() {
     }
 }
 
+// Ejecuta familias de propiedades y después casos físicos e integración real con afinidad.
 int main() try {
     test_fine_grained();
     test_coarse_grained();
@@ -218,6 +242,7 @@ int main() try {
 #if defined(__linux__)
     check(topology.core_cpus.size() == topology.physical_cores,
           "Falta una CPU representativa por núcleo físico");
+    // Conserva afinidad del coordinador para comprobar que fijar trabajadores no la cambia.
     cpu_set_t original_mask, final_mask;
     check(sched_getaffinity(0, sizeof(original_mask), &original_mask) == 0,
           "No se pudo leer afinidad original");
@@ -282,6 +307,7 @@ int main() try {
 #endif
     auto model = make_sequential_model();
     // Dos masas con energía, momento y centro de masa calculables a mano.
+    // Dos masas con solución manual para masa, energías, momento y centro de masa.
     std::vector<Body> bodies{{2, {0, 0}, {1, -2}, {}, 0}, {3, {3, 4}, {0, 1}, {}, 1}};
     const auto initial = measure_physics(bodies);
     check(near(initial.mass, 5), "Masa total incorrecta");
@@ -292,6 +318,7 @@ int main() try {
 
     std::vector<Vec2> accelerations;
     refresh_accelerations(bodies, accelerations, *model);
+    // Instantánea para verificar que r(t+dt) usa la velocidad nueva de Euler simpléctico.
     const auto before = bodies;
     advance_one_step(bodies, accelerations, 0.01, *model);
     for (std::size_t i = 0; i < bodies.size(); ++i) {
@@ -307,6 +334,7 @@ int main() try {
     check(near(final.center_of_mass.x, initial.center_of_mass.x + initial.momentum.x / initial.mass) &&
           near(final.center_of_mass.y, initial.center_of_mass.y + initial.momentum.y / initial.mass), "Movimiento del centro de masa incorrecto");
 
+    // Cuerpos coincidentes comprueban que epsilon elimina singularidad de fuerza y potencial.
     bodies = {{1, {0, 0}, {}, {}, 0}, {1, {0, 0}, {}, {}, 1}};
     refresh_accelerations(bodies, accelerations, *model);
     check(near(bodies[0].acceleration.x, 0) && near(bodies[0].acceleration.y, 0), "Singularidad en cuerpos coincidentes");
@@ -314,6 +342,7 @@ int main() try {
     bodies.resize(1);
     check(near(measure_physics(bodies).energy(), 0), "Energía incorrecta para un cuerpo inmóvil aislado");
 
+    // Mismo tiempo físico con dt y dt/2; la menor deriva comprueba convergencia numérica.
     const double coarse = orbit_drift(0.01, 1000);
     const double fine = orbit_drift(0.005, 2000);
     check(coarse < 0.001 && fine < coarse, "La órbita no converge al reducir dt");

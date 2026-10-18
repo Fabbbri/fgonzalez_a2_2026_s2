@@ -1,3 +1,6 @@
+# Ensayos de carga CSV y estadística mediante datos sintéticos con solución conocida.
+# Los archivos temporales se eliminan al salir de cada contexto. No ejecuta el
+# renderizador ni modifica las mediciones almacenadas de las campañas.
 """Comprueba que las distribuciones usan datos crudos compatibles, sin filtrarlos."""
 import csv
 import importlib.util
@@ -5,13 +8,17 @@ from pathlib import Path
 import tempfile
 import unittest
 
+# Carga el módulo desde su ruta, sin exigir instalación como paquete.
 spec = importlib.util.spec_from_file_location(
     "plot_metrics", Path(__file__).parents[1] / "scripts/plot_metrics.py")
+# Crea y ejecuta el módulo de análisis en un espacio propio para probar sus funciones.
 plots = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plots)
 
 
+# Agrupa propiedades de ajuste, referencia y compatibilidad de observaciones.
 class PlotDataTests(unittest.TestCase):
+    # Genera S(P) con f=0.2 y comprueba recuperación exacta sin error residual.
     def test_amdahl_recovers_known_fraction(self):
         f = .2
         points = [(p, 1/(f+(1-f)/p)) for p in (1,2,4,8)]
@@ -21,6 +28,7 @@ class PlotDataTests(unittest.TestCase):
         self.assertAlmostEqual(error,0)
         self.assertIsNone(plots.fit_amdahl([(1,1)]))
 
+    # Los datos superlineales o más lentos fuerzan el límite [0,1] del ajuste.
     def test_amdahl_does_not_invent_negative_serial_fraction(self):
         fitted, raw, error = plots.fit_amdahl([(2,4),(4,8)])
         self.assertEqual(fitted,0)
@@ -30,6 +38,7 @@ class PlotDataTests(unittest.TestCase):
         self.assertEqual(fitted,1)
         self.assertGreater(raw,1)
 
+    # Contrasta la razón de medias y margen delta con un cálculo independiente.
     def test_shared_ratio_of_means_and_uncertainty(self):
         rows = plots.Measurements([(50,100,2,1), (25,100,4,2)])
         rows.baseline = [80,120]
@@ -41,6 +50,7 @@ class PlotDataTests(unittest.TestCase):
         self.assertAlmostEqual(plots.metric_estimate(rows, 3, 100)[0], mean/2*100)
         self.assertAlmostEqual(plots.metric_estimate(rows, 1)[1], 800**.5)
 
+    # Comprueba que la referencia conserva tiempos originales y no repite una media artificial.
     def test_load_shared_reference_keeps_original_distribution(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -64,6 +74,7 @@ class PlotDataTests(unittest.TestCase):
             self.assertAlmostEqual(plots.metric_estimate(data,2)[0],100/37.5)
             self.assertGreater(plots.metric_estimate(data,1)[2],0)
 
+    # Fixture CSV: escribe observaciones pareadas y permite alterar carga o cocientes para casos inválidos.
     def write(self, path, times=(50, 25), width=640, speedup_override=None, model="coarse", smt="1"):
         fields = list(plots.WORKLOAD) + list(plots.POLICY) + [
             "hilos", "repeticion", "tiempo_total_ms", "tiempo_secuencial_ms",
@@ -83,6 +94,7 @@ class PlotDataTests(unittest.TestCase):
                                      cpus_logicas_disponibles=4 if smt == "1" else 2,
                                      smt_activo_linux=smt))
 
+    # Verifica inclusión de todas las muestras y media de speedups pareados.
     def test_all_iterations_and_paired_statistics(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "raw.csv"
@@ -94,6 +106,7 @@ class PlotDataTests(unittest.TestCase):
             self.assertAlmostEqual(plots.estimate([row[2] for row in rows])[0], 2.0166666666667)
             self.assertAlmostEqual(plots.estimate([50, 25])[2], 24.5)
 
+    # Cambiar resolución entre archivos debe impedir su comparación conjunta.
     def test_different_workloads_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             self.write(Path(directory) / "one.csv")
@@ -101,6 +114,7 @@ class PlotDataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cargas diferentes"):
                 plots.load([str(Path(directory) / "*.csv")])
 
+    # Speedup incompatible con los tiempos provoca un error de carga.
     def test_invalid_ratios_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "raw.csv"
@@ -108,6 +122,7 @@ class PlotDataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Speedup incompatible"):
                 plots.load([str(path)])
 
+    # Estados SMT distintos producen grupos separados aun con el mismo modelo y P.
     def test_smt_hardware_states_not_merged(self):
         with tempfile.TemporaryDirectory() as directory:
             self.write(Path(directory) / "on.csv", model="smt", smt="1")
@@ -118,5 +133,6 @@ class PlotDataTests(unittest.TestCase):
             self.assertTrue(any("SMT=0" in plots.label(key) for key in groups))
 
 
+# unittest descubre métodos test_* y devuelve fallo si una propiedad no se cumple.
 if __name__ == "__main__":
     unittest.main()

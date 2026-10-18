@@ -1,3 +1,9 @@
+/**
+ * @file bitmap_text.hpp
+ * Fuente binaria de cinco columnas y siete filas sin archivos externos.
+ * Cada entero codifica cinco bits de una fila; draw_text dibuja los bits activos
+ * como rectángulos SDL. Pertenece a la visualización secuencial anterior.
+ */
 #pragma once
 #include <SDL.h>
 #include <array>
@@ -6,7 +12,10 @@
 
 namespace nbody {
 // Fuente mínima 5x7: cada fila usa cinco bits. No requiere fuentes externas.
+// Traduce un carácter a siete enteros-fila. Cada bit activo indica un píxel
+// del glifo: el bit 4 es la columna izquierda y el bit 0, la derecha.
 inline std::array<unsigned char, 7> glyph(char character) {
+    // Cada retorno codifica un patrón 5x7; el carácter no reconocido produce un glifo vacío.
     switch (character) {
     case 'A': return {14,17,17,31,17,17,17};
     case 'B': return {30,17,17,30,17,17,30};
@@ -53,19 +62,27 @@ inline std::array<unsigned char, 7> glyph(char character) {
     }
 }
 
+// Rasteriza glifos como rectángulos de scale por scale píxeles en SDL.
 inline void draw_text(SDL_Renderer* renderer, std::string_view text, int x, int y,
                       SDL_Color color, int scale = 2) {
+    // Color RGBA que se aplica a todos los píxeles del texto.
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    // Recorre bytes con tipo sin signo para llamar toupper dentro de su dominio válido.
     for (unsigned char character : text) {
+        // Mayúscula correspondiente y patrón binario para el carácter.
         const auto rows = glyph(static_cast<char>(std::toupper(character)));
+        // Recorre las siete filas; el bucle column recorre los cinco bits significativos.
         for (int row = 0; row < 7; ++row) {
             for (int column = 0; column < 5; ++column) {
+                // Extrae el bit de columna con AND y desplazamiento; solo dibuja valores uno.
                 if ((rows[row] & (1 << (4 - column))) != 0) {
+                    // Escala la celda del glifo y la traslada a la posición de pantalla.
                     const SDL_Rect pixel{x + column * scale, y + row * scale, scale, scale};
                     SDL_RenderFillRect(renderer, &pixel);
                 }
             }
         }
+        // Avanza cinco columnas más una de separación entre caracteres.
         x += 6 * scale;
     }
 }

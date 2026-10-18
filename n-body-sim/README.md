@@ -4,6 +4,8 @@ Simulación en C++17 de interacción gravitacional completa, con costo **O(N²)
 por paso**, suavizado gravitacional e integración Euler simpléctica. Los cinco
 modelos comparten la física y generan trayectorias reproducibles con una semilla.
 La distribución inicial es didáctica y no representa galaxias en equilibrio.
+La [documentación del código](docs/codigo.md) explica las variables paralelizadas,
+la partición de cuerpos y la sincronización de cada fase.
 
 ## Requisitos y ejecución
 

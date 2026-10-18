@@ -1,3 +1,9 @@
+/**
+ * @file test_native.cpp
+ * Ensayos de captura binaria, lectura aleatoria y reproducción SDL con eventos
+ * sintéticos. El estado leído se compara campo por campo; los controles gráficos
+ * no pueden modificar los valores físicos guardados.
+ */
 #include "nbody.hpp"
 #include <SDL.h>
 #include <filesystem>
@@ -5,11 +11,14 @@
 #include <iostream>
 #include <stdexcept>
 using namespace nbody;
+// Aserción por excepción para estados de archivo y controles SDL.
 void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
+// Inyecta una pulsación con SDL_PushEvent antes de iniciar el ciclo de reproducción.
 void key(SDL_Keycode code) {
     SDL_Event event{}; event.type = SDL_KEYDOWN; event.key.keysym.sym = code;
     check(SDL_PushEvent(&event) == 1, "No se pudo inyectar el evento");
 }
+// Igualdad exacta de masa, población, posición, velocidad y aceleración por índice i.
 void compare(const std::vector<Body>& actual, const std::vector<Body>& expected) {
     check(actual.size() == expected.size(), "Cantidad distinta de cuerpos");
     for (std::size_t i = 0; i < actual.size(); ++i) {
@@ -20,6 +29,7 @@ void compare(const std::vector<Body>& actual, const std::vector<Body>& expected)
               "El archivo altera el estado físico");
     }
 }
+// Construye una trayectoria pequeña y comprueba persistencia y navegación de estados.
 int main() try {
     auto model = make_sequential_model();
     const std::string path = "build/test-trajectory.nbody";
@@ -27,8 +37,10 @@ int main() try {
     auto bodies = create_galaxies(config.bodies_per_galaxy, config.seed);
     std::vector<Vec2> scratch;
     refresh_accelerations(bodies, scratch, *model);
+    // Oráculo en memoria solo del ensayo: conserva todos los estados generados.
     std::vector<std::vector<Body>> expected{bodies};
     TrajectoryWriter writer(path, config, bodies.size()); writer.append(bodies);
+    // Integra y guarda cada paso con la misma ruta del programa principal.
     for (std::size_t step = 0; step < config.steps; ++step) {
         advance_one_step(bodies, scratch, config.dt, *model); writer.append(bodies); expected.push_back(bodies);
     }
@@ -36,18 +48,23 @@ int main() try {
     TrajectoryReader trajectory(path);
     check(trajectory.frame_count() == 4 && trajectory.config().seed == config.seed &&
           trajectory.config().dt == config.dt, "Metadatos incorrectos");
+    // Lectura fuera de orden prueba desplazamientos aleatorios, sin dependencia del frame previo.
     for (std::size_t i : {3, 0, 2, 1}) compare(trajectory.read_frame(i), expected[i]);
     bool rejected = false;
     try { trajectory.read_frame(4); } catch (const std::out_of_range&) { rejected = true; }
     check(rejected, "Admite frames fuera del archivo");
+    // Controlador dummy seleccionado por Make permite ejecutar SDL sin escritorio.
     check(SDL_Init(SDL_INIT_VIDEO) == 0, "No se pudo iniciar SDL dummy");
+    // Velocidad visual aumentada acorta espera del ensayo sin cambiar trayectoria.
     key(SDLK_PLUS);
     check(replay_native(trajectory, true) == config.steps, "No completa la reproducción");
+    // Estelas, rejilla y flechas ejercitan presentación y búsqueda sobre datos ya guardados.
     key(SDLK_t); key(SDLK_g);
     key(SDLK_RIGHT); key(SDLK_RIGHT); key(SDLK_LEFT);
     key(SDLK_RIGHT); key(SDLK_RIGHT);
     check(replay_native(trajectory, true) == 3, "La búsqueda con flechas no llega al último frame");
     compare(trajectory.read_frame(3), expected[3]);
+    // Evento de ratón en el final de la barra para buscar el último frame.
     SDL_Event click{};
     click.type = SDL_MOUSEBUTTONDOWN;
     click.button.button = SDL_BUTTON_LEFT;
@@ -63,6 +80,7 @@ int main() try {
     key(SDLK_r); key(SDLK_n);
     check(replay_native(short_trajectory, true) == 1, "Reinicio/avance manual incorrecto");
     compare(short_trajectory.read_frame(1), expected[1]);
+    // Caso sin pasos: el archivo contiene únicamente la instantánea inicial.
     Config zero = config; zero.steps = 0;
     TrajectoryWriter zero_writer("build/test-zero.nbody", zero, expected[0].size());
     zero_writer.append(expected[0]); zero_writer.finish();
@@ -79,6 +97,7 @@ int main() try {
         check(rejected, "Finaliza una trayectoria incompleta");
     }
     std::filesystem::copy_file(path, "build/test-broken.nbody", std::filesystem::copy_options::overwrite_existing);
+    // Trunca un byte de la captura para verificar rechazo del tamaño incorrecto.
     std::filesystem::resize_file("build/test-broken.nbody", std::filesystem::file_size(path) - 1);
     rejected = false;
     try { TrajectoryReader broken("build/test-broken.nbody"); } catch (const std::runtime_error&) { rejected = true; }
@@ -87,6 +106,7 @@ int main() try {
     rejected = false;
     try { TrajectoryReader broken("build/test-broken.nbody"); } catch (const std::runtime_error&) { rejected = true; }
     check(rejected, "Acepta una cabecera inválida");
+    // Limpieza exclusiva de los archivos generados por este ensayo.
     for (const auto& file : {path, std::string("build/test-single.nbody"),
                             std::string("build/test-zero.nbody"), std::string("build/test-broken.nbody")}) {
         std::filesystem::remove(file);

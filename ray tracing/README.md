@@ -3,6 +3,8 @@
 Implementación del problema de ray tracing para el [proyecto de Arquitectura de
 Computadores II](../proyecto.md). Los diagramas y las decisiones de ejecución
 están en [docs/diseno.md](docs/diseno.md).
+La explicación del código, las variables paralelizadas y su sincronización está
+en [docs/codigo.md](docs/codigo.md).
 
 Proyecto de Arquitectura de Computadores II en C++17. La escena contiene esferas
 mates, metálicas y de vidrio sobre un suelo, iluminadas por el cielo mediante

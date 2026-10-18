@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Captura e interpretación de perf stat en una campaña separada del benchmark.
+# Cada fila conserva modelo, repetición, CPU, evento, PMU, unidad y cobertura.
+# Los estados sin conteo permanecen explícitos y nunca se sustituyen por cero.
+# El IPC se deriva exclusivamente de contadores de la misma CPU/PMU y repetición.
 """Perfilado separado del benchmark: conserva contadores crudos y su contexto."""
 import argparse
 import csv
@@ -14,11 +18,13 @@ import subprocess
 import sys
 from collections import Counter
 
+# Eventos portables de partida; el soporte efectivo depende de kernel y PMU.
 DEFAULT_EVENTS = "task-clock,context-switches,cpu-migrations,cycles,instructions,cache-misses"
 # Umbral de aviso visual; nunca descarta por sí solo una medición numérica.
 MIN_COVERAGE_PERCENT = 50.0
 
 
+# Devuelve porcentaje de tiempo medido en [0,100], o None si falta o es inválido.
 def coverage(row):
     try:
         value = float(row.get("porcentaje_activo", ""))
@@ -27,12 +33,14 @@ def coverage(row):
         return None
 
 
+# Determina indisponibilidad numérica por estado; la baja cobertura no elimina datos.
 def measurement_issue(row, scaled=True):
     if row["estado"] != "ok":
         return row["estado"]
     return ""
 
 
+# Clasifica cobertura baja o desconocida como advertencia conservando el conteo.
 def measurement_warning(row):
     """Separar disponibilidad del dato de las limitaciones de su medición."""
     value = coverage(row)
@@ -43,22 +51,27 @@ def measurement_warning(row):
     return ""
 
 
+# Construye argumentos de perf sin shell. En modo observed agrupa eventos
+# compatibles por PMU y desactiva extrapolación mediante --no-scale.
 def capture_flags(events, scope, cpu_ids, count_mode, pmus=None):
     if scope == "cpu":
         events = events.replace("task-clock", "cpu-clock")
     if count_mode == "observed":
         # Agrupar ciclos/instrucciones/caché por PMU evita cocientes medidos
         # en periodos distintos. No agrupar cpu_atom con cpu_core.
+        # Descompone la selección solo para eventos simples no agrupados por el usuario.
         tokens = events.split(",")
         hardware = [e for e in tokens if e in ("cycles", "instructions", "cache-misses")]
         if hardware and not any("{" in e or "}" in e for e in tokens):
             if pmus is None:
                 pmus = [name for name in ("cpu_core", "cpu_atom")
                         if (Path("/sys/bus/event_source/devices") / name / "cpus").exists()]
+            # Una agrupación por PMU: evita sumar dominios cpu_core y cpu_atom como uno solo.
             groups = ["{" + ",".join(f"{pmu}/{event}/" for event in hardware) + "}" for pmu in pmus]
             if not groups:
                 groups = ["{" + ",".join(hardware) + "}"]
             events = ",".join([e for e in tokens if e not in hardware] + groups)
+    # Salida sin separadores de miles y con punto y coma para lectura estructurada.
     flags = ["stat", "--no-big-num", "-x", ";", "-e", events]
     if count_mode == "observed":
         flags.append("--no-scale")
@@ -67,18 +80,22 @@ def capture_flags(events, scope, cpu_ids, count_mode, pmus=None):
     return flags
 
 
+# Interpreta el formato delimitado de perf; preserva CPU, evento y cobertura.
 def parse_stat(text, scope):
     """Formato -x ';' sin -I ni -r. Mantener CPU, PMU y porcentaje de ejecución."""
     rows = []
+    # Descarta cabeceras y procesa una fila de contador a la vez.
     for line in text.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         cells = [cell.strip() for cell in line.split(";")]
+        # Valor de alcance process; cpu extrae el identificador CPU cuando perf lo incluye.
         cpu = "programa"
         if scope == "cpu" and cells[0].startswith("CPU"):
             cpu = cells.pop(0)
         if len(cells) < 3 or not cells[2]:
             continue
+        # Las tres primeras columnas útiles son conteo, unidad y nombre de evento.
         value, unit, event = cells[:3]
         try:
             number = float(value)
@@ -86,6 +103,7 @@ def parse_stat(text, scope):
                 raise ValueError()
             status = "ok"
         except ValueError:
+            # Un estado como <not counted> no representa el valor numérico cero.
             number, status = "", value or "sin_dato"
         rows.append(dict(cpu=cpu, evento=event, unidad=unit, valor=number,
                          estado=status, tiempo_contador=cells[3] if len(cells) > 3 else "",
@@ -93,6 +111,8 @@ def parse_stat(text, scope):
     return rows
 
 
+# Separa la política de ejecución de los parámetros comunes de carga.
+# Retira --model/--threads para construir la referencia secuencial comparable.
 def configuration(arguments):
     model, common = "sequential", []
     i = 0
@@ -115,13 +135,17 @@ def configuration(arguments):
     return model, common
 
 
+# Genera registros instrucciones/ciclos con identidad de CPU y PMU conservada.
+# La cobertura derivada toma el mínimo de los dos contadores disponibles.
 def ipc_rows(rows):
     """Cocientes por CPU y PMU; no sumar cpu_core con cpu_atom."""
+    # Índice por (CPU, evento completo), que incluye el dominio PMU del evento.
     lookup = {(row["cpu"], row["evento"]): row for row in rows}
     derived = []
     for (cpu, event), cycles in lookup.items():
         if not re.search(r"(^|/)cycles(?=[:/]|$)", event):
             continue
+        # Sustituye cycles por instructions conservando prefijo PMU y modificadores.
         instructions_event = re.sub(r"(^|/)cycles(?=[:/]|$)", r"\1instructions", event)
         instructions = lookup.get((cpu, instructions_event))
         if instructions:
@@ -134,10 +158,12 @@ def ipc_rows(rows):
     return derived
 
 
+# Recalcula IPC por modelo y repetición para no combinar ejecuciones distintas.
 def assessed_rows(rows):
     # Recalcular también IPC antiguos, cuyo CSV no conservaba la cobertura.
     # Agrupar por repetición evita emparejar contadores de distintas ejecuciones.
     raw = [dict(r) for r in rows if not r["evento"].startswith("IPC derivado:")]
+    # Subconjuntos independientes por modelo y repetición para reconstruir IPC.
     batches = {}
     for row in raw:
         batches.setdefault((row["modelo"], row["repeticion"]), []).append(row)
@@ -146,14 +172,19 @@ def assessed_rows(rows):
     return raw
 
 
+# Agrupa valores por modelo, CPU, evento y unidad; escribe resumen, barras y boxplots.
+# Los estados no numéricos se contabilizan aparte; cobertura baja añade rayado.
 def report(rows, output, scope, metadata=None):
     rows = assessed_rows(rows)
     observed = (metadata or {}).get("modo_conteo", "scaled") == "observed"
+    # Adaptador local del criterio de exclusión para el modo de conteo de la captura.
     def issue(row):
         return measurement_issue(row, scaled=not observed)
+    # groups contiene números válidos; records conserva también estados y advertencias.
     groups = {}
     records = {}
     for row in rows:
+        # Clave de agregación: no combina CPU, evento o unidad diferentes.
         key = (row["modelo"], row["cpu"], row["evento"], row["unidad"])
         records.setdefault(key, []).append(row)
         groups.setdefault(key, [])
@@ -186,6 +217,7 @@ def report(rows, output, scope, metadata=None):
                   "consultar referencia_topologia en metadata.json.", ""]
     for (model, cpu, event, unit), values in sorted(groups.items()):
         key = (model, cpu, event, unit)
+        # Cuenta cada razón de exclusión sin perder la cantidad total de capturas.
         issues = Counter(issue(r) for r in records[key] if issue(r))
         exclusions = "; ".join(f"{reason}: {n}" for reason,n in issues.items()) or "ninguna"
         active = [coverage(r) for r in records[key] if not issue(r) and coverage(r) is not None]
@@ -196,6 +228,7 @@ def report(rows, output, scope, metadata=None):
         if not values:
             lines.append(f"| {model} | {cpu} | {event} | {unit} | 0 / {len(records[key])} | — | — | {exclusions} |")
             continue
+        # Desviación muestral si hay n>1; una observación no estima variabilidad.
         deviation = statistics.stdev(values) if len(values) > 1 else 0
         lines.append(f"| {model} | {cpu} | {event} | {unit} | {len(values)} / {len(records[key])} | {statistics.mean(values):.4f} | {deviation:.4f} | {exclusions} |")
     missing = [row for row in rows if issue(row)]
@@ -229,8 +262,10 @@ def report(rows, output, scope, metadata=None):
         "task-clock": ("Tiempo CPU acumulado", "Puede superar el tiempo real cuando trabajan varios hilos a la vez."),
         "cpu-clock": ("Clock de las CPUs observadas", "Alcance de sistema; no es utilización exclusiva de nuestros trabajadores."),
     }
+    # Una figura por evento y unidad; sus paneles mantienen identidad de CPU/PMU.
     events = sorted({(key[2], key[3]) for key in groups})
     for index, (event, unit) in enumerate(events):
+        # Comando medido sin ventana; baseline sustituye la política por sequential.
         selected = [(key, values) for key, values in sorted(groups.items()) if key[2:] == (event, unit)]
         selected.sort(key=lambda item: (list(NAMES).index(item[0][0]), item[0][1]))
         canonical = event.split("/")[1] if "/" in event else event.split(":")[0]
@@ -255,7 +290,9 @@ def report(rows, output, scope, metadata=None):
             warning = f" · AVISO en {warning_count}" if warning_count else ""
             labels.append(f"{NAMES.get(key[0], key[0])} · {detail} · {cpu} · {len(values)}/{len(records[key])} usadas\n{context}{warning}")
         colors = [COLORS.get(key[0], "#64748b") for key, _ in selected]
+        # Medias por configuración; los grupos vacíos solo reciben un marcador de ausencia.
         averages = [statistics.mean(values) if values else 0 for _, values in selected]
+        # IC95 normal aproximado de la media; se muestra junto al número de observaciones.
         margins = [1.96*statistics.stdev(values)/math.sqrt(len(values)) if len(values)>1 else 0 for _, values in selected]
         scale, axis = 1, unit or "Conteo"
         if unit in ("msec", "ms"):
@@ -267,11 +304,13 @@ def report(rows, output, scope, metadata=None):
         averages = [value * scale for value in averages]
         margins = [value * scale for value in margins]
         fig, ax = plt.subplots(figsize=(12, max(5, len(selected)*.65+2)))
+        # Posiciones de grupos con medición: evita dibujar ausencia como una barra cero.
         valid_positions = [i for i, (_, values) in enumerate(selected) if values]
         bars = ax.barh(valid_positions, [averages[i] for i in valid_positions],
                        xerr=[margins[i] for i in valid_positions],
                        color=[colors[i] for i in valid_positions], height=.55, capsize=4)
         for bar, i in zip(bars, valid_positions):
+            # El rayado indica cobertura limitada; el valor numérico permanece en la figura.
             if warned[i]:
                 bar.set_hatch("///")
                 bar.set_edgecolor("#b45309")
@@ -314,6 +353,7 @@ def report(rows, output, scope, metadata=None):
         plt.close(fig)
 
 
+# Ejecuta perf y conserva salidas según política de logs; los errores siempre dejan diagnóstico.
 def capture_process(command, stem, env, keep_logs=False):
     """Omitir logs de ejecuciones correctas; conservar diagnóstico si falla."""
     if keep_logs:
@@ -326,6 +366,8 @@ def capture_process(command, stem, env, keep_logs=False):
     return result
 
 
+# Valida campaña, sondea acceso a eventos, obtiene metadatos, calienta y captura
+# cada repetición. El reporte y las figuras se generan después de medir.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--perf", default="perf", help="También acepta 'sudo perf'")
@@ -365,11 +407,14 @@ def main():
                 if row["estado"] == "ok": row["valor"] = float(row["valor"])
             if not baseline_rows:
                 raise ValueError("Captura perf sin referencia sequential")
+        # Fija configuración regional C para obtener números interpretables de forma uniforme.
         env = dict(os.environ, LC_ALL="C")
+        # Separa comandos como sudo perf en argumentos, sin evaluar código de shell.
         perf = shlex.split(options.perf)
         if not perf:
             raise ValueError("Comando perf vacío")
         cpu_info = subprocess.run([options.binary, "--cpu-info"], capture_output=True, text=True, env=env, check=True).stdout
+        # Extrae destinos lógicos de la topología del ejecutable, incluidos hermanos SMT.
         cpu_ids = sorted({int(cpu) for match in re.findall(r"nucleo=\d+ cpus=([\d;]+)", cpu_info)
                           for cpu in match.split(";")})
         if options.scope == "cpu" and not cpu_ids:
@@ -377,6 +422,7 @@ def main():
         events = options.events.replace("task-clock", "cpu-clock") if options.scope == "cpu" else options.events
         flags = capture_flags(options.events, options.scope, cpu_ids, options.count_mode)
         # No renderizar antes de saber si Linux permite usar los contadores.
+        # Sondeo con true: verifica permisos y eventos antes del costo de los renders.
         probe = subprocess.run([*perf, *flags, "--", "true"], capture_output=True, text=True, env=env)
         if probe.returncode:
             raise ValueError("perf no pudo abrir los eventos.\n" + probe.stderr +
@@ -394,6 +440,7 @@ def main():
         selected = [options.binary, *options.args, "--headless"]
         baseline = [options.binary, *common, "--model", "sequential", "--headless"]
         commands = {model: selected} if options.baseline_capture else {"sequential": baseline, model: selected}
+        # Registra procedencia: fecha UTC, comandos, sistema, CPUs y modo de contador.
         metadata = dict(fecha_utc=datetime.now(timezone.utc).isoformat(), alcance=options.scope,
                         repeticiones=options.repetitions, eventos=events, comandos=commands,
                         topologia=cpu_info, cpus_observadas=cpu_ids,
@@ -409,11 +456,15 @@ def main():
         metadata["modelos_cpu"] = sorted(set(re.findall(r"^model name\s*:\s*(.+)$", cpu_text, re.MULTILINE)))
         metadata["perf_event_paranoid"] = Path("/proc/sys/kernel/perf_event_paranoid").read_text().strip()
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        # Inicia con referencia importada cuando existe; nunca inventa nuevas observaciones.
         rows = list(baseline_rows)
+        # Calentamiento sin perf, excluido de las filas exportadas.
         for command in commands.values():
             subprocess.run(command, stdout=subprocess.DEVNULL, env=env, check=True)  # Calentamiento sin perf.
+        # Cada repetición conserva su identidad para emparejar contadores y calcular IPC.
         for repetition in range(1, options.repetitions + 1):
             order = list(commands.items())
+            # Alterna orden modelo/referencia para reducir efectos sistemáticos de ejecución.
             if repetition % 2 == 0:
                 order.reverse()
             for name, command in order:
@@ -429,9 +480,11 @@ def main():
                     raise ValueError(f"No hay contadores interpretables; conserva el archivo crudo: {raw}")
                 if not any(row["estado"] == "ok" for row in measured):
                     raise ValueError(f"Ningún contador tiene una medición válida. Revisa {raw}")
+                # Añade IPC derivado tras interpretar y validar los eventos originales.
                 measured += ipc_rows(measured)
                 rows += [dict(modelo=name, repeticion=repetition, **row) for row in measured]
                 print(f"perfilado={name} repeticion={repetition}/{options.repetitions}", flush=True)
+        # Exporta todas las filas antes de generar resumen y presentación.
         with (output / "contadores.csv").open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
             writer.writeheader()

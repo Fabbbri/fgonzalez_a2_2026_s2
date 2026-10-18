@@ -1,3 +1,6 @@
+# Ensayos de interpretación de perf con contadores sintéticos.
+# Se verifican dominios de PMU, cobertura, IPC, referencias y política de logs.
+# Las fixtures no afirman medir contadores reales del hardware.
 import importlib.util
 from pathlib import Path
 import unittest
@@ -6,14 +9,18 @@ import sys
 import csv
 import json
 
+# Importación por ruta del analizador de contadores, sin lanzar su main de CLI.
 spec = importlib.util.spec_from_file_location("profile_perf", Path(__file__).parents[1] / "scripts/profile_perf.py")
 profile = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(profile)
+# Permite resolver el módulo comparador y sus imports hermanos durante los ensayos.
 sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
 import plot_profile_comparison as comparison
 
 
+# Conjunto de propiedades para capturas instrumentadas y su presentación.
 class PerfTests(unittest.TestCase):
+    # Comprueba separación por P/estado y representación única de la referencia importada.
     def test_comparison_preserves_configurations_and_deduplicates_shared_reference(self):
         with tempfile.TemporaryDirectory() as directory:
             captures=[]
@@ -43,6 +50,7 @@ class PerfTests(unittest.TestCase):
             (captures[-1]/'metadata.json').write_text(json.dumps(metadata))
             with self.assertRaises(ValueError): comparison.load(captures)
 
+    # Modo compacto omite stdout correcto, pero conserva stderr si hay diagnóstico.
     def test_compact_logs_keep_only_diagnostics(self):
         with tempfile.TemporaryDirectory() as directory:
             stem = Path(directory) / 'smt-001'
@@ -53,6 +61,7 @@ class PerfTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertEqual(stem.with_suffix('.stderr.txt').read_text(), 'fallo')
 
+    # Modo detallado escribe stdout y stderr incluso para ejecución correcta.
     def test_detailed_logs_preserve_both_streams(self):
         with tempfile.TemporaryDirectory() as directory:
             stem = Path(directory) / 'smt-001'
@@ -60,6 +69,7 @@ class PerfTests(unittest.TestCase):
             self.assertEqual(stem.with_suffix('.stdout.txt').read_text(), 'salida\n')
             self.assertEqual(stem.with_suffix('.stderr.txt').read_text(), 'aviso')
 
+    # Verifica --no-scale y agrupación independiente de eventos cpu_core/cpu_atom.
     def test_observed_capture_separates_hybrid_groups_and_disables_scaling(self):
         flags=profile.capture_flags(profile.DEFAULT_EVENTS,'process',[], 'observed', ['cpu_core','cpu_atom'])
         self.assertIn('--no-scale',flags)
@@ -68,12 +78,14 @@ class PerfTests(unittest.TestCase):
         self.assertIn('{cpu_atom/cycles/,cpu_atom/instructions/,cpu_atom/cache-misses/}',events)
         self.assertNotIn('--no-scale',profile.capture_flags('cycles','process',[],'scaled'))
 
+    # Una residencia breve en una PMU sigue siendo un conteo observado válido.
     def test_observed_short_pmu_residence_is_preserved(self):
         row=profile.parse_stat('123;;cpu_atom/cache-misses/;100;0.00;;\n','process')[0]
         self.assertEqual(profile.measurement_issue(row,scaled=False),'')
         row['estado']='<not counted>'
         self.assertEqual(profile.measurement_issue(row,scaled=False),'<not counted>')
 
+    # Cobertura insuficiente añade advertencia sin descartar la observación numérica.
     def test_numeric_counter_with_low_coverage_is_kept_with_warning(self):
         row = profile.parse_stat('999999;;cpu_atom/cache-misses/;123;0.00;;\n','process')[0]
         self.assertEqual(row['estado'],'ok')  # Captura cruda permanece intacta.
@@ -89,6 +101,7 @@ class PerfTests(unittest.TestCase):
         self.assertEqual(profile.measurement_issue(row),'')
         self.assertEqual(profile.measurement_warning(row),'cobertura no disponible')
 
+    # Reconstruye IPC desde cada par original en vez de reutilizar derivados incompletos.
     def test_old_ipc_recomputed_from_each_repetition(self):
         rows=[]
         for repetition, active in ((1,'0.00'),(2,'99.00')):
@@ -103,6 +116,7 @@ class PerfTests(unittest.TestCase):
         self.assertEqual(profile.measurement_issue(ipc[1]),'')
         self.assertEqual(ipc[1]['valor'],2)
 
+    # Distingue PMU y preserva <not supported> como ausencia, sin valor cero.
     def test_hybrid_domains_and_missing_counters(self):
         text = "# perf stat\n100;;cpu_core/cycles/;123;80.00;;\n200;;cpu_atom/cycles/;123;95.00;;\n<not supported>;;cache-misses;0;0;;\n"
         rows = profile.parse_stat(text, "process")
@@ -113,11 +127,13 @@ class PerfTests(unittest.TestCase):
         self.assertEqual(rows[2]["valor"], "")
         self.assertEqual(rows[2]["estado"], "<not supported>")
 
+    # CPUs lógicas distintas mantienen registros y conteos separados.
     def test_cpu_rows_do_not_merge(self):
         rows = profile.parse_stat("CPU0;100;;cycles;123;100.00;;\nCPU1;200;;cycles;123;100.00;;\n", "cpu")
         self.assertEqual([row["cpu"] for row in rows], ["CPU0", "CPU1"])
         self.assertEqual([row["valor"] for row in rows], [100, 200])
 
+    # Solo el par cycles/instructions de igual CPU y dominio produce IPC.
     def test_ipc_matches_pmu_and_cpu(self):
         rows = profile.parse_stat("CPU0;100;;cpu_core/cycles/;123;100.00;;\nCPU0;200;;cpu_core/instructions/;123;100.00;;\nCPU1;300;;cpu_atom/instructions/;123;100.00;;\n", "cpu")
         ipc = profile.ipc_rows(rows)
@@ -125,6 +141,7 @@ class PerfTests(unittest.TestCase):
         self.assertEqual(ipc[0]["cpu"], "CPU0")
         self.assertEqual(ipc[0]["valor"], 2)
 
+    # Retira política y P al construir referencia, conservando calidad y resolución.
     def test_reference_preserves_workload(self):
         model, common = profile.configuration(["--width", "641", "--model", "smt", "--threads", "12", "--samples", "8"])
         self.assertEqual(model, "smt")
@@ -135,5 +152,6 @@ class PerfTests(unittest.TestCase):
                 profile.configuration(args)
 
 
+# Ejecutor de casos unittest; no inicia una campaña real de perf.
 if __name__ == "__main__":
     unittest.main()

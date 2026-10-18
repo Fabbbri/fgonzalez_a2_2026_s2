@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Orquestación de campañas sin competencia entre procesos medidos.
+# Consulta valores predeterminados al ejecutable, valida topología y compara
+# trayectorias con SHA256. Las métricas y figuras se calculan después de cada
+# simulación. La alternancia SMT se restaura mediante finally, incluso por error.
 """Campaña N-body con referencia compartida y CSV/gráficas equivalentes a ray tracing."""
 import argparse
 import copy
@@ -19,20 +23,25 @@ import time
 
 from plot_metrics import Measurements, WORKLOAD, generate, load, metric_estimate
 
+# Esquema CSV crudo: identifica carga, tiempos, afinidad, hash y alcance de medición.
 FIELDS = ("modelo", "hilos", "repeticion", "cuerpos", "pasos", "dt", "K",
           "intervalo_ms", "espera_ms", "semilla", "tiempo_total_ms",
           "tiempo_secuencial_ms", "speedup", "eficiencia_paralela",
           "nucleos_fisicos_disponibles", "cpus_logicas_disponibles", "smt_activo_linux",
           "afinidad_cpus", "cpus_permitidas", "sibling_groups", "referencia_tipo",
           "referencia_csv", "trayectoria_hash", "referencia_smt", "alcance_tiempo")
+# Etiqueta del intervalo de pared: creación, cálculo, coordinación, captura y cierre.
 SCOPE = "creacion_calculo_sincronizacion_captura_cierre"
+# Traduce nombres cortos a las etiquetas que acepta el ejecutable C++.
 ALIASES = {"sequential": "sequential", "fine": "fine-grained", "coarse": "coarse-grained",
            "fine-grained": "fine-grained", "coarse-grained": "coarse-grained", "smt": "smt", "cmp": "cmp"}
 
 
+# Completa solo los argumentos omitidos mediante el JSON --defaults del ejecutable real.
 def apply_config_defaults(args):
     fields = ("bodies_per_galaxy", "steps", "dt", "seed", "quantum",
               "block_interval_ms", "block_duration_ms")
+    # Solo los campos sin valor explícito se completan desde Config; los overrides se conservan.
     missing = [field for field in fields if getattr(args, field) is None]
     if missing:
         defaults = json.loads(subprocess.check_output(
@@ -41,11 +50,13 @@ def apply_config_defaults(args):
             setattr(args, field, float(defaults[field]) if field == "dt" else int(defaults[field]))
 
 
+# Obtiene la línea original y un diccionario de recursos permitidos desde --topology.
 def topology(binary):
     output = subprocess.check_output([binary, "--topology"], text=True).strip()
     return output, dict(part.split("=", 1) for part in output.split(","))
 
 
+# Calcula SHA256 por bloques de un MiB, sin cargar toda la trayectoria en memoria.
 def file_hash(path):
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -54,13 +65,16 @@ def file_hash(path):
     return digest.hexdigest()
 
 
+# Agrupa observaciones por P y exporta estimaciones compatibles con la referencia compartida.
 def write_summary(path, rows, baseline):
     summaries = []
+    # Separa resúmenes de configuraciones con P distinto.
     for workers in sorted({int(row["hilos"]) for row in rows}):
         selected = [row for row in rows if int(row["hilos"]) == workers]
         data = Measurements((float(r["tiempo_total_ms"]), float(r["tiempo_secuencial_ms"]),
                              float(r["speedup"]), float(r["eficiencia_paralela"])) for r in selected)
         data.workers = workers
+        # La serie original de la referencia permite incluir su variación en el estimador delta.
         data.baseline = baseline
         total, base, speedup, efficiency = [metric_estimate(data, i) for i in range(4)]
         summaries.append(dict(modelo=selected[0]["modelo"], hilos=workers, repeticiones=len(data),
@@ -76,7 +90,9 @@ def write_summary(path, rows, baseline):
         writer.writerows(summaries)
 
 
+# Interpreta una lista P o elige barridos automáticos según C,L y política SMT.
 def counts(value, physical, logical, smt=False):
+    # Coarse/CMP usan potencias de dos válidas y C; SMT compara C con L o 2*C.
     if value == "auto":
         return sorted({physical, logical if logical > physical else 2 * physical}) if smt else sorted(
             {p for p in (1, 2, 4, 8, physical) if p <= physical})
@@ -89,11 +105,13 @@ def counts(value, physical, logical, smt=False):
     return parsed
 
 
+# Mide una fase con topología estable, referencia secuencial, hashes y metadatos de procedencia.
 def campaign(args):
     import matplotlib  # Fallar antes de medir si no se podrán producir gráficas.
     matplotlib.use("Agg")
     binary = str(Path(args.binary).resolve())
     models = list(dict.fromkeys(ALIASES[m] for m in (args.models or [args.model or "sequential"])))
+    # Instantánea inmutable de recursos para cotejar todo el lote.
     snapshot, topo = topology(binary)
     physical, logical = int(topo["physical_cores"]), int(topo["logical_cpus"])
     ordinary = counts(args.thread_counts, physical, logical)
@@ -105,10 +123,12 @@ def campaign(args):
         raise ValueError("CMP requiere una cantidad de trabajadores <= núcleos físicos")
     root = args.results_dir.resolve()
     root.mkdir(parents=True, exist_ok=True)
+    # Identificador único con tiempo y nanosegundos para conservar logs de cada ejecución.
     stamp = time.strftime("%Y%m%d-%H%M%S") + "-" + str(time.time_ns())
     logs = root / "logs" / stamp
     logs.mkdir(parents=True)
     (logs / "topology.txt").write_text(snapshot + "\n")
+    # Guarda binario, argumentos, compilador y flags; hash del ejecutable fija procedencia.
     metadata = {**vars(args), "binary": binary, "platform": platform.platform(), "topology": topo,
                 "timing_scope": SCOPE, "warmups_per_configuration": 1, "hash": "sha256",
                 "binary_sha256": file_hash(Path(binary)),
@@ -117,17 +137,22 @@ def campaign(args):
     (logs / "environment.json").write_text(json.dumps(metadata, default=str, indent=2) + "\n")
     (root / "benchmark.txt").write_text(json.dumps(metadata, default=str, indent=2) + "\n")
     status = logs / "status.txt"
+    # Estado transaccional del lote: solo se marca completo después de terminar las fases.
     status.write_text("incomplete\n")
     trajectory = logs / "trajectory.nbody"
+    # Argumentos comunes a todos los modelos; --no-output evita ventana, no captura de trayectoria.
     common = ["--bodies-per-galaxy", str(args.bodies_per_galaxy), "--steps", str(args.steps),
               "--dt", str(args.dt), "--seed", str(args.seed), "--no-output", "--trajectory", str(trajectory)]
 
+    # Verifica identidad de recursos y SMT antes y después de cada ejecución medida.
     def check_topology():
         if topology(binary)[0] != snapshot:
             raise ValueError("Cambió la topología/afinidad o el estado SMT; campaña interrumpida")
 
+    # Ejecuta una simulación, valida una única fila temporal y devuelve registro, milisegundos y hash.
     def run(model, workers, label):
         check_topology()
+        # Construye lista de argumentos preservando rutas sin evaluación de shell.
         command = [binary, *common, "--model", model]
         if workers is not None:
             command += ["--threads", str(workers)]
@@ -137,16 +162,19 @@ def campaign(args):
             command += ["--block-interval-ms", str(args.block_interval_ms), "--block-duration-ms", str(args.block_duration_ms)]
         with (logs / "commands.jsonl").open("a") as stream:
             stream.write(json.dumps(command) + "\n")
+        # Ejecución bloqueante; no lanza dos simulaciones de rendimiento simultáneas.
         result = subprocess.run(command, capture_output=True, text=True)
         with (logs / (label + ".log")).open("a") as stream:
             stream.write(result.stderr)
         if result.returncode:
             raise ValueError(f"Falló {label}: {result.stderr.strip()}")
         check_topology()
+        # La salida estándar debe contener exactamente la cabecera y una medición válida.
         records = list(csv.DictReader(result.stdout.splitlines()))
         if len(records) != 1:
             raise ValueError("La simulación no produjo exactamente una medición")
         record = records[0]
+        # Convierte segundos reportados por C++ a milisegundos del esquema de comparación.
         total = float(record["total_seconds"]) * 1000
         if not math.isfinite(total) or total <= 0 or record["model"] != model:
             raise ValueError("Medición inválida")
@@ -155,13 +183,16 @@ def campaign(args):
             if not match:
                 raise ValueError("La simulación no informó la afinidad de sus trabajadores")
             record["affinity"] = match.group(1)
+        # El hash del archivo se calcula fuera del intervalo medido de C++.
         return record, total, file_hash(trajectory)
 
+    # N total, pasos, dt y semilla: condiciones de carga iguales entre modelos.
     expected_workload = (str(2 * args.bodies_per_galaxy), str(args.steps), str(args.dt), str(args.seed))
     baseline_rows = None
     baseline_path = None
     generated = []
 
+    # Calienta una configuración, repite simulaciones verificadas y exporta CSV crudo y resumen.
     def measure(model, workers_list, label, reference=None):
         rows = []
         path = root / (label + ".csv")
@@ -170,21 +201,26 @@ def campaign(args):
             writer.writeheader()
             stream.flush()
             for workers in workers_list:
+                # Calentamiento no exportado; su trayectoria proporciona la huella esperada.
                 warmup, _, expected_hash = run(model, workers, label)
                 if reference and expected_hash != reference[0]["trayectoria_hash"]:
                     raise ValueError("La trayectoria difiere de la referencia compartida")
+                # Cada repetición conserva su tiempo y validación, sin eliminar observaciones por su magnitud.
                 for repetition in range(1, args.repetitions + 1):
                     record, total, digest = run(model, workers, label)
                     if digest != expected_hash:
                         raise ValueError("La trayectoria cambió entre ejecuciones; no se exporta la muestra")
+                    # Verifica que el ejecutable respetó carga solicitada y P del calentamiento.
                     actual_workload = (record["bodies"], record["steps"], str(float(record["dt"])), record["seed"])
                     if actual_workload != expected_workload or record["workers"] != warmup["workers"]:
                         raise ValueError("La medición cambió de carga o cantidad de trabajadores")
                     p = int(record["workers"])
+                    # Referencia común: media original de sequential; al medir sequential usa su propio tiempo.
                     base = statistics.mean(float(r["tiempo_total_ms"]) for r in reference) if reference else total
                     cpus = record.get("affinity", "no_aplica")
                     if cpus != warmup.get("affinity", "no_aplica"):
                         raise ValueError("La afinidad cambió entre ejecuciones")
+                    # Serializa S=Tseq/Tmodelo y E=S/P, además de estado y origen de referencia.
                     row = dict(modelo={"fine-grained": "fine", "coarse-grained": "coarse"}.get(model, model),
                         hilos=p, repeticion=repetition, cuerpos=record["bodies"], pasos=record["steps"], dt=str(float(record["dt"])),
                         K=record["quantum"], intervalo_ms=args.block_interval_ms if model == "coarse-grained" else 0,
@@ -206,6 +242,7 @@ def campaign(args):
         generated.append(path)
         return rows
 
+    # Una base importada debe coincidir en carga, alcance de cronómetro y hash de trayectoria.
     if args.baseline_csv:
         baseline_path = args.baseline_csv.resolve()
         with baseline_path.open(newline="") as stream:
@@ -221,11 +258,13 @@ def campaign(args):
                 raise ValueError("La referencia mezcla resultados o estados SMT")
     else:
         baseline_rows = measure("sequential", [None], getattr(args, "baseline_label", "sequential"))
+    # Copias inmutables de referencia evitan que una campaña posterior altere comparaciones anteriores.
     references = root / "references"
     references.mkdir(exist_ok=True)
     source_baseline = baseline_path if args.baseline_csv else root / (getattr(args, "baseline_label", "sequential") + ".csv")
     baseline_path = references / ("sequential-" + stamp + ".csv")
     shutil.copyfile(source_baseline, baseline_path)
+    # Modelos medidos sucesivamente con sus barridos y una carga física constante.
     for model in models:
         if model == "sequential":
             continue
@@ -234,6 +273,7 @@ def campaign(args):
             label += "-" + {"1": "on", "0": "off"}.get(topo.get("smt_active"), "unknown")
         workers = smt if model == "smt" else cmp if model == "cmp" else ordinary if model == "coarse-grained" else [None]
         measure(model, workers, label, baseline_rows)
+    # La coordinación on/off puede posponer figuras hasta restaurar el hardware.
     if not getattr(args, "defer_plots", False):
         plot_campaign(generated, root)
     metadata["status"] = "measured" if getattr(args, "defer_plots", False) else "complete"
@@ -247,6 +287,7 @@ def campaign(args):
     return {"generated": generated, "logs": logs, "metadata": metadata}
 
 
+# Genera presentación individual por archivo y comparación conjunta de la campaña seleccionada.
 def plot_campaign(generated, root):
     for path in generated:
         groups, workload = load([str(path)])
@@ -256,6 +297,7 @@ def plot_campaign(generated, root):
         generate(groups, workload, root / "plots" / "comparison")
 
 
+# Consulta el control Linux y acepta únicamente estados con transición on/off disponible.
 def read_smt_state():
     state = Path("/sys/devices/system/cpu/smt/control").read_text().strip()
     if state not in ("on", "off"):
@@ -263,19 +305,23 @@ def read_smt_state():
     return state
 
 
+# Invoca el objetivo smt-control del Makefile mediante argumentos sin shell intermedio.
 def set_smt_state(state, make_command):
     subprocess.run([*shlex.split(make_command), "--no-print-directory", "smt-control", "SMT=" + state],
                    cwd=Path(__file__).resolve().parents[1], check=True)
 
 
+# Traduce la señal de terminación a excepción para ejecutar la restauración de finally.
 def interrupt_benchmark(signum, frame):
     raise KeyboardInterrupt
 
 
+# Obtiene credenciales de sudo antes de iniciar cambios de estado de la campaña.
 def authorize_smt_control():
     subprocess.run(["sudo", "-v"], check=True)
 
 
+# Coordina fases on/off con el mismo P, referencia por fase y restauración del estado inicial.
 def run_campaigns(args):
     models = list(dict.fromkeys(ALIASES[m] for m in (args.models or [args.model or "sequential"])))
     states = getattr(args, "smt_states", "keep")
@@ -307,6 +353,7 @@ def run_campaigns(args):
                 phase.baseline_label = "sequential-" + state
             print(f"Campaña SMT={state}; trabajadores={phase.smt_thread_counts}", flush=True)
             results.append(campaign(phase))
+    # Restauración garantizada para salida ordinaria, error e interrupción capturada.
     finally:
         print(f"Restaurando SMT={original}...", flush=True)
         try:
@@ -320,6 +367,7 @@ def run_campaigns(args):
         result["metadata"]["status"] = "complete"
         (result["logs"] / "status.txt").write_text("complete\n")
         (result["logs"] / "environment.json").write_text(json.dumps(result["metadata"], default=str, indent=2) + "\n")
+    # Resumen de fases y archivos, publicado completo después de medir, restaurar y graficar.
     manifest = {"status": "complete", "smt_states": states, "original_smt": original,
                 "restored_smt": original, "smt_thread_counts": fixed_counts,
                 "generated_csv": [str(path.relative_to(root)) for path in generated],
@@ -328,6 +376,7 @@ def run_campaigns(args):
     return manifest
 
 
+# Analiza parámetros, aplica valores del binario y convierte errores o interrupciones en salida CLI.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary")

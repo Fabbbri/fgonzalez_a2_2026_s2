@@ -1,3 +1,6 @@
+# Ensayos del objetivo Make smt-control con archivos temporales y sudo simulado.
+# No modifica sysfs ni solicita credenciales reales; valida transiciones y
+# lectura del estado efectivo del control.
 """Prueba el control Make de SMT con sysfs y sudo simulados, sin cambiar el PC."""
 import os
 from pathlib import Path
@@ -6,7 +9,9 @@ import tempfile
 import unittest
 
 
+# Casos del protocolo keep/on/off y sus fallos de disponibilidad.
 class SmtControlTests(unittest.TestCase):
+    # Copia Makefile con rutas de sysfs sustituidas y crea un comando sudo de fixture.
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="nbody-smt-control-")
         self.addCleanup(self.temp.cleanup)
@@ -35,16 +40,19 @@ if not os.environ.get("SMT_TEST_MISMATCH"):
         self.env = {**os.environ, "PATH": str(self.root) + os.pathsep + os.environ["PATH"],
                     "SMT_TEST_ROOT": str(self.root)}
 
+    # Invoca el objetivo contra el entorno temporal con tiempo máximo de ejecución.
     def run_make(self, state, **env):
         return subprocess.run(["make", "--no-print-directory", "smt-control", "SMT=" + state],
                               cwd=self.root, env={**self.env, **env},
                               capture_output=True, text=True, timeout=10)
 
+    # keep y estado ya alcanzado no ejecutan escritura privilegiada.
     def test_keep_and_already_on_do_not_write(self):
         for state in ("keep", "on"):
             self.assertEqual(self.run_make(state).returncode, 0)
         self.assertFalse((self.root / "called").exists())
 
+    # Cada transición comprueba tanto control solicitado como estado activo esperado.
     def test_off_and_on_verify_state(self):
         for state, active in (("off", "0"), ("on", "1")):
             result = self.run_make(state)
@@ -52,6 +60,7 @@ if not os.environ.get("SMT_TEST_MISMATCH"):
             self.assertEqual(self.control.read_text().strip(), state)
             self.assertEqual(self.active.read_text().strip(), active)
 
+    # Estados inválidos, forceoff y ausencia de archivo producen error sin escribir.
     def test_invalid_unsupported_and_missing_control(self):
         self.assertNotEqual(self.run_make("invalid").returncode, 0)
         self.control.write_text("forceoff\n")
@@ -60,6 +69,7 @@ if not os.environ.get("SMT_TEST_MISMATCH"):
         self.control.unlink()
         self.assertNotEqual(self.run_make("on").returncode, 0)
 
+    # Una escritura que no alcanza el estado efectivo pedido debe fallar.
     def test_state_mismatch_fails(self):
         result = self.run_make("off", SMT_TEST_MISMATCH="1")
         self.assertNotEqual(result.returncode, 0)

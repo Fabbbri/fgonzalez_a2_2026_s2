@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
+# Ensayo de orquestación perf con comandos temporales que emiten datos sintéticos.
+# No accede a la PMU ni cambia permisos. Comprueba éxito, contadores ausentes,
+# fallos del simulador y cambios de topología sin fabricar evidencia de hardware.
 # Prueba la orquestación sin requerir acceso a la PMU ni cambiar permisos.
 set -euo pipefail
+# Resuelve el perfilador real; perf y simulador de este ensayo son fixtures.
 script=$(cd "$(dirname "$0")/../scripts" && pwd)/profile.sh
+# Aísla comandos y archivos de la prueba en una carpeta temporal.
 test_dir=$(mktemp -d /tmp/nbody-profile.XXXXXX)
 trap 'rm -rf "$test_dir"' EXIT
+# Mock de perf: escribe contadores conocidos o diagnósticos según MOCK_MODE.
 cat > "$test_dir/perf" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -23,6 +29,7 @@ else
 fi
 "$@"
 MOCK
+# Mock del simulador: informa topología o una fila CSV temporal conocida.
 cat > "$test_dir/nbody" <<'MOCK'
 #!/usr/bin/env bash
 if [[ $1 == --topology ]]; then
@@ -41,6 +48,7 @@ printf 'model,workers,bodies,steps,dt,seed,quantum,total_seconds\nsequential,1,4
 MOCK
 chmod +x "$test_dir/perf" "$test_dir/nbody"
 cd "$test_dir"
+# El script instrumentador ejecuta la fixture en lugar del perf instalado.
 export PERF="$test_dir/perf"
 bash "$script" "$test_dir/nbody" 2 --model sequential > success.log
 result=$(sed -n 's/^Perfilado: \(output\/profile-.*\)$/\1/p' success.log | head -1)
@@ -50,6 +58,7 @@ test -s "$result/perf-2.csv"
 test -s "$result/metrics-2.csv"
 test -s "$result/topology.txt"
 test -s "$result/command.txt"
+# Cada fallo esperado debe dejar status incomplete y código de salida no exitoso.
 for mode in denied unsupported not-counted simulation-failed topology-changed; do
     if MOCK_MODE=$mode bash "$script" "$test_dir/nbody" 1 > "$mode.log" 2>&1; then
         printf 'No detectó el fallo %s\n' "$mode" >&2; exit 1

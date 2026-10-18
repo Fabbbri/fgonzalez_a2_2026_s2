@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Análisis posterior de CSV N-body con carga fija cuerpos,pasos,dt,semilla.
+# Los grupos distinguen política, quantum, bloqueos, P, topología y estado SMT.
+# Las observaciones son (tiempo_modelo, tiempo_base, speedup, eficiencia); tiempos
+# en milisegundos. Las distribuciones usan datos crudos, no medias repetidas.
 """Analiza los CSV crudos; nunca usa medias como muestras de una distribución."""
 import argparse
 import csv
@@ -8,40 +12,53 @@ from pathlib import Path
 import statistics
 
 # La carga se mantiene fija. K y los bloqueos identifican políticas distintas.
+# Carga física identificada por N, pasos, dt y semilla; los modelos no la modifican.
 WORKLOAD = ("cuerpos", "pasos", "dt", "semilla")
+# Parámetros de planificación separados de la carga física.
 POLICY = ("modelo", "K", "intervalo_ms", "espera_ms")
 
+# Lista de observaciones con referencia compartida opcional y cantidad P del grupo.
 class Measurements(list):
     baseline = None
 
 
+# Devuelve media, desviación y margen IC95 de columna index.
+# Tiempo: 0 modelo, 1 base; métricas derivadas: 2 speedup y 3 eficiencia.
 def metric_estimate(rows, index, scale=1):
+    # Sin base compartida, la estimación conserva las observaciones de cada par.
     if rows.baseline is None:
         return estimate([r[index] * scale for r in rows])
+    # La distribución de referencia usa sus tiempos originales, no una media duplicada.
     if index == 1:
         return estimate([t * scale for t in rows.baseline])
     if index == 0:
         return estimate([r[0] * scale for r in rows])
+    # Estima por separado base y modelo para incluir incertidumbre de ambas medias.
     bm, bsd, _ = estimate(rows.baseline)
     tm, tsd, _ = estimate([r[0] for r in rows])
     ratio = bm / tm
     factor = scale / (rows.workers if index == 3 else 1)
+    # Varianzas relativas para el método delta del cociente de medias.
     vb, vt = (bsd / bm)**2, (tsd / tm)**2
     return (ratio * factor, ratio * math.sqrt(vb + vt) * factor,
             1.96 * ratio * math.sqrt(vb / len(rows.baseline) + vt / len(rows)) * factor)
 
 
+# Calcula media, desviación muestral y margen normal 1.96*s/sqrt(n).
 def estimate(values):
     mean = statistics.mean(values)
     sd = statistics.stdev(values)
     return mean, sd, 1.96 * sd / math.sqrt(len(values))
 
 
+# Expande rutas y valida carga, cocientes, trayectoria y referencias antes de agrupar datos.
 def load(patterns):
+    # Expande comodines y elimina rutas repetidas para evitar cargar el mismo archivo dos veces.
     paths = sorted({Path(p) for pattern in patterns for p in glob.glob(pattern)})
     if not paths:
         raise ValueError("No hay CSV que coincidan con la ruta indicada")
     groups, workload = {}, None
+    # Reutiliza CSV de referencia en memoria cuando varias observaciones lo importan.
     baseline_cache = {}
     for path in paths:
         with path.open(newline="") as stream:
@@ -70,6 +87,7 @@ def load(patterns):
                     raise ValueError("Speedup incompatible con los tiempos del CSV")
                 if not math.isclose(speedup / workers, float(row["eficiencia_paralela"]), rel_tol=1e-8):
                     raise ValueError("Eficiencia incompatible con los tiempos del CSV")
+                # Clave (política,P): cada grupo mantiene una distribución experimental separada.
                 data = groups.setdefault((policy, workers), Measurements())
                 data.workers = workers
                 shared = row.get("referencia_tipo") == "compartida"
@@ -94,12 +112,14 @@ def load(patterns):
                     if data.baseline is not None and data.baseline != baseline:
                         raise ValueError("No mezclar referencias compartidas diferentes")
                     data.baseline = baseline
+                # Conserva todas las repeticiones válidas, incluidos valores extremos.
                 data.append((total, base, speedup, speedup / workers))
     if not groups or any(len(rows) < 2 for rows in groups.values()):
         raise ValueError("Se necesitan al menos dos iteraciones crudas por configuración")
     return dict(sorted(groups.items())), workload
 
 
+# Etiqueta compacta de política y trabajadores con parámetros que distinguen configuraciones.
 def label(key):
     policy, workers = key
     model, quantum, interval, wait = policy[:4]
@@ -114,6 +134,7 @@ COLORS = {"sequential": "#64748b", "fine": "#8b5cf6", "coarse": "#e69519",
 NAMES = {"sequential": "Secuencial", "fine": "Fine", "coarse": "Coarse", "cmp": "CMP", "smt": "SMT"}
 
 
+# Etiqueta de figura con nombres legibles y detalles de ejecución.
 def readable(key):
     policy, workers = key
     model = policy[0]
@@ -128,6 +149,7 @@ def readable(key):
     return f"{name} · {detail}"
 
 
+# Formato uniforme de títulos, ejes, cuadrícula y bordes de figuras.
 def decorate(ax, title, xlabel):
     ax.set_title(title, loc="left", fontsize=15, fontweight="bold", pad=20)
     ax.set_xlabel(xlabel, fontsize=11)
@@ -137,12 +159,15 @@ def decorate(ax, title, xlabel):
         ax.spines[side].set_visible(False)
 
 
+# Añade contexto y guarda PNG después de ajustar márgenes.
 def save(fig, path, note):
     fig.text(.02, .02, note, fontsize=9, color="#475569")
     fig.tight_layout(rect=(0, .09, 1, 1))
     fig.savefig(path, dpi=170, facecolor="white")
 
 
+# Ajuste por mínimos cuadrados del tiempo relativo 1/S a f+(1-f)/P.
+# Devuelve f acotada, f sin restricción y RMSE; un único P no estima curva.
 def fit_amdahl(points):
     """Ajuste descriptivo de T(P)/Tseq = f + (1-f)/P, sin intercepto libre.
 
@@ -153,15 +178,19 @@ def fit_amdahl(points):
         return None
     if any(p < 1 or not math.isfinite(s) or s <= 0 for p, s in points):
         raise ValueError("P y speedup deben ser positivos para Amdahl")
+    # Regresión sin intercepto libre con x=1-1/P y y=1/S-1/P.
     denominator = sum((1-1/p)**2 for p, _ in points)
     if not denominator:
         return None
+    # Pendiente suma(x*y)/suma(x²), con igual peso por configuración P.
     raw = sum((1-1/p)*(1/s-1/p) for p, s in points) / denominator
+    # Acota la fracción efectiva a [0,1] sin ocultar el valor sin restringir.
     fraction = min(1.0, max(0.0, raw))
     rmse = math.sqrt(sum((1/s-(fraction+(1-fraction)/p))**2 for p, s in points)/len(points))
     return fraction, raw, rmse
 
 
+# Crea paneles de datos y curva idealizada por política sin mezclar estados de hardware.
 def generate_amdahl(groups, workload, output):
     import matplotlib
     matplotlib.use("Agg")
@@ -227,6 +256,7 @@ def generate_amdahl(groups, workload, output):
     (output/"amdahl.md").write_text("\n".join(report)+"\n",encoding="utf-8")
 
 
+# Produce barras de estimadores, distribuciones crudas, escalabilidad y reporte.
 def generate(groups, workload, output):
     try:
         import matplotlib
@@ -245,12 +275,15 @@ def generate(groups, workload, output):
     comparison = len({k[0][0] for k in keys}) > 1
     confidence = ("IC95 aproximado; speedup compartido = cociente de medias (método delta)." if shared else
                   "Barras de error: IC95 aproximado de la media.") + " Menos de 200: prueba preliminar."
+    # Columnas graficadas y escala: ms a segundos, S sin unidad y E a porcentaje.
     metrics = [(0, "Tiempo (segundos)", "tiempo", .001),
                (2, "Aceleración frente a secuencial (×)", "speedup", 1),
                (3, "Eficiencia paralela (%)", "eficiencia", 100)]
 
     for index, title, name, scale in metrics:
+        # Series crudas destinadas a boxplot e histograma.
         values = [[r[index] * scale for r in groups[k]] for k in keys]
+        # Estimadores apropiados del grupo para medias e intervalos de las barras.
         estimates = [metric_estimate(groups[k], index, scale) for k in keys]
         fig, ax = plt.subplots(figsize=(12, max(5, len(keys) * .8 + 2)))
         positions = list(range(len(keys)))
@@ -346,6 +379,7 @@ def generate(groups, workload, output):
         save(fig, output / filename, context + "\n" + confidence + " Un solo P representa un punto.")
         plt.close(fig)
 
+    # El reporte usa los mismos grupos y fórmulas que las gráficas.
     report = ["# Análisis de repeticiones", "",
               "Carga fija: " + ", ".join(f"{k}={v}" for k, v in zip(WORKLOAD, workload)) + ".", "",
               "Gráficas principales: comparacion-tiempo.png (segundos, menos es mejor), "
@@ -376,6 +410,7 @@ def generate(groups, workload, output):
     print(f"Gráficas y reporte: {output}")
 
 
+# Selecciona archivos CSV y ejecuta generación completa o ajuste de Amdahl.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv", nargs="+", help="CSV crudos o patrones; los resúmenes se omiten")

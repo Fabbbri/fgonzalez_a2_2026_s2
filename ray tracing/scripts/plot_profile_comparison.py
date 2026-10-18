@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Comparación transversal de capturas compatibles de perf.
+# La firma combina carga, alcance, modo de conteo, CPU y eventos.
+# Los dominios de PMU se muestran separados y la referencia común se cuenta una vez.
 """Compara capturas de perf sin ejecutar renders ni modificar sus CSV."""
 import argparse
 import csv
@@ -22,6 +25,7 @@ CATEGORIES = {
 ORDER = ['sequential', 'fine', 'coarse', 'cmp', 'smt']
 
 
+# Extrae categoría y dominio de hardware a partir del nombre completo del evento.
 def event_kind(event):
     name = event.split('/')[1] if '/' in event else event.split(':')[0]
     category = 'ipc' if event.startswith('IPC derivado:') else name
@@ -29,11 +33,13 @@ def event_kind(event):
     return category, domain
 
 
+# Valida una firma común y construye entradas separadas por configuración/CPU/PMU.
 def load(captures):
     entries, signature = [], None
     for capture in sorted(set(Path(p).resolve() for p in captures)):
         metadata = json.loads((capture / 'metadata.json').read_text())
         # Las opciones del modelo no forman parte de la carga común registrada.
+        # Firma experimental: el orden de parámetros de carga se conserva como fue registrado.
         current = (tuple(metadata['carga_argumentos']), metadata['alcance'],
                    metadata.get('modo_conteo', 'scaled'), tuple(metadata.get('modelos_cpu', [])),
                    metadata['eventos'])
@@ -47,6 +53,7 @@ def load(captures):
                 row['valor'] = float(row['valor'])
                 if not math.isfinite(row['valor']) or row['valor'] < 0:
                     raise ValueError(f'Contador inválido en {capture}')
+        # Agrupación exacta de modelo, CPU, evento y unidad antes de producir una entrada.
         batches = {}
         for row in assessed_rows(rows):
             # Los contadores importados de la referencia ya están en su captura
@@ -59,7 +66,9 @@ def load(captures):
             if category not in CATEGORIES:
                 continue
             command = metadata.get('comandos', {}).get(model, [])
+            # P explícito del comando; fine/sequential tienen un hilo y otros pueden ser automáticos.
             workers = int(command[command.index('--threads')+1]) if '--threads' in command else 1 if model in ('fine', 'sequential') else None
+            # Recupera el estado SMT informado por Linux, distinto del nombre del modelo.
             state = re.search(r'smt_activo_linux=(\S+)', metadata['topologia'])
             state = {'1': 'on', '0': 'off'}.get(state[1] if state else '', '?')
             entries.append(dict(model=model, workers=workers, state=state, cpu=cpu,
@@ -71,6 +80,7 @@ def load(captures):
     return entries, signature
 
 
+# Dibuja barras horizontales con IC95, cobertura, número de mediciones y avisos.
 def draw(ax, entries, title):
     from plot_metrics import COLORS, NAMES, decorate
     labels, maxima = [], [0]
@@ -78,6 +88,7 @@ def draw(ax, entries, title):
         rows = [r for r in entry['rows'] if r['estado'] == 'ok']
         values = [r['valor'] for r in rows]
         # perf expresa task-clock sin unidad en nanosegundos en estas capturas.
+        # Convierte clocks de milisegundos o nanosegundos a segundos; los demás conteos quedan iguales.
         factor = (1e-3 if entry['unit'] in ('ms', 'msec') else 1e-9) if entry['category'] in ('task-clock', 'cpu-clock') else 1
         values = [v * factor for v in values]
         warning = any(measurement_warning(r) for r in rows)
@@ -95,8 +106,10 @@ def draw(ax, entries, title):
             ax.text(.02, i, 'Sin conteo disponible', transform=ax.get_yaxis_transform(), va='center', color='#b45309')
             continue
         mean = statistics.mean(values)
+        # Semiancho normal del IC95 con n>1; n=1 no estima intervalo.
         margin = 1.96 * statistics.stdev(values) / math.sqrt(len(values)) if len(values) > 1 else 0
         # El conteo no puede ser negativo aunque el IC normal sí cruce cero.
+        # Limita visualmente el extremo inferior a cero, sin cambiar las observaciones.
         bars = ax.barh(i, mean, xerr=[[min(mean, margin)], [margin]], color=COLORS[entry['model']], capsize=3, height=.6)
         if warning:
             bars[0].set_hatch('//')
@@ -109,6 +122,7 @@ def draw(ax, entries, title):
     decorate(ax, title, CATEGORIES[entries[0]['category']][1])
 
 
+# Genera una figura por categoría y un índice Markdown de capturas incluidas.
 def generate(entries, signature, output):
     import matplotlib
     matplotlib.use('Agg')
@@ -120,6 +134,7 @@ def generate(entries, signature, output):
     note += '\nRayado naranja: porcentaje medido bajo o desconocido; valores conservados. P = trabajadores.'
     note += '\nP-cores y E-cores se comparan por separado. IPC mayor o menos eventos no garantiza menor tiempo.'
     files = []
+    # Cada categoría tiene paneles independientes por dominio P-core/E-core/general.
     for category, (title, _) in CATEGORIES.items():
         selected = [e for e in entries if e['category'] == category]
         domains = sorted({e['domain'] for e in selected})
@@ -132,6 +147,7 @@ def generate(entries, signature, output):
         save(fig, output / filename, note)
         plt.close(fig)
         files.append((title, filename))
+    # Índice de figuras y procedencia de las capturas, sin alterar CSV fuente.
     lines = ['# Comparación general de perf', '', 'Carga: `' + ' '.join(signature[0]) + '`.', '', note, '',
              'Cada fila conserva la configuración y sus repeticiones; no se mezclan cantidades de trabajadores ni estados SMT.',
              'Las referencias compartidas se muestran una sola vez desde su captura original.',
@@ -142,6 +158,7 @@ def generate(entries, signature, output):
     (output / 'README.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
 
 
+# Selecciona carpetas explícitas o descubiertas, valida compatibilidad y genera comparación.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root', type=Path, help='Carpeta perf que contiene las capturas')
