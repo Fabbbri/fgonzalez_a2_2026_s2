@@ -8,10 +8,8 @@
 // del sistema operativo con barreras de sincronización.
 //
 // Diferencia con smt.cpp: la COLOCACIÓN de los hilos.
-//   - cmp: exactamente UN hilo por NÚCLEO FÍSICO (nunca dos hilos
-//          en el mismo núcleo). Se elige automáticamente leyendo
-//          la topología de /sys y se rechaza T > núcleos físicos.
-//   - smt: los hilos pueden compartir núcleo (CPUs lógicas hermanas).
+//   - cmp: exactamente UN hilo por NÚCLEO FÍSICO.
+//   - smt: los hilos pueden compartir núcleo (CPUs lógicas).
 //
 // Uso:   ./cmp [num_hilos] [epocas]
 //   ./cmp 4        -> 4 hilos en 4 núcleos físicos distintos

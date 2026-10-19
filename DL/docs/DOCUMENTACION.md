@@ -2,19 +2,22 @@
 
 ## Índice del markdown
 
+## Índice del markdown
+
 1. [Estructura del proyecto](#estructura-del-proyecto)
-2. [Instalación](#instalación)
+2. [Instalación y otras Utilidades](#instalación-y-otras-utilidades)
 3. [¿Qué busca Deep Learning?](#qué-busca-deep-learning)
-4. Forward pass - p1
-5. Forward pass - p2
-6. Backpropagation
-7. Descenso de Gradiente
-8. Repetir entrenamiento
-9. Problemas más complejos -> Modelos más completos
-10. Paralelización en el modelo simple
-11. Propuesta de paralelización dummie para el modelo simple
-12. [Reporte de resultados para el modelo $\textit{dummie}$](#12-reporte-de-resultados-para-el-modelo)
+4. [Forward pass - p1](#forward-pass---p1)
+5. [Forward pass - p2](#forward-pass---p2)
+6. [Backpropagation](#6-backpropagation)
+7. [Descenso de Gradiente](#7-descenso-de-gradiente)
+8. [Repetir entrenamiento](#8-repetir-entrenamiento)
+9. [Problemas más complejos -> Modelos más completos](#9-problemas-más-complejos---modelos-más-completos)
+10. [Paralelización en el modelo simple](#10-paralelización-en-el-modelo-simple)
+11. [Propuesta de paralelización dummie para el modelo simple](#11-propuesta-de-paralelización-dummie-para-el-modelo-simple)
+12. [Reporte de resultados para el modelo $\textit{dummie}$](#12-reporte-de-resultados-para-el-modelo-textitdummie)
 13. [Deep Learning para modelo complejo MNIST](#13-deep-learning-para-modelo-complejo-mnist)
+14. [Conclusión y Resumen: Paralelismo Implementado en el entrenamiento de la MLP MNIST](#14-conclusión-y-resumen-paralelismo-implementado-en-el-entrenamiento-de-la-mlp-mnist)
 
 ## Estructura del proyecto
 
@@ -36,7 +39,9 @@ DL/
 
 En `dummie/` encontrará el modelo simple secuencial y su paralelización multihilo simple. La idea es mostrar una de las etapas esenciales donde se realizará el multihilo para el modelo a gran escala (que sigue en desarrollo en `src/`).
 
-## Instalación
+## Instalación y otras Utilidades
+
+Para la ejecución de los 4 modelos y el secuencial, revisar: [README.md](/DL/src/README.md) del proyecto de Deep Learning
 
 ```bash
 # MacOS
@@ -82,8 +87,6 @@ sudo sysctl -w kernel.perf_event_paranoid=1
 
 # Permisos para USO POR HILO LOGICO
 sudo sysctl -w kernel.perf_event_paranoid=0
-
-
 ```
 
 ## ¿Qué busca Deep Learning?
@@ -1021,42 +1024,124 @@ imagen n → Forward → Backprop → actualizar
 
 Para esto es necesario generar un acumulador del MSE para compararlo entre imágenes.
 
-## 14. Paralelismo en el modelo complejo MNIST
+## 14. Conclusión y Resumen: Paralelismo Implementado en el entrenamiento de la MLP MNIST
 
-Previamente se mencionó el paralelismo que contiene una única etapa de entrenamiento.
+Durante implementación se notaron algunas diferencias en rendimiento/eficiencia y facilidad de implementar el algoritmo. Por esta razón, al implementar realmente se decidió cambiar ligeramente el paralelismo planteado, manteniendo las ideas esenciales.
 
-Ahora bien, también es posible también analizar el paralelismo entre muestras. Entre imagenes no hay dependencias, por lo que no hay nada que lo impida. 
+### 14.1 Dependencias
 
-Sin embargo, no es así con las iteracions de entrenamiento: no puede paralelizarse entre `epochs` pues un epoch usa los pesos y sesgos de la iteración previa. 
+Debido a que el algoritmo requiere actualizar los pesos de épocas distintas de forma concurrente, durante implementación se notó que sincronizar las imágenes y sus épocas mientras se realizaban sus entrenamientos de forma paralela era complejo y generaba mucho error. 
 
-De esta forma, podría distribuirse de la siguiente forma:
+Por esta razón se elige utilizar el entrenamiento usa **SGD por imagen**, el cuál es, en esencia y eficiencia/calidad, aunque inferior, no tan distante del paralelismo planteado en este problema específico (con lotes mucho más grandes que 100 imágenes y el modelo de DL planteado para números del 0-9, no afecta tanto). 
+
+La idea es:
 
 ```
-                    ENTRENAMIENTO
-                         │
-                    100 muestras
-                         │
-          ┌──────────────┼──────────────┐
-          ▼              ▼              ▼
-       Muestra 0      Muestra 1      Muestra N
-          │              │              │
-       Forward        Forward        Forward
-          │              │              │
-      Backprop        Backprop        Backprop
-          │              │              │
-       Gradientes     Gradientes     Gradientes
-          └──────────────┼──────────────┘
-                         ▼
-                  Actualizar pesos
-                         │
-                         ▼
-                      Epoch + 1
+Cada imagen calcula su forward y su backpropagation con los pesos que dejó la actualización de la imagen anterior:
 ```
 
-dónde a su vez, cada muestra puede ser paralelizada en toda la etapa de $\textit{forward-pass}$ y $\textit{backpropagation}$.
+$$W^{(s+1)} = W^{(s)} - \eta \,\nabla L_s\!\left(W^{(s)}\right)$$
 
 
+El gradiente de la imagen $s$ se evalúa en $W^{(s)}$, que solo existe cuando termina la actualización de la imagen $s-1$. Hay tres niveles de dependencia:
 
+| Nivel | ¿Paralelizable? | Motivo |
+|---|---|---|
+| Entre **épocas** | No | La época $e+1$ parte de los pesos finales de la época $e$. |
+| Entre **imágenes** de una época | **No** (si se conserva SGD) | Dependencia verdadera de datos (RAW): la imagen $s$ lee `W1, W2, W3, b1, b2, b3`, que la imagen $s-1$ acaba de escribir. |
+| **Dentro de una imagen** | **Sí**, con restricciones | Las neuronas de una misma capa son independientes entre sí; las capas dependen unas de otras. |
 
+```
+EPOCH e
+  │
+  ▼
+imagen 0 ──► imagen 1 ──► imagen 2 ──► ... ──► imagen 99     (cadena secuencial: W₀→W₁→W₂→…→W₁₀₀)
+  │
+  └─ dentro de cada imagen, trabajo repartido entre T hilos:
+       Forward capa 1 ─║─ capa 2 ─║─ capa 3 ─║─ δ salida ─║─ capa 2 (back) ─║─ capa 1 (back) ─║─ W1
+                       ║ = barrera de sincronización
+  │
+  ▼
+EPOCH e+1  (depende de los pesos finales de e)
+```
 
-	
+### 14.2 Por qué NO se paraleliza entre imágenes
+
+Una idea tentadora es procesar las 100 imágenes en paralelo, acumular los gradientes y actualizar los pesos una vez:
+
+```
+imagen 0 ─┐
+imagen 1 ─┼─► forward + backprop (mismos pesos) ─► Σ gradientes ─► UNA actualización
+imagen N ─┘
+```
+
+Eso **no es SGD por imagen: es descenso por gradiente por lotes (batch GD)**, una técnica real pero mucho más compleja :
+
+$$W' = W - \eta \sum_{s=0}^{99} \nabla L_s(W)$$
+
+Las diferencias no son cosméticas:
+
+- Todas las imágenes se evalúan en los **mismos** pesos $W$ (congelados), no en $W^{(s)}$ distintos.
+- Se hace **1 actualización por época** en lugar de **100**. En 1000 épocas son 1 000 actualizaciones frente a 100 000.
+- La trayectoria de los pesos es distinta, y con $\eta = 0.1$ la convergencia también.
+- El checksum de parámetros no coincidiría con el de `main`, así que no habría forma de validar equivalencia.
+
+Compararía algoritmos de entrenamiento distintos, no modelos de ejecución distintos, que es lo que pide el proyecto.
+
+Otras variantes que tampoco sirven:
+
+| Variante | Por qué rompe la equivalencia |
+|---|---|
+| Mini-batch | Cambia el número y el valor de las actualizaciones. |
+| SGD asíncrono (estilo Hogwild) | Las imágenes leen pesos parcialmente actualizados; el resultado depende del *scheduling* y no es determinista. |
+| Pipeline entre imágenes (forward de $s+1$ mientras $s$ hace backprop) | El forward de $s+1$ necesita `W1` actualizado, y `W1` es lo último que actualiza $s$. Solo sería posible con pesos obsoletos (*stale*), lo que cambia el algoritmo. |
+
+### 14.3 Paralelismo válido: dentro de una imagen
+
+Para una imagen, qué lee y qué escribe cada etapa (así se justifica cada barrera):
+
+| # | Etapa | Lee | Escribe | Reparto entre hilos | Barrera después |
+|---|---|---|---|---|---|
+| 1 | Forward capa 1 | `W1[i,:]`, `x`, `b1[i]` | `a1[i]` | filas de `W1` (128) | Sí: la capa 2 necesita **todo** `a1` |
+| 2 | Forward capa 2 | `W2[i,:]`, `a1`, `b2[i]` | `a2[i]` | filas de `W2` (64) | Sí: la capa 3 necesita todo `a2` |
+| 3 | Forward capa 3 | `W3[i,:]`, `a2`, `b3[i]` | `a3[i]` | filas de `W3` (10) | Sí: el error necesita todo `a3` |
+| 4 | MSE, accuracy, `dZ3`, `b3` | `a3`, `y` | `dZ3`, `b3` | solo hilo 0 (trabajo diminuto) | Sí: todos necesitan `dZ3` completo |
+| 5 | Backprop capa 2 | `W3[:,j]` (vieja), `dZ3`, `a2[j]` | `dZ2[j]`, `W3[:,j]`, `b2[j]` | **columnas** de `W3` (64) | Sí: la capa 1 necesita todo `dZ2` |
+| 6 | Backprop capa 1 | `W2[:,k]` (vieja), `dZ2`, `a1[k]` | `dZ1[k]`, `W2[:,k]`, `b1[k]` | **columnas** de `W2` (128) | Sí: `W1` necesita `dZ1` (ver nota) |
+| 7 | Actualizar `W1` | `dZ1[i]`, `x` | `W1[i,:]` | filas de `W1` | No (ver nota) |
+
+Reglas de diseño que conservan la semántica de SGD:
+
+1. **Gradientes con pesos viejos.** `dA2 = W3ᵀ·dZ3` debe usar `W3` **antes** de actualizarla. Como el hilo dueño de la columna `j` lee `W3[:,j]` y luego la actualiza, y nadie más la toca, no hace falta una barrera extra y se respeta la semántica.
+2. **Dueño único por elemento.** La función `rango()` es determinista y se usa en todas las etapas que tocan la misma fila o columna. Un elemento siempre lo escribe el mismo hilo, así que no hay carreras de datos.
+3. **Sin barrera tras actualizar `W1`.** La siguiente imagen solo vuelve a leer las filas de `W1` (y `b1[i]`) que ese mismo hilo posee. Las demás lecturas son de vectores que se reescriben tras una barrera.
+4. **Mismo orden de operaciones de punto flotante.** Cada producto punto se calcula completo por un solo hilo, sin sumas parciales repartidas. Así el resultado no depende del número de hilos.
+
+### 14.4 Cómo se relaciona con cada modelo del proyecto
+
+| Modelo | Qué paraleliza | Paralelismo físico real |
+|---|---|---|
+| Secuencial (`main`) | Nada (referencia, usa `W*x` de Eigen) | No |
+| Fine-grained (`fino`) | 4 tareas lógicas intercaladas con quantum de 100 µs en **un solo hilo del SO** | **No**: simula el intercalado |
+| Coarse-grained (`grueso`) | Actualizaciones independientes de parámetros (`W2/W3` en hilos trabajadores, `W1` en el principal) tras calcular los gradientes | Sí, 2 hilos |
+| SMT (`smt`) | Reparto dentro de la imagen (14.3) con hilos fijados a CPUs lógicas, que pueden ser hermanas del mismo núcleo | Sí |
+| CMP (`cmp`) | Mismo reparto, con exactamente un hilo por **núcleo físico** | Sí |
+
+`smt` y `cmp` ejecutan el mismo algoritmo y solo cambian la **colocación** de los hilos, lo que permite aislar el efecto de compartir (o no) los recursos del núcleo.
+
+### 14.5 Límites esperables del speedup
+
+- **Poco trabajo por barrera.** Cada imagen tiene 6 barreras, es decir, unas 600 000 en 100 imágenes × 1000 épocas. Las dos etapas pesadas son el forward de `W1` y la actualización de `W1` (128×784 ≈ 100 k operaciones cada una), pero las demás etapas son muy pequeñas.
+- **Parte secuencial (Amdahl).** El paso 4 lo hace un solo hilo, y las barreras serializan la espera por el hilo más lento.
+- **Balance de carga.** La capa de salida tiene 10 neuronas, así que con T > 10 algunos hilos quedan sin trabajo en esa etapa.
+- **Espera activa.** Con SMT, un hilo que gira en la barrera consume recursos del núcleo que comparte con su hermano.
+
+Un speedup bajo o una eficiencia baja no demuestran por sí solos que un modelo de hardware sea peor. Dependen del tamaño del problema y del coste de sincronización.
+
+### 14.6 Validación de equivalencia
+
+La equivalencia (en `medir_todos.sh` u otros `.sh`) se comprueba con el checksum de parámetros (hash de los bytes de `W1,b1,W2,b2,W3,b3`), no con MSE o accuracy finales:
+
+- `fino`, `smt` y `cmp` calculan los productos punto con el mismo orden de sumas y deberían coincidir **bit a bit** entre sí.
+- `main` y `grueso` usan `W * x` de Eigen (otro orden de sumas), por lo que pueden diferir en los últimos bits. En ese caso se compara con tolerancia.
+- Para depurar una divergencia, compara los parámetros tras cada imagen (o tras pocas imágenes) en lugar de solo al final.
