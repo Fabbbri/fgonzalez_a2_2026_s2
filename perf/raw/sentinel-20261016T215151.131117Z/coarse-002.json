@@ -1,0 +1,39 @@
+{
+  "command": [
+    "perf",
+    "stat",
+    "--no-big-num",
+    "-x",
+    ";",
+    "-e",
+    "task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,cache-references,cache-misses",
+    "-o",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/perf/raw/sentinel-20261016T215151.131117Z/coarse-002.stat",
+    "--",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/build/interferogram",
+    "--a",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/data/coregistered/P09-R2-2023-2024/A.tif",
+    "--b",
+    "/home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC/data/coregistered/P09-R2-2023-2024/B.tif",
+    "--width",
+    "24444",
+    "--height",
+    "1499",
+    "--tile-width",
+    "32",
+    "--tile-height",
+    "32",
+    "--allow-nodata",
+    "--mode",
+    "coarse-grained",
+    "--threads",
+    "4"
+  ],
+  "cwd": "/home/jian/Desktop/fgonzalez_a2_2026_s2/sentinel1-SLC",
+  "env": {
+    "DL_QUANTUM_US": "100",
+    "DL_SAMPLES": "100",
+    "DL_SEED": "1",
+    "DL_EPOCHS": "1000"
+  }
+}

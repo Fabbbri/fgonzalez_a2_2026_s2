@@ -1,0 +1,54 @@
+{
+  "binary": "/home/jian/Desktop/fgonzalez_a2_2026_s2/DL/src/main",
+  "repetitions": 20,
+  "results_dir": "resultdl",
+  "models": [
+    "coarse"
+  ],
+  "model": null,
+  "thread_counts": "1,2,4,8",
+  "cmp_thread_counts": "auto",
+  "smt_thread_counts": "auto",
+  "smt_states": "on,off",
+  "make_command": "make",
+  "threads": null,
+  "baseline_csv": "references/sequential-20261014-180040-1792022440898193601.csv",
+  "resume": false,
+  "epochs": 1000,
+  "samples": 100,
+  "seed": 1,
+  "quantum_us": 100,
+  "block_interval_ms": 10,
+  "block_duration_ms": 1,
+  "platform": "Linux-6.17.0-29-generic-x86_64-with-glibc2.39",
+  "topology": {
+    "physical_cores": "8",
+    "logical_cpus": "12",
+    "allowed_cpus": "0;1;2;3;4;5;6;7;8;9;10;11",
+    "core_cpus": "0;2;4;6;8;9;10;11",
+    "sibling_groups": "0;1|2;3|4;5|6;7|8|9|10|11",
+    "smt_control": "on",
+    "smt_active": "1"
+  },
+  "timing_scope": "creacion_entrenamiento_sincronizacion_cierre_sin_io",
+  "warmups_per_configuration": 1,
+  "hash": "sha256",
+  "binary_sha256": {
+    "sequential": "b1ebeec9012a300d003682e2b8de544750682fde578ab1b9569b44c9b66bac85",
+    "fine-grained": "24634f43e2ba358be11bf037c686dc663869537cc77420f3648efda75abe63e6",
+    "coarse-grained": "e02f59178d7bba8c3a8b55f84d4c837fc116ff7c6341c91ecbd0906842b7cfa5",
+    "smt": "49d3acd9b96c1c94f89b8b04038a2f23598a0384627997521d78a75cd1e9e9b0",
+    "cmp": "ac52ba35be7ed5a337122f5b0ec94feaa91e34e8ca939609a881d36379c605f2"
+  },
+  "dataset_sha256": "02def62d38696cddf2715e05122f741fafee2c190e42772b91f7c0c2f6604c7e",
+  "numerical_rtol": 1e-09,
+  "numerical_atol": 1e-11,
+  "status": "complete",
+  "environment": {
+    "BENCHMARK_COMPILER": "g++",
+    "BENCHMARK_FLAGS": " -O2 -Wall -Wextra -Wpedantic -std=c++17 -pthread -I/usr/include/eigen3 "
+  },
+  "generated_csv": [
+    "coarse.csv"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "url": "https://catalogue.dataspace.copernicus.eu/odata/v1/Bursts?%24filter=ParentProductType+eq+%27IW_SLC__1S%27+and+OperationalMode+eq+%27IW%27+and+PolarisationChannels+eq+%27VV%27+and+ContentDate%2FStart+ge+2025-01-01T00%3A00%3A00Z+and+ContentDate%2FStart+lt+2025-03-01T00%3A00%3A00Z+and+OData.CSC.Intersects%28area%3Dgeography%27SRID%3D4326%3BPOLYGON+%28%28-83.96292248855256+9.730139821153745%2C+-83.94469388535546+9.730137371982373%2C+-83.94469092363198+9.748221365031235%2C+-83.96292050792937+9.748223818867205%2C+-83.96292248855256+9.730139821153745%29%29%27%29&%24orderby=ContentDate%2FStart+asc&%24top=1000",
+  "start": "2025-01-01",
+  "end": "2025-03-01"
+}

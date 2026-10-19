@@ -1,0 +1,2 @@
+estado=completo modo=sin_ventana modelo=sequential trabajadores=1 resolucion=640x480 tile=32x32 muestras=8 rebotes=12 tiles=300/300
+tiempo_total_ms=1117.541

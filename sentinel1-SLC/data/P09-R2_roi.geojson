@@ -1,0 +1,36 @@
+{
+  "type": "Feature",
+  "properties": {
+    "code": "P09-R2",
+    "center_latitude": 9.505,
+    "center_longitude": -83.70788888888889,
+    "description": "ROI aproximada trasladada al nuevo punto; no utilizada por acquire_p09.sh"
+  },
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -83.71700442607413,
+          9.49595910284416
+        ],
+        [
+          -83.69877582287702,
+          9.495956653672788
+        ],
+        [
+          -83.69877286115354,
+          9.51404064672165
+        ],
+        [
+          -83.71700244545093,
+          9.51404310055762
+        ],
+        [
+          -83.71700442607413,
+          9.49595910284416
+        ]
+      ]
+    ]
+  }
+}

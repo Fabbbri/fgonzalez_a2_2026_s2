@@ -1,0 +1,21 @@
+{
+  "status": "complete",
+  "smt_states": "on,off",
+  "original_smt": "on",
+  "restored_smt": "on",
+  "smt_thread_counts": [
+    8,
+    12
+  ],
+  "generated_csv": [
+    "fine.csv",
+    "coarse.csv",
+    "smt-on.csv",
+    "cmp.csv",
+    "smt-off.csv"
+  ],
+  "phases": [
+    "logs/20261015-142509-1792095909552699943",
+    "logs/20261015-154932-1792100972893658674"
+  ]
+}
